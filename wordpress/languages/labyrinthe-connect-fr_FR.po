@@ -1,0 +1,1020 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Labyrinthe Connect 1.0.0\n"
+"Report-Msgid-Bugs-To: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/issues\n"
+"Last-Translator: Labyrinthe Connect <connect@labyrinthe-rdc.com>\n"
+"Language-Team: Labyrinthe Connect <connect@labyrinthe-rdc.com>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-11-05T22:04:12+00:00\n"
+"PO-Revision-Date: 2026-11-05T22:37:56+00:00\n"
+"Language: fr_FR\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: labyrinthe-connect\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+
+#. Plugin Name of the plugin
+#. Author of the plugin
+#: labyrinthe-connect.php:3
+#: labyrinthe-connect.php:9
+#: includes/admin/class-admin.php:127
+#: includes/admin/class-admin.php:139
+#: includes/admin/class-admin.php:140
+#: includes/admin/class-settings-page.php:80
+#: includes/admin/class-user-profile.php:59
+msgid "Labyrinthe Connect"
+msgstr "Labyrinthe Connect"
+
+#. Plugin URI of the plugin
+#: labyrinthe-connect.php:4
+msgid "https://labyrinthe-rdc.com/connect/wordpress"
+msgstr "https://labyrinthe-rdc.com/connect/wordpress"
+
+#. Description of the plugin
+#: labyrinthe-connect.php:5
+msgid "SMS and OTP for WordPress and WooCommerce: order notifications by SMS, phone verification and login with a code received by SMS (DR Congo and Central Africa)."
+msgstr "SMS et OTP pour WordPress et WooCommerce : notifications de commande par SMS, vérification du téléphone et connexion avec un code reçu par SMS (RDC et Afrique centrale)."
+
+#. Author URI of the plugin
+#: labyrinthe-connect.php:10
+msgid "https://labyrinthe-rdc.com"
+msgstr "https://labyrinthe-rdc.com"
+
+#: includes/admin/class-admin.php:129
+msgid "When you place an order, create an account or log in with a code received by SMS, your phone number and the text of the SMS are sent to Labyrinthe Connect (labyrinthe-rdc.com), which delivers the SMS. This site keeps a log of the SMS sent, with masked phone numbers and without the texts, for a limited time."
+msgstr "Quand vous passez une commande, créez un compte ou vous connectez avec un code reçu par SMS, votre numéro de téléphone et le texte du SMS sont transmis à Labyrinthe Connect (labyrinthe-rdc.com), qui achemine le SMS. Ce site conserve pour une durée limitée un journal des SMS envoyés, avec des numéros masqués et sans les textes."
+
+#: includes/admin/class-admin.php:147
+msgid "Labyrinthe Connect settings"
+msgstr "Réglages de Labyrinthe Connect"
+
+#: includes/admin/class-admin.php:147
+#: includes/admin/class-admin.php:193
+#: includes/admin/class-admin.php:214
+#: blocks/otp-login/index.js:23
+msgid "Settings"
+msgstr "Réglages"
+
+#: includes/admin/class-admin.php:148
+#: includes/admin/class-log-page.php:29
+msgid "SMS log"
+msgstr "Journal des SMS"
+
+#: includes/admin/class-admin.php:171
+msgid "Please wait…"
+msgstr "Veuillez patienter…"
+
+#: includes/admin/class-admin.php:172
+#: includes/admin/class-log-list-table.php:93
+msgid "Error"
+msgstr "Erreur"
+
+#: includes/admin/class-admin.php:173
+msgid "Copied"
+msgstr "Copié"
+
+#. translators: 1: number of characters, 2: number of segments.
+#: includes/admin/class-admin.php:175
+#, php-format
+msgid "%1$d characters, GSM-7, %2$d SMS segment(s)."
+msgstr "%1$d caractères, GSM-7, %2$d segment(s) SMS."
+
+#. translators: 1: number of characters, 2: number of segments, 3: list of characters.
+#: includes/admin/class-admin.php:177
+#, php-format
+msgid "%1$d characters, Unicode (UCS-2), %2$d SMS segment(s): these characters make each SMS hold 70 characters instead of 160, often doubling the cost: %3$s"
+msgstr "%1$d caractères, Unicode (UCS-2), %2$d segment(s) SMS : ces caractères limitent chaque SMS à 70 caractères au lieu de 160, ce qui double souvent le coût : %3$s"
+
+#: includes/admin/class-admin.php:178
+msgid "With \"Remove accents\" enabled, the SMS will be sent without accents."
+msgstr "L’option « Retirer les accents » étant active, le SMS partira sans accents."
+
+#: includes/admin/class-admin.php:179
+msgid "Estimate with sample values; the API makes the final count."
+msgstr "Estimation avec des valeurs d’exemple ; le décompte définitif est fait par l’API."
+
+#: includes/admin/class-admin.php:212
+msgid "Labyrinthe Connect: the saved API key can no longer be read (the security keys of wp-config.php have changed). Please enter it again."
+msgstr "Labyrinthe Connect : la clé API enregistrée ne peut plus être lue (les clés de sécurité de wp-config.php ont changé). Saisissez-la à nouveau."
+
+#: includes/admin/class-admin.php:219
+msgid "Labyrinthe Connect is installed: add your API key (client area > Developers > API keys) to start sending SMS."
+msgstr "Labyrinthe Connect est installé : ajoutez votre clé API (espace client > Développeurs > Clés API) pour commencer à envoyer des SMS."
+
+#: includes/admin/class-admin.php:221
+msgid "Add the API key"
+msgstr "Ajouter la clé API"
+
+#. translators: 1: credit balance, 2: low balance threshold.
+#: includes/admin/class-admin.php:232
+#, php-format
+msgid "Labyrinthe Connect: your SMS credit balance is low (%1$s credits, threshold %2$s). Buy credits in your client area so that SMS keep being sent."
+msgstr "Labyrinthe Connect : votre solde de crédits SMS est bas (%1$s crédits, seuil %2$s). Achetez des crédits dans votre espace client pour que les SMS continuent de partir."
+
+#: includes/admin/class-admin.php:238
+msgid "Dismiss"
+msgstr "Masquer"
+
+#: includes/admin/class-admin.php:248
+#: includes/admin/class-admin.php:345
+#: includes/admin/class-log-page.php:22
+#: includes/admin/class-settings-page.php:69
+msgid "You are not allowed to do this."
+msgstr "Vous n’avez pas l’autorisation de faire cela."
+
+#. translators: 1: mode (test or live), 2: credit balance, 3: held credits.
+#: includes/admin/class-admin.php:275
+#, php-format
+msgid "Connection OK (%1$s). Balance: %2$s credits (%3$s held by campaigns in progress)."
+msgstr "Connexion réussie (%1$s). Solde : %2$s crédits (%3$s bloqués par des campagnes en cours)."
+
+#: includes/admin/class-admin.php:276
+msgid "test mode: nothing is sent, nothing is billed"
+msgstr "mode test : rien n’est envoyé, rien n’est facturé"
+
+#: includes/admin/class-admin.php:276
+msgid "live mode"
+msgstr "mode production"
+
+#. translators: 1: error code, 2: error message.
+#: includes/admin/class-admin.php:305
+#, php-format
+msgid "Not sent (%1$s): %2$s"
+msgstr "Non envoyé (%1$s) : %2$s"
+
+#. translators: 1: masked phone number, 2: message status, 3: number of segments, 4: message id.
+#: includes/admin/class-admin.php:315
+#, php-format
+msgid "SMS accepted for %1$s (status: %2$s, %3$d segment(s)). Message ID: %4$s"
+msgstr "SMS accepté pour %1$s (statut : %2$s, %3$d segment(s)). Identifiant du message : %4$s"
+
+#: includes/admin/class-admin.php:320
+msgid "Test mode: nothing was actually sent."
+msgstr "Mode test : rien n’a réellement été envoyé."
+
+#: includes/admin/class-admin.php:348
+#: includes/otp/class-ajax.php:93
+msgid "Your session has expired. Please reload the page."
+msgstr "Votre session a expiré. Rechargez la page."
+
+#: includes/admin/class-admin.php:361
+msgid "The API key was refused (invalid or revoked)."
+msgstr "La clé API a été refusée (invalide ou révoquée)."
+
+#: includes/admin/class-admin.php:364
+msgid "Save an API key first."
+msgstr "Enregistrez d’abord une clé API."
+
+#: includes/admin/class-admin.php:367
+#: includes/class-sms-sender.php:164
+msgid "The Labyrinthe Connect API could not be reached."
+msgstr "L’API Labyrinthe Connect est injoignable."
+
+#: includes/admin/class-admin.php:370
+msgid "Unexpected error."
+msgstr "Erreur inattendue."
+
+#. translators: 1: error code, 2: error message.
+#: includes/admin/class-admin.php:377
+#, php-format
+msgid "Failed (%1$s): %2$s"
+msgstr "Échec (%1$s) : %2$s"
+
+#: includes/admin/class-log-list-table.php:51
+msgid "Queued"
+msgstr "En file"
+
+#: includes/admin/class-log-list-table.php:52
+msgid "Submitted"
+msgstr "Transmis"
+
+#: includes/admin/class-log-list-table.php:53
+msgid "Sent"
+msgstr "Envoyé"
+
+#: includes/admin/class-log-list-table.php:54
+msgid "Delivered"
+msgstr "Remis"
+
+#: includes/admin/class-log-list-table.php:55
+msgid "Failed"
+msgstr "Échec"
+
+#: includes/admin/class-log-list-table.php:56
+msgid "Rejected"
+msgstr "Rejeté"
+
+#: includes/admin/class-log-list-table.php:57
+msgid "Expired"
+msgstr "Expiré"
+
+#: includes/admin/class-log-list-table.php:58
+msgid "Undeliverable"
+msgstr "Non distribuable"
+
+#: includes/admin/class-log-list-table.php:59
+msgid "Not sent"
+msgstr "Non envoyé"
+
+#: includes/admin/class-log-list-table.php:60
+msgid "Code sent"
+msgstr "Code envoyé"
+
+#: includes/admin/class-log-list-table.php:71
+msgid "Order status"
+msgstr "Statut de commande"
+
+#: includes/admin/class-log-list-table.php:72
+msgid "New order (shop manager)"
+msgstr "Nouvelle commande (gérant)"
+
+#: includes/admin/class-log-list-table.php:73
+#: includes/admin/class-settings-page.php:274
+msgid "Test SMS"
+msgstr "SMS de test"
+
+#: includes/admin/class-log-list-table.php:74
+msgid "OTP: login"
+msgstr "OTP : connexion"
+
+#: includes/admin/class-log-list-table.php:75
+msgid "OTP: registration"
+msgstr "OTP : inscription"
+
+#: includes/admin/class-log-list-table.php:76
+msgid "OTP: checkout"
+msgstr "OTP : commande"
+
+#: includes/admin/class-log-list-table.php:87
+msgid "Date"
+msgstr "Date"
+
+#: includes/admin/class-log-list-table.php:88
+msgid "Recipient"
+msgstr "Destinataire"
+
+#: includes/admin/class-log-list-table.php:89
+#: includes/admin/class-log-list-table.php:162
+msgid "Type"
+msgstr "Type"
+
+#: includes/admin/class-log-list-table.php:90
+#: includes/admin/class-log-list-table.php:155
+#: includes/admin/class-settings-page.php:302
+msgid "Status"
+msgstr "Statut"
+
+#: includes/admin/class-log-list-table.php:91
+msgid "Order"
+msgstr "Commande"
+
+#: includes/admin/class-log-list-table.php:92
+msgid "Segments"
+msgstr "Segments"
+
+#: includes/admin/class-log-list-table.php:157
+msgid "All statuses"
+msgstr "Tous les statuts"
+
+#: includes/admin/class-log-list-table.php:164
+msgid "All types"
+msgstr "Tous les types"
+
+#: includes/admin/class-log-list-table.php:169
+msgid "Filter"
+msgstr "Filtrer"
+
+#: includes/admin/class-log-list-table.php:178
+msgid "No SMS sent by the plugin yet."
+msgstr "Aucun SMS envoyé par le plugin pour l’instant."
+
+#: includes/admin/class-log-list-table.php:192
+msgid "Test"
+msgstr "Test"
+
+#: includes/admin/class-log-page.php:30
+msgid "SMS sent by this site. Delivery statuses are updated by the webhook (see Settings). Phone numbers are masked; message texts are never stored."
+msgstr "SMS envoyés par ce site. Les statuts de remise sont mis à jour par le webhook (voir Réglages). Les numéros sont masqués ; le texte des messages n’est jamais enregistré."
+
+#: includes/admin/class-log-page.php:34
+msgid "Search (order, message ID, error code)"
+msgstr "Rechercher (commande, identifiant, code d’erreur)"
+
+#: includes/admin/class-settings-page.php:55
+msgid "General"
+msgstr "Général"
+
+#: includes/admin/class-settings-page.php:57
+msgid "WooCommerce"
+msgstr "WooCommerce"
+
+#: includes/admin/class-settings-page.php:59
+msgid "OTP (verification and login)"
+msgstr "OTP (vérification et connexion)"
+
+#: includes/admin/class-settings-page.php:83
+msgid "Test mode"
+msgstr "Mode test"
+
+#: includes/admin/class-settings-page.php:83
+msgid "Live mode"
+msgstr "Mode production"
+
+#: includes/admin/class-settings-page.php:128
+msgid "API key"
+msgstr "Clé API"
+
+#: includes/admin/class-settings-page.php:131
+msgid "defined in wp-config.php (LABYRINTHE_CONNECT_API_KEY)."
+msgstr "définie dans wp-config.php (LABYRINTHE_CONNECT_API_KEY)."
+
+#: includes/admin/class-settings-page.php:134
+msgid "Leave empty to keep the current key"
+msgstr "Laisser vide pour garder la clé actuelle"
+
+#. translators: %s: API key hint, e.g. lsk_test_…abcd.
+#: includes/admin/class-settings-page.php:140
+#, php-format
+msgid "Current key: %s (stored encrypted)."
+msgstr "Clé actuelle : %s (enregistrée chiffrée)."
+
+#: includes/admin/class-settings-page.php:144
+msgid "Remove the key"
+msgstr "Supprimer la clé"
+
+#: includes/admin/class-settings-page.php:148
+msgid "Create it in your client area (Developers > API keys). A lsk_test_ key uses the sandbox: nothing is sent and no credit is used. Use a lsk_live_ key in production."
+msgstr "Créez-la dans votre espace client (Développeurs > Clés API). Une clé lsk_test_ utilise le bac à sable : rien n’est envoyé et aucun crédit n’est consommé. Utilisez une clé lsk_live_ en production."
+
+#: includes/admin/class-settings-page.php:152
+msgid "Sender"
+msgstr "Expéditeur"
+
+#: includes/admin/class-settings-page.php:155
+msgid "Refresh"
+msgstr "Actualiser"
+
+#: includes/admin/class-settings-page.php:156
+msgid "Approved Sender IDs of your account (name shown on the phone). Request new ones in your client area."
+msgstr "Sender IDs approuvés de votre compte (nom affiché sur le téléphone). Demandez-en de nouveaux dans votre espace client."
+
+#: includes/admin/class-settings-page.php:160
+msgid "Default country code"
+msgstr "Indicatif par défaut"
+
+#: includes/admin/class-settings-page.php:163
+msgid "Added to numbers typed in local format (0812345678 becomes 243812345678). 243 for the DR Congo. For WooCommerce orders, the country of the billing address is used first."
+msgstr "Ajouté aux numéros saisis au format local (0812345678 devient 243812345678). 243 pour la RDC. Pour les commandes WooCommerce, le pays de l’adresse de facturation est utilisé en priorité."
+
+#: includes/admin/class-settings-page.php:167
+msgid "Accents"
+msgstr "Accents"
+
+#: includes/admin/class-settings-page.php:169
+msgid "Remove accents and typographic quotes before sending (é → e, « → \")"
+msgstr "Retirer les accents et les guillemets typographiques avant l’envoi (é → e, « → \")"
+
+#: includes/admin/class-settings-page.php:170
+msgid "A single accent switches the SMS to Unicode: 70 characters per SMS instead of 160, so the cost is often doubled. Without accents, the SMS stays in GSM-7."
+msgstr "Un seul accent fait passer le SMS en Unicode : 70 caractères par SMS au lieu de 160, le coût est donc souvent doublé. Sans accents, le SMS reste en GSM-7."
+
+#: includes/admin/class-settings-page.php:174
+msgid "Webhook URL"
+msgstr "URL du webhook"
+
+#: includes/admin/class-settings-page.php:177
+msgid "Copy"
+msgstr "Copier"
+
+#: includes/admin/class-settings-page.php:178
+msgid "Add this URL in your client area (Developers > Webhooks) to receive delivery reports: the SMS log and the order notes are then updated."
+msgstr "Ajoutez cette URL dans votre espace client (Développeurs > Webhooks) pour recevoir les accusés de remise : le journal des SMS et les notes de commande sont alors mis à jour."
+
+#. translators: %s: date and time.
+#: includes/admin/class-settings-page.php:184
+#, php-format
+msgid "Last test event received: %s."
+msgstr "Dernier événement de test reçu : %s."
+
+#: includes/admin/class-settings-page.php:191
+msgid "Webhook secret"
+msgstr "Secret du webhook"
+
+#: includes/admin/class-settings-page.php:194
+msgid "Defined in wp-config.php (LABYRINTHE_CONNECT_WEBHOOK_SECRET)."
+msgstr "Défini dans wp-config.php (LABYRINTHE_CONNECT_WEBHOOK_SECRET)."
+
+#: includes/admin/class-settings-page.php:197
+msgid "Leave empty to keep the current secret"
+msgstr "Laisser vide pour garder le secret actuel"
+
+#: includes/admin/class-settings-page.php:200
+msgid "A secret is saved (stored encrypted)."
+msgstr "Un secret est enregistré (chiffré)."
+
+#: includes/admin/class-settings-page.php:201
+msgid "Remove the secret"
+msgstr "Supprimer le secret"
+
+#: includes/admin/class-settings-page.php:204
+msgid "Shown in your client area when you add the webhook. Every delivery is checked with it (HMAC-SHA256 signature)."
+msgstr "Affiché dans votre espace client à l’ajout du webhook. Chaque livraison est vérifiée avec lui (signature HMAC-SHA256)."
+
+#: includes/admin/class-settings-page.php:209
+msgid "SMS log retention"
+msgstr "Conservation du journal"
+
+#: includes/admin/class-settings-page.php:212
+msgid "days (0: keep forever)"
+msgstr "jours (0 : sans limite)"
+
+#: includes/admin/class-settings-page.php:213
+msgid "Older lines are deleted every day. Phone numbers are always stored masked."
+msgstr "Les lignes plus anciennes sont supprimées chaque jour. Les numéros sont toujours enregistrés masqués."
+
+#: includes/admin/class-settings-page.php:233
+msgid "The list of Sender IDs could not be loaded. Use \"Test the connection\" below to check the API key."
+msgstr "La liste des Sender IDs n’a pas pu être chargée. Utilisez « Tester la connexion » ci-dessous pour vérifier la clé API."
+
+#: includes/admin/class-settings-page.php:239
+msgid "Default sender of the platform"
+msgstr "Expéditeur par défaut de la plateforme"
+
+#. translators: %s: Sender ID.
+#: includes/admin/class-settings-page.php:247
+#, php-format
+msgid "%s (not in the approved list)"
+msgstr "%s (absent de la liste approuvée)"
+
+#: includes/admin/class-settings-page.php:264
+msgid "Tools"
+msgstr "Outils"
+
+#: includes/admin/class-settings-page.php:267
+msgid "Connection"
+msgstr "Connexion"
+
+#: includes/admin/class-settings-page.php:269
+msgid "Test the connection"
+msgstr "Tester la connexion"
+
+#: includes/admin/class-settings-page.php:279
+msgid "Send a test SMS"
+msgstr "Envoyer un SMS de test"
+
+#: includes/admin/class-settings-page.php:296
+msgid "SMS to the customer when the order status changes"
+msgstr "SMS au client quand le statut de la commande change"
+
+#: includes/admin/class-settings-page.php:297
+msgid "Sent in the background (Action Scheduler): checkout is never slowed down. Each SMS is noted in the order, and never sent twice for the same status."
+msgstr "Envoyés en arrière-plan (Action Scheduler) : le paiement n’est jamais ralenti. Chaque SMS est noté dans la commande et jamais envoyé deux fois pour le même statut."
+
+#: includes/admin/class-settings-page.php:301
+msgid "Enabled"
+msgstr "Activé"
+
+#: includes/admin/class-settings-page.php:303
+#: includes/admin/class-settings-page.php:342
+#: includes/admin/class-settings-page.php:409
+msgid "Message"
+msgstr "Message"
+
+#: includes/admin/class-settings-page.php:328
+msgid "SMS to the shop manager for each new order"
+msgstr "SMS au gérant pour chaque nouvelle commande"
+
+#: includes/admin/class-settings-page.php:331
+msgid "Notification"
+msgstr "Notification"
+
+#: includes/admin/class-settings-page.php:332
+msgid "Send an SMS for each new order"
+msgstr "Envoyer un SMS pour chaque nouvelle commande"
+
+#: includes/admin/class-settings-page.php:335
+msgid "Phone numbers"
+msgstr "Numéros de téléphone"
+
+#: includes/admin/class-settings-page.php:338
+msgid "Separate several numbers with commas."
+msgstr "Séparez plusieurs numéros par des virgules."
+
+#: includes/admin/class-settings-page.php:358
+msgid "Available variables"
+msgstr "Variables disponibles"
+
+#: includes/admin/class-settings-page.php:364
+msgid "Values with accents (customer names, translated statuses) can switch the SMS to Unicode: enable \"Remove accents\" in the General tab to avoid it."
+msgstr "Les valeurs accentuées (noms de clients, statuts traduits) peuvent faire passer le SMS en Unicode : activez « Retirer les accents » dans l’onglet Général pour l’éviter."
+
+#: includes/admin/class-settings-page.php:376
+msgid "One-time codes are sent and checked by Labyrinthe Connect (same price as an SMS). The code length, validity and number of attempts come from the OTP settings of your client area."
+msgstr "Les codes à usage unique sont envoyés et vérifiés par Labyrinthe Connect (même prix qu’un SMS). La longueur du code, sa validité et le nombre d’essais viennent des paramètres OTP de votre espace client."
+
+#: includes/admin/class-settings-page.php:379
+msgid "Login by SMS"
+msgstr "Connexion par SMS"
+
+#: includes/admin/class-settings-page.php:382
+msgid "Allow users to log in with a code received by SMS"
+msgstr "Permettre de se connecter avec un code reçu par SMS"
+
+#: includes/admin/class-settings-page.php:383
+msgid "Add it to the WordPress login form and to the WooCommerce \"My account\" form"
+msgstr "L’ajouter au formulaire de connexion de WordPress et à celui de « Mon compte » (WooCommerce)"
+
+#: includes/admin/class-settings-page.php:384
+msgid "Also allow administrators (not recommended)"
+msgstr "Autoriser aussi les administrateurs (déconseillé)"
+
+#. translators: 1: shortcode, 2: block name.
+#: includes/admin/class-settings-page.php:390
+#, php-format
+msgid "Anywhere else: shortcode %1$s or the block \"%2$s\". An account logs in with the phone number verified at registration or at checkout, or set by an administrator in the user profile."
+msgstr "Ailleurs : shortcode %1$s ou bloc « %2$s ». Un compte se connecte avec le numéro vérifié à l’inscription ou à la commande, ou saisi par un administrateur dans le profil."
+
+#: includes/admin/class-settings-page.php:392
+msgid "SMS login (Labyrinthe Connect)"
+msgstr "Connexion par SMS (Labyrinthe Connect)"
+
+#: includes/admin/class-settings-page.php:399
+msgid "Registration"
+msgstr "Inscription"
+
+#: includes/admin/class-settings-page.php:400
+msgid "Require a phone number verified by SMS to create an account (WordPress and WooCommerce)"
+msgstr "Exiger un numéro vérifié par SMS pour créer un compte (WordPress et WooCommerce)"
+
+#: includes/admin/class-settings-page.php:404
+msgid "Checkout"
+msgstr "Commande"
+
+#: includes/admin/class-settings-page.php:405
+msgid "Require the billing phone to be verified by SMS to place an order"
+msgstr "Exiger que le téléphone de facturation soit vérifié par SMS pour commander"
+
+#: includes/admin/class-settings-page.php:411
+msgid "Your code is {code}. Valid {minutes} min."
+msgstr "Votre code est {code}. Valable {minutes} min."
+
+#: includes/admin/class-settings-page.php:413
+msgid "Optional: must contain {code}; {app_name} and {minutes} are also available. Empty: the message of your account OTP settings."
+msgstr "Facultatif : doit contenir {code} ; {app_name} et {minutes} sont aussi disponibles. Vide : le message des paramètres OTP de votre compte."
+
+#: includes/admin/class-settings-page.php:417
+msgid "Limit per visitor"
+msgstr "Limite par visiteur"
+
+#: includes/admin/class-settings-page.php:420
+msgid "codes per hour and per IP address"
+msgstr "codes par heure et par adresse IP"
+
+#: includes/admin/class-settings-page.php:421
+msgid "Protects your credits against robots, in addition to the limits of Labyrinthe Connect (per number and per account)."
+msgstr "Protège vos crédits contre les robots, en plus des limites de Labyrinthe Connect (par numéro et par compte)."
+
+#: includes/admin/class-user-profile.php:62
+msgid "Phone number for SMS login"
+msgstr "Numéro pour la connexion par SMS"
+
+#: includes/admin/class-user-profile.php:66
+msgid "Filled in automatically when the number is verified by SMS (registration, checkout). Leave empty to disable SMS login for this account."
+msgstr "Rempli automatiquement quand le numéro est vérifié par SMS (inscription, commande). Laisser vide pour désactiver la connexion par SMS de ce compte."
+
+#: includes/admin/class-user-profile.php:68
+msgid "None"
+msgstr "Aucun"
+
+#: includes/class-client-factory.php:47
+msgid "No Labyrinthe Connect API key is configured."
+msgstr "Aucune clé API Labyrinthe Connect n’est configurée."
+
+#: includes/class-settings.php:280
+msgid "The default country code must be 1 to 3 digits, for example 243 for the DR Congo."
+msgstr "L’indicatif par défaut doit comporter 1 à 3 chiffres, par exemple 243 pour la RDC."
+
+#: includes/class-settings.php:313
+msgid "The OTP message must contain {code}. The previous message was kept."
+msgstr "Le message OTP doit contenir {code}. Le message précédent a été conservé."
+
+#: includes/class-settings.php:365
+msgid "This API key is not valid: it must start with lsk_live_ or lsk_test_. The previous key was kept."
+msgstr "Cette clé API n’est pas valide : elle doit commencer par lsk_live_ ou lsk_test_. La clé précédente a été conservée."
+
+#: includes/class-settings.php:370
+msgid "The webhook secret must be 16 to 255 characters without spaces. The previous secret was kept."
+msgstr "Le secret du webhook doit comporter 16 à 255 caractères, sans espaces. Le secret précédent a été conservé."
+
+#. translators: %s: list of invalid phone numbers.
+#: includes/class-settings.php:450
+#, php-format
+msgid "Invalid phone number(s) ignored: %s."
+msgstr "Numéro(s) invalide(s) ignoré(s) : %s."
+
+#: includes/class-sms-sender.php:94
+msgid "The phone number is not valid."
+msgstr "Le numéro de téléphone n’est pas valide."
+
+#: includes/class-sms-sender.php:96
+msgid "The message is empty."
+msgstr "Le message est vide."
+
+#: includes/class-templates.php:26
+msgid "Order number"
+msgstr "Numéro de commande"
+
+#: includes/class-templates.php:27
+msgid "Order ID"
+msgstr "Identifiant de la commande"
+
+#: includes/class-templates.php:28
+msgid "Order status (translated)"
+msgstr "Statut de la commande (traduit)"
+
+#: includes/class-templates.php:29
+msgid "Order total with currency, e.g. 25.00 USD"
+msgstr "Montant de la commande avec la devise, par exemple 25.00 USD"
+
+#: includes/class-templates.php:30
+msgid "Order date"
+msgstr "Date de la commande"
+
+#: includes/class-templates.php:31
+msgid "Order page in the customer account"
+msgstr "Page de la commande dans le compte client"
+
+#: includes/class-templates.php:32
+msgid "Payment method"
+msgstr "Moyen de paiement"
+
+#: includes/class-templates.php:33
+msgid "Customer full name"
+msgstr "Nom complet du client"
+
+#: includes/class-templates.php:34
+msgid "Customer first name"
+msgstr "Prénom du client"
+
+#: includes/class-templates.php:35
+msgid "Customer phone number"
+msgstr "Téléphone du client"
+
+#: includes/class-templates.php:36
+msgid "Shop name"
+msgstr "Nom de la boutique"
+
+#: includes/class-templates.php:37
+msgid "Shop address"
+msgstr "Adresse de la boutique"
+
+#: includes/class-templates.php:38
+msgid "Tracking number (shipment tracking plugins)"
+msgstr "Numéro de suivi (extensions de suivi de colis)"
+
+#: includes/class-templates.php:39
+msgid "Tracking link (shipment tracking plugins)"
+msgstr "Lien de suivi (extensions de suivi de colis)"
+
+#: includes/class-templates.php:52
+msgid "Processing"
+msgstr "En cours"
+
+#: includes/class-templates.php:75
+msgid "Hello {customer_name}, your order {order_number} at {shop_name} is awaiting payment ({order_total})."
+msgstr "Bonjour {customer_name}, votre commande {order_number} chez {shop_name} attend votre paiement ({order_total})."
+
+#: includes/class-templates.php:77
+msgid "Hello {customer_name}, your order {order_number} at {shop_name} is on hold. We will contact you shortly."
+msgstr "Bonjour {customer_name}, votre commande {order_number} chez {shop_name} est en attente. Nous vous contactons rapidement."
+
+#: includes/class-templates.php:79
+msgid "Hello {customer_name}, we received your order {order_number} ({order_total}). {shop_name} is preparing it."
+msgstr "Bonjour {customer_name}, nous avons bien recu votre commande {order_number} ({order_total}). {shop_name} la prepare."
+
+#: includes/class-templates.php:81
+msgid "Hello {customer_name}, your order {order_number} is complete. Thank you for shopping at {shop_name}! {tracking_url}"
+msgstr "Bonjour {customer_name}, votre commande {order_number} est terminee. Merci pour votre achat chez {shop_name} ! {tracking_url}"
+
+#: includes/class-templates.php:83
+msgid "Hello {customer_name}, your order {order_number} at {shop_name} has been cancelled."
+msgstr "Bonjour {customer_name}, votre commande {order_number} chez {shop_name} a ete annulee."
+
+#: includes/class-templates.php:85
+msgid "Hello {customer_name}, your order {order_number} at {shop_name} has been refunded ({order_total})."
+msgstr "Bonjour {customer_name}, votre commande {order_number} chez {shop_name} a ete remboursee ({order_total})."
+
+#: includes/class-templates.php:87
+msgid "Hello {customer_name}, the payment of your order {order_number} at {shop_name} failed. Please try again."
+msgstr "Bonjour {customer_name}, le paiement de votre commande {order_number} chez {shop_name} a echoue. Merci de reessayer."
+
+#: includes/class-templates.php:89
+msgid "Hello {customer_name}, your order {order_number} at {shop_name} is now: {order_status}."
+msgstr "Bonjour {customer_name}, votre commande {order_number} chez {shop_name} est maintenant : {order_status}."
+
+#: includes/class-templates.php:97
+msgid "New order {order_number} on {shop_name}: {order_total} from {customer_name} ({customer_phone})."
+msgstr "Nouvelle commande {order_number} sur {shop_name} : {order_total}, client {customer_name} ({customer_phone})."
+
+#: includes/class-templates.php:104
+msgid "Test message from {shop_name} sent with Labyrinthe Connect."
+msgstr "Message de test de {shop_name} envoye avec Labyrinthe Connect."
+
+#: includes/otp/class-ajax.php:104
+msgid "Verification by SMS is not available."
+msgstr "La vérification par SMS n’est pas disponible."
+
+#: includes/otp/class-checkout.php:79
+msgid "Verify your phone number (use the same number in the billing address)"
+msgstr "Vérifiez votre numéro de téléphone (le même que dans l’adresse de facturation)"
+
+#: includes/otp/class-checkout.php:140
+msgid "Please enter a valid phone number: it must be verified by SMS to place the order."
+msgstr "Saisissez un numéro de téléphone valide : il doit être vérifié par SMS pour commander."
+
+#: includes/otp/class-checkout.php:146
+msgid "Please verify your phone number with the code received by SMS before placing the order."
+msgstr "Vérifiez votre numéro de téléphone avec le code reçu par SMS avant de commander."
+
+#: includes/otp/class-login.php:118
+msgid "SMS login is disabled: enable it in Labyrinthe Connect > Settings > OTP."
+msgstr "La connexion par SMS est désactivée : activez-la dans Labyrinthe Connect > Réglages > OTP."
+
+#: includes/otp/class-login.php:122
+msgid "You are already logged in."
+msgstr "Vous êtes déjà connecté."
+
+#: includes/otp/class-login.php:172
+msgid "This account cannot log in by SMS."
+msgstr "Ce compte ne peut pas se connecter par SMS."
+
+#: includes/otp/class-login.php:189
+msgid "You are logged in."
+msgstr "Vous êtes connecté."
+
+#: includes/otp/class-otp-service.php:139
+msgid "Too many codes were requested from this connection. Please try again later."
+msgstr "Trop de codes ont été demandés depuis cette connexion. Réessayez plus tard."
+
+#: includes/otp/class-otp-service.php:144
+msgid "Please enter a valid phone number, for example 0812345678 or +243812345678."
+msgstr "Saisissez un numéro de téléphone valide, par exemple 0812345678 ou +243812345678."
+
+#. translators: %d: number of seconds.
+#: includes/otp/class-otp-service.php:174
+#, php-format
+msgid "Please wait %d second before requesting a new code."
+msgid_plural "Please wait %d seconds before requesting a new code."
+msgstr[0] "Patientez %d seconde avant de demander un nouveau code."
+msgstr[1] "Patientez %d secondes avant de demander un nouveau code."
+
+#: includes/otp/class-otp-service.php:178
+msgid "Too many codes were requested for this number. Please try again later."
+msgstr "Trop de codes ont été demandés pour ce numéro. Réessayez plus tard."
+
+#: includes/otp/class-otp-service.php:180
+msgid "The service is busy. Please try again in a moment."
+msgstr "Le service est occupé. Réessayez dans un instant."
+
+#: includes/otp/class-otp-service.php:184
+msgid "This number cannot receive SMS. Please check it or use another number."
+msgstr "Ce numéro ne peut pas recevoir de SMS. Vérifiez-le ou utilisez un autre numéro."
+
+#: includes/otp/class-otp-service.php:187
+#: includes/otp/class-otp-service.php:191
+msgid "The code could not be sent. Please try again later."
+msgstr "Le code n’a pas pu être envoyé. Réessayez plus tard."
+
+#: includes/otp/class-otp-service.php:219
+msgid "Too many attempts from this connection. Please try again later."
+msgstr "Trop d’essais depuis cette connexion. Réessayez plus tard."
+
+#: includes/otp/class-otp-service.php:228
+#: includes/otp/class-otp-service.php:373
+msgid "This code has expired. Please request a new one."
+msgstr "Ce code a expiré. Demandez-en un nouveau."
+
+#: includes/otp/class-otp-service.php:233
+#: includes/otp/class-widget.php:106
+msgid "Please enter the code received by SMS."
+msgstr "Saisissez le code reçu par SMS."
+
+#: includes/otp/class-otp-service.php:259
+msgid "The code could not be checked. Please try again."
+msgstr "Le code n’a pas pu être vérifié. Réessayez."
+
+#: includes/otp/class-otp-service.php:282
+#: includes/otp/class-widget.php:111
+msgid "Phone number verified."
+msgstr "Numéro de téléphone vérifié."
+
+#. translators: %s: masked phone number.
+#: includes/otp/class-otp-service.php:353
+#, php-format
+msgid "A code was sent by SMS to %s."
+msgstr "Un code a été envoyé par SMS au %s."
+
+#: includes/otp/class-otp-service.php:375
+msgid "This code was already used. Please request a new one."
+msgstr "Ce code a déjà été utilisé. Demandez-en un nouveau."
+
+#: includes/otp/class-otp-service.php:377
+msgid "Too many wrong codes. Please request a new one."
+msgstr "Trop de codes erronés. Demandez-en un nouveau."
+
+#: includes/otp/class-otp-service.php:379
+msgid "Wrong code. Please check the SMS and try again."
+msgstr "Code incorrect. Vérifiez le SMS et réessayez."
+
+#: includes/otp/class-registration.php:82
+msgid "<strong>Error:</strong> please enter a valid phone number."
+msgstr "<strong>Erreur :</strong> saisissez un numéro de téléphone valide."
+
+#: includes/otp/class-registration.php:84
+msgid "<strong>Error:</strong> please verify your phone number with the code received by SMS."
+msgstr "<strong>Erreur :</strong> vérifiez votre numéro de téléphone avec le code reçu par SMS."
+
+#: includes/otp/class-widget.php:42
+#: blocks/otp-login/index.js:48
+msgid "Log in with a code received by SMS"
+msgstr "Se connecter avec un code reçu par SMS"
+
+#: includes/otp/class-widget.php:43
+msgid "Verify your phone number"
+msgstr "Vérifiez votre numéro de téléphone"
+
+#: includes/otp/class-widget.php:44
+msgid "Verify your phone number to place the order"
+msgstr "Vérifiez votre numéro de téléphone pour commander"
+
+#: includes/otp/class-widget.php:63
+msgid "Phone number"
+msgstr "Numéro de téléphone"
+
+#: includes/otp/class-widget.php:67
+msgid "Send me a code"
+msgstr "Recevoir un code"
+
+#: includes/otp/class-widget.php:70
+msgid "Code received by SMS"
+msgstr "Code reçu par SMS"
+
+#: includes/otp/class-widget.php:73
+msgid "Remember me"
+msgstr "Se souvenir de moi"
+
+#: includes/otp/class-widget.php:76
+msgid "Log in"
+msgstr "Se connecter"
+
+#: includes/otp/class-widget.php:76
+msgid "Verify"
+msgstr "Vérifier"
+
+#: includes/otp/class-widget.php:77
+msgid "Send a new code"
+msgstr "Renvoyer un code"
+
+#: includes/otp/class-widget.php:103
+msgid "Sending…"
+msgstr "Envoi…"
+
+#: includes/otp/class-widget.php:104
+msgid "Checking…"
+msgstr "Vérification…"
+
+#: includes/otp/class-widget.php:105
+msgid "Please enter your phone number first."
+msgstr "Saisissez d’abord votre numéro de téléphone."
+
+#. translators: %d: number of seconds.
+#: includes/otp/class-widget.php:108
+#, php-format
+msgid "(%ds)"
+msgstr "(%d s)"
+
+#. translators: %s: test code (test mode only, shown to administrators).
+#: includes/otp/class-widget.php:110
+#, php-format
+msgid "Test mode (visible to administrators only): the code is %s."
+msgstr "Mode test (visible des seuls administrateurs) : le code est %s."
+
+#: includes/otp/class-widget.php:112
+msgid "Connection problem. Please try again."
+msgstr "Problème de connexion. Réessayez."
+
+#: includes/webhook/class-controller.php:107
+msgid "The webhook secret is not configured."
+msgstr "Le secret du webhook n’est pas configuré."
+
+#: includes/webhook/class-controller.php:120
+msgid "Invalid webhook signature."
+msgstr "Signature du webhook invalide."
+
+#: includes/webhook/class-controller.php:122
+msgid "Invalid webhook payload."
+msgstr "Contenu du webhook invalide."
+
+#: includes/webhook/class-controller.php:143
+msgid "The webhook could not be processed."
+msgstr "Le webhook n’a pas pu être traité."
+
+#. translators: %s: masked phone number.
+#: includes/webhook/class-controller.php:250
+#, php-format
+msgid "Labyrinthe Connect: SMS delivered to %s."
+msgstr "Labyrinthe Connect : SMS remis au %s."
+
+#. translators: 1: masked phone number, 2: delivery status (failed, undeliverable…).
+#: includes/webhook/class-controller.php:252
+#, php-format
+msgid "Labyrinthe Connect: SMS to %1$s not delivered (%2$s)."
+msgstr "Labyrinthe Connect : SMS au %1$s non remis (%2$s)."
+
+#: includes/woocommerce/class-order-notifications.php:153
+msgid "Labyrinthe Connect: no SMS sent, the order has no phone number."
+msgstr "Labyrinthe Connect : aucun SMS envoyé, la commande n’a pas de numéro de téléphone."
+
+#: includes/woocommerce/class-order-notifications.php:215
+msgid "new order (shop manager)"
+msgstr "nouvelle commande (gérant)"
+
+#. translators: 1: SMS label (order status), 2: masked phone number, 3: number of segments, 4: encoding (GSM-7 or Unicode), 5: message id.
+#: includes/woocommerce/class-order-notifications.php:251
+#, php-format
+msgid "Labyrinthe Connect: SMS \"%1$s\" sent to %2$s (%3$d segment, %4$s). Message ID: %5$s"
+msgid_plural "Labyrinthe Connect: SMS \"%1$s\" sent to %2$s (%3$d segments, %4$s). Message ID: %5$s"
+msgstr[0] "Labyrinthe Connect : SMS « %1$s » envoyé au %2$s (%3$d segment, %4$s). Identifiant : %5$s"
+msgstr[1] "Labyrinthe Connect : SMS « %1$s » envoyé au %2$s (%3$d segments, %4$s). Identifiant : %5$s"
+
+#: includes/woocommerce/class-order-notifications.php:260
+msgid "Unicode"
+msgstr "Unicode"
+
+#: includes/woocommerce/class-order-notifications.php:262
+msgid "(test mode: nothing was actually sent)"
+msgstr "(mode test : rien n’a réellement été envoyé)"
+
+#. translators: 1: SMS label, 2: masked phone number, 3: error code, 4: delay in minutes.
+#: includes/woocommerce/class-order-notifications.php:274
+#, php-format
+msgid "Labyrinthe Connect: SMS \"%1$s\" to %2$s not sent yet (%3$s). New attempt in %4$d minutes."
+msgstr "Labyrinthe Connect : SMS « %1$s » au %2$s pas encore envoyé (%3$s). Nouvel essai dans %4$d minutes."
+
+#. translators: 1: SMS label, 2: masked phone number, 3: error code, 4: error message.
+#: includes/woocommerce/class-order-notifications.php:288
+#, php-format
+msgid "Labyrinthe Connect: SMS \"%1$s\" to %2$s failed (%3$s): %4$s"
+msgstr "Labyrinthe Connect : échec du SMS « %1$s » au %2$s (%3$s) : %4$s"
+
+#. translators: 1: required PHP version, 2: current PHP version.
+#: labyrinthe-connect.php:69
+#, php-format
+msgid "Labyrinthe Connect needs PHP %1$s or newer (this site runs PHP %2$s). Ask your host to upgrade PHP: the plugin stays inactive until then."
+msgstr "Labyrinthe Connect nécessite PHP %1$s ou plus récent (ce site utilise PHP %2$s). Demandez à votre hébergeur de mettre PHP à jour : le plugin reste inactif d’ici là."
+
+#: labyrinthe-connect.php:88
+msgid "Labyrinthe Connect is incomplete (vendor-prefixed/ is missing). Install the plugin from its zip file, or run \"composer install\" in its folder."
+msgstr "Labyrinthe Connect est incomplet (le dossier vendor-prefixed/ manque). Installez le plugin depuis son fichier zip, ou lancez « composer install » dans son dossier."
+
+#: blocks/otp-login/index.js:25
+msgid "Title"
+msgstr "Titre"
+
+#: blocks/otp-login/index.js:32
+msgid "Redirect after login (URL)"
+msgstr "Redirection après connexion (URL)"
+
+#: blocks/otp-login/index.js:33
+msgid "Leave empty to go to the home page."
+msgstr "Laisser vide pour aller à la page d’accueil."
+
+#: blocks/otp-login/index.js:49
+msgid "Visitors enter their phone number, then the code received by SMS. Enable SMS login in Labyrinthe Connect > Settings > OTP."
+msgstr "Les visiteurs saisissent leur numéro, puis le code reçu par SMS. Activez la connexion par SMS dans Labyrinthe Connect > Réglages > OTP."
+
+#: blocks/otp-login/block.json
+msgctxt "block title"
+msgid "SMS login (Labyrinthe Connect)"
+msgstr "Connexion par SMS (Labyrinthe Connect)"
+
+#: blocks/otp-login/block.json
+msgctxt "block description"
+msgid "Lets visitors log in with a one-time code received by SMS."
+msgstr "Permet aux visiteurs de se connecter avec un code à usage unique reçu par SMS."
+
+#: blocks/otp-login/block.json
+msgctxt "block keyword"
+msgid "otp"
+msgstr "otp"
+
+#: blocks/otp-login/block.json
+msgctxt "block keyword"
+msgid "sms"
+msgstr "sms"
+
+#: blocks/otp-login/block.json
+msgctxt "block keyword"
+msgid "login"
+msgstr "connexion"

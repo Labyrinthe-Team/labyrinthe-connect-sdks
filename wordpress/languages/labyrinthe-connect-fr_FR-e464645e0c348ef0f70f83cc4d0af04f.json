@@ -1,0 +1,33 @@
+{
+    "translation-revision-date": "2026-11-05T22:37:56+00:00",
+    "generator": "WP-CLI\/2.12.0",
+    "source": "blocks\/otp-login\/index.js",
+    "domain": "messages",
+    "locale_data": {
+        "messages": {
+            "": {
+                "domain": "messages",
+                "lang": "fr_FR",
+                "plural-forms": "nplurals=2; plural=n > 1;"
+            },
+            "Settings": [
+                "R\u00e9glages"
+            ],
+            "Log in with a code received by SMS": [
+                "Se connecter avec un code re\u00e7u par SMS"
+            ],
+            "Title": [
+                "Titre"
+            ],
+            "Redirect after login (URL)": [
+                "Redirection apr\u00e8s connexion (URL)"
+            ],
+            "Leave empty to go to the home page.": [
+                "Laisser vide pour aller \u00e0 la page d\u2019accueil."
+            ],
+            "Visitors enter their phone number, then the code received by SMS. Enable SMS login in Labyrinthe Connect > Settings > OTP.": [
+                "Les visiteurs saisissent leur num\u00e9ro, puis le code re\u00e7u par SMS. Activez la connexion par SMS dans Labyrinthe Connect > R\u00e9glages > OTP."
+            ]
+        }
+    }
+}
