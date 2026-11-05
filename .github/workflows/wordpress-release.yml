@@ -1,0 +1,151 @@
+# Publication du plugin WordPress, déclenchée par un tag wordpress-vX.Y.Z :
+# vérifications, zip, release GitHub, puis déploiement sur le SVN de wordpress.org.
+#
+# Prérequis (une seule fois) :
+#   - le plugin est accepté sur wordpress.org avec le slug « labyrinthe-connect »
+#     (https://wordpress.org/plugins/developers/add/) ;
+#   - environnement GitHub « wordpress-org » (Settings > Environments), idéalement avec des
+#     relecteurs obligatoires et une règle limitant les tags à wordpress-v* ;
+#   - secrets de cet environnement : SVN_USERNAME (identifiant wordpress.org d'un committer du
+#     plugin) et SVN_PASSWORD (mot de passe SVN, à générer dans le profil wordpress.org,
+#     « Account & Security » > SVN password : ce n'est pas le mot de passe du compte).
+#   - bannières, icônes et captures d'écran dans wordpress/.wordpress-org/ (banner-772x250.png,
+#     banner-1544x500.png, icon-128x128.png, icon-256x256.png, screenshot-1.png…), publiés dans
+#     le dossier assets/ du SVN.
+#
+# Prérequis de chaque version : wordpress/labyrinthe-connect.php (en-tête Version et constante
+# LABYRINTHE_CONNECT_VERSION), wordpress/readme.txt (Stable tag) et blocks/otp-login/block.json
+# sont à X.Y.Z ; le build échoue sinon.
+name: wordpress-release
+
+on:
+  push:
+    tags:
+      - 'wordpress-v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wordpress-release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: wordpress
+
+jobs:
+  build:
+    name: Check & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the tag matches the plugin version
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#wordpress-v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag $TAG is not a release version (expected wordpress-vX.Y.Z)"; exit 1
+          fi
+          header="$(sed -nE 's/^ \* Version:[[:space:]]+([^[:space:]]+).*/\1/p' labyrinthe-connect.php)"
+          stable="$(sed -nE 's/^Stable tag:[[:space:]]+([^[:space:]]+).*/\1/p' readme.txt)"
+          if [[ "$header" != "$version" || "$stable" != "$version" ]]; then
+            echo "::error::Plugin header is $header, readme.txt Stable tag is $stable, but the tag is $version"; exit 1
+          fi
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: json, mbstring, zip, sodium
+          coverage: none
+
+      - run: composer validate --strict
+
+      - uses: ramsey/composer-install@v3
+        with:
+          working-directory: wordpress
+
+      - run: composer lint
+      - run: composer analyse
+      - run: php bin/i18n.php --check
+
+      # Archive reproductible : date fixe = date du commit tagué.
+      - name: Build the zip
+        run: SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" composer build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wordpress-dist
+          path: wordpress/dist/
+          if-no-files-found: error
+
+  plugin-check:
+    name: Plugin Check
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: wordpress-dist
+          path: wordpress/dist
+      - uses: wordpress/plugin-check-action@v1
+        with:
+          build-dir: wordpress/dist/labyrinthe-connect
+          slug: labyrinthe-connect
+
+  github-release:
+    name: GitHub release
+    needs: [build, plugin-check]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: wordpress-dist
+          path: dist
+
+      - name: Create the release with the zip
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" dist/labyrinthe-connect.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "WordPress plugin ${TAG#wordpress-v}" \
+            --notes "Labyrinthe Connect for WordPress ${TAG#wordpress-v}. See wordpress/CHANGELOG.md."
+
+  wordpress-org:
+    name: Deploy to wordpress.org
+    needs: [build, plugin-check]
+    runs-on: ubuntu-latest
+    environment: wordpress-org
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: wordpress-dist
+          path: wordpress/dist
+
+      - name: Version without the tag prefix
+        id: version
+        working-directory: .
+        env:
+          TAG: ${{ github.ref_name }}
+        run: echo "version=${TAG#wordpress-v}" >> "$GITHUB_OUTPUT"
+
+      # Déploie le contenu exact du zip (BUILD_DIR) dans trunk/ et tags/X.Y.Z/ du SVN.
+      - uses: 10up/action-wordpress-plugin-deploy@2.3.0
+        env:
+          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+          SLUG: labyrinthe-connect
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD_DIR: wordpress/dist/labyrinthe-connect
+          ASSETS_DIR: wordpress/.wordpress-org
