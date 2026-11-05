@@ -1,0 +1,9 @@
+{
+  // Le cœur ne doit dépendre d'aucun type Node : seulement ES2022 + Fetch / Web Crypto.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [],
+    "stripInternal": true
+  },
+  "include": ["src"]
+}

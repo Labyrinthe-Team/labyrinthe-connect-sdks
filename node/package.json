@@ -1,0 +1,121 @@
+{
+  "name": "@labyrinthe/connect",
+  "version": "1.0.0",
+  "description": "Official Node.js / TypeScript SDK for Labyrinthe Connect: send SMS and verify phone numbers with OTP (DR Congo, Central Africa).",
+  "keywords": [
+    "labyrinthe",
+    "sms",
+    "otp",
+    "2fa",
+    "verification",
+    "drc",
+    "congo",
+    "sdk"
+  ],
+  "homepage": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/tree/main/node#readme",
+  "bugs": {
+    "url": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/issues",
+    "email": "connect@labyrinthe-rdc.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks.git",
+    "directory": "node"
+  },
+  "license": "MIT",
+  "author": "Labyrinthe Connect <connect@labyrinthe-rdc.com>",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./express": {
+      "import": {
+        "types": "./dist/express.d.ts",
+        "default": "./dist/express.js"
+      },
+      "require": {
+        "types": "./dist/express.d.cts",
+        "default": "./dist/express.cjs"
+      }
+    },
+    "./next": {
+      "import": {
+        "types": "./dist/next.d.ts",
+        "default": "./dist/next.js"
+      },
+      "require": {
+        "types": "./dist/next.d.cts",
+        "default": "./dist/next.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.cts",
+  "files": [
+    "dist",
+    "README.md",
+    "README.fr.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.src.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run tests/integration.test.ts",
+    "check:dist": "node scripts/check-dist.mjs && node scripts/check-dist.cjs",
+    "publint": "publint --strict",
+    "attw": "attw --pack . --profile node16",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build && npm run check:dist && npm run publint && npm run attw",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "express": ">=4.17",
+    "next": ">=13.4"
+  },
+  "peerDependenciesMeta": {
+    "express": {
+      "optional": true
+    },
+    "next": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
+    "@eslint/js": "9.39.5",
+    "@types/express": "5.0.6",
+    "@types/node": "20.19.43",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "eslint": "9.39.5",
+    "express": "5.2.1",
+    "publint": "0.3.25",
+    "tsup": "8.5.1",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.0",
+    "vite": "6.4.4",
+    "vitest": "3.2.7",
+    "yaml": "2.9.1"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
