@@ -1,0 +1,376 @@
+# Labyrinthe Connect — SDK Node.js / TypeScript
+
+[![CI](https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/actions/workflows/node.yml/badge.svg)](https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/actions/workflows/node.yml)
+[![npm](https://img.shields.io/npm/v/@labyrinthe/connect.svg)](https://www.npmjs.com/package/@labyrinthe/connect)
+![Node](https://img.shields.io/badge/node-%E2%89%A5%2018-339933)
+
+Client JavaScript / TypeScript officiel de [Labyrinthe Connect](https://labyrinthe-rdc.com) : envoyez des SMS et
+vérifiez des numéros de téléphone par code à usage unique (OTP), en RD Congo et en Afrique centrale.
+
+*English version: [README.md](README.md).*
+
+- Entièrement typé : objets en camelCase, `Date`, énumérations en littéraux, une classe d'erreur par erreur.
+- Sûr par défaut : relances automatiques **uniquement** quand elles ne peuvent pas envoyer deux fois un SMS.
+- Aucune dépendance d'exécution. ESM + CommonJS. Node.js 18+, Vercel / Cloudflare Workers, Deno, Bun.
+- N'écrit jamais votre clé API, les codes OTP ni les numéros complets dans les logs.
+
+## Installation
+
+```bash
+npm install @labyrinthe/connect
+```
+
+## Démarrage
+
+```ts
+import { Labyrinthe } from '@labyrinthe/connect';
+
+const client = new Labyrinthe({ apiKey: 'lsk_test_…' });       // ou la variable LABYRINTHE_API_KEY
+const message = await client.sms.send({ to: '0812345678', body: 'Votre commande 1042 est prête.' });
+console.log(message.status);                                     // "queued"
+```
+
+Créez vos clés dans l'espace client (*Développeurs > Clés API*). **Gardez-les côté serveur**, jamais dans un
+navigateur ni une application mobile (le client refuse de démarrer dans un navigateur).
+
+| Clé | Mode | Effet |
+|---|---|---|
+| `lsk_test_…` | Bac à sable | Rien n'est envoyé, aucun crédit consommé. Réponses identiques à la production. L'envoi d'OTP renvoie le code (`testCode`). |
+| `lsk_live_…` | Production | Les SMS partent réellement et consomment des crédits. |
+
+`client.isTestMode` indique le mode utilisé. Tous les exemples ci-dessous fonctionnent avec une clé de test.
+
+## Envoyer des SMS
+
+```ts
+const message = await client.sms.send({
+  to: '+243 81 234 5678',      // +243…, 00243…, 243…, 0812…, 812… sont acceptés
+  body: 'Votre commande 1042 est prête.',
+  sender: 'MABOUTIQUE',        // facultatif : un Sender ID approuvé (client.senderIds.list())
+  reference: 'commande-1042',  // facultatif : votre référence, 64 caractères au plus
+});
+
+message.id;              // "9d5c0a3e-…"
+message.recipient;       // "243812345678"
+message.status;          // "queued"
+message.creditsCharged;  // 1
+message.createdAt;       // Date
+```
+
+L'envoi est asynchrone : `202 Accepted` signifie *mis en file et payé*, pas *remis*. Suivez le statut par webhook
+(`message.status_changed`, recommandé) ou en interrogeant l'API :
+
+```ts
+import { isFinalStatus } from '@labyrinthe/connect';
+
+const latest = await client.sms.get(message.id);
+if (isFinalStatus(latest.status)) {
+  console.log(latest.status === 'delivered' ? 'Remis' : `Échec : ${latest.errorCode}`);
+}
+```
+
+### Coût avant envoi
+
+1 crédit = 1 segment SMS. Un message en ASCII pur (GSM-7) tient en 160 caractères (153 par segment au-delà).
+**Tout caractère non ASCII** (é, à, ç, emoji, guillemets typographiques…) passe en UCS-2 : 70 caractères (67 par
+segment au-delà), soit un coût souvent doublé.
+
+```ts
+const estimate = await client.sms.estimate({ body: 'Réunion demain à 9h', recipients: ['0812345678', '0899999999'] });
+estimate.encoding;      // "ucs2"
+estimate.totalCredits;  // 2
+estimate.isAffordable;  // le solde suffit-il ?
+```
+
+### Plusieurs destinataires : tout ou rien
+
+```ts
+import { RecipientNotSendableError } from '@labyrinthe/connect';
+
+try {
+  const batch = await client.sms.sendMany({ recipients: ['0812345678', '0899999999'], body: 'Réunion demain à 9h.' });
+  batch.messages.length;   // un message par numéro distinct (les doublons sont fusionnés)
+} catch (error) {
+  if (error instanceof RecipientNotSendableError) {
+    // RIEN n'a été envoyé : corrigez la liste et recommencez.
+    for (const { recipient, reason } of error.rejected) console.log(recipient, reason); // invalid_phone, blacklisted, opted_out
+  }
+}
+```
+
+1000 destinataires au plus par appel. Tous les destinataires, le Sender ID et le solde sont vérifiés **avant** tout
+envoi : un seul numéro refusé (ou un solde insuffisant) et aucun SMS ne part. Les numéros que le SDK sait déjà
+invalides sont refusés localement (`InvalidArgumentError`, avec leur position), avant tout appel réseau.
+
+### Idempotence (jamais de double envoi)
+
+Chaque envoi porte un `Idempotency-Key`. Si vous n'en donnez pas, le SDK génère un UUID (`crypto.randomUUID()`) et
+le réutilise pour ses propres relances : une erreur réseau ne produit jamais un second SMS.
+
+Pour vous protéger aussi de **vos** relances (jobs, double clic, plantage), passez une clé dérivée de votre
+événement métier. Un rejeu dans les 24 h renvoie les messages d'origine sans rien renvoyer ni facturer :
+
+```ts
+const batch = await client.sms.sendMany({ recipients: ['0812345678'], body: 'Votre commande 1042 est prête.', idempotencyKey: 'commande-1042-prete' });
+batch.replayed;   // true s'il s'agit d'un rejeu
+```
+
+La même clé avec un autre contenu (destinataires, texte, expéditeur ou référence) est refusée :
+`IdempotencyKeyReusedError` (409).
+
+### Lister les messages
+
+```ts
+const page = await client.sms.list({ status: 'failed', from: '2026-11-01', to: new Date(), perPage: 50 });
+page.total; page.data; page.hasMore; await page.nextPage();
+
+for await (const message of client.sms.list({ reference: 'commande-1042' })) {
+  // toutes les pages, chargées à la demande
+}
+```
+
+Filtres : `status`, `recipient` (tout format), `reference`, `from`, `to` (une date couvre toute la journée), `page`,
+`perPage` (100 au plus). La liste ne contient que les messages envoyés **avec la clé API appelante**.
+
+### Solde et Sender IDs
+
+```ts
+const { balance, held } = await client.balance.get();
+const senderIds = await client.senderIds.list();   // noms approuvés, utilisables comme `sender`
+```
+
+## OTP : vérifier un numéro
+
+Le code est généré, envoyé par SMS et vérifié par Labyrinthe Connect. L'API ne le renvoie jamais (sauf avec une
+clé de test) et le SDK ne le journalise jamais.
+
+```ts
+// 1. Envoyer le code. Gardez otpId CÔTÉ SERVEUR (session, cache, base), jamais dans le navigateur.
+const otp = await client.otp.send({ phone: '0812345678' });
+req.session.otpId = otp.otpId;
+
+// 2. L'utilisateur saisit le code reçu par SMS.
+
+// 3. Le vérifier.
+const result = await client.otp.verify({ otpId: req.session.otpId, code: req.body.code });
+if (result.verified) {
+  delete req.session.otpId;
+  // connecter l'utilisateur / marquer le numéro comme vérifié
+} else if (result.reason === 'invalid_code') {
+  // code faux : une tentative consommée, l'utilisateur peut réessayer
+} else {
+  // 'expired' | 'already_used' | 'max_attempts_reached' : demander un nouveau code
+}
+```
+
+- Un code faux n'est **pas** une erreur : `verify()` renvoie `{ verified: false, reason }`.
+- Un nouvel `send()` au même numéro invalide le code précédent.
+- Longueur, validité, tentatives, Sender ID et modèle viennent des paramètres OTP du compte (espace client >
+  *Vérification OTP*). Vous pouvez imposer le modèle (`template: 'Votre code MaBoutique : {code}'`, avec `{code}`
+  obligatoire ; `{app_name}`, `{minutes}` facultatifs) et la langue (`locale: 'fr' | 'en'`).
+- Limites : `OtpResendTooSoonError` (attendre `retryAfterMs` avant de renvoyer à ce numéro) et
+  `OtpRateLimitedError` (plafond horaire par numéro ou par compte, `scope`, `limit`).
+- **Mode test** : avec une clé `lsk_test_`, aucun SMS ne part et `otp.testCode` contient le code, pour tester tout
+  le parcours. Il vaut toujours `null` avec une clé live, et il est masqué dans `console.log()` et
+  `JSON.stringify()`.
+
+`otp.send()` n'est jamais relancé après une erreur réseau ou une 5xx (le SMS est peut-être parti) : affichez une
+erreur et laissez l'utilisateur demander un nouveau code.
+
+## Webhooks
+
+Configurez un endpoint dans l'espace client (*Développeurs > Webhooks*) et copiez son secret. Les événements sont
+envoyés en `POST` JSON et signés (`X-Signature: sha256=<HMAC-SHA256 du corps brut>`). Le SDK vérifie la signature
+en temps constant sur le **corps brut**, puis l'horodatage signé (5 minutes par défaut) contre le rejeu.
+
+Chaque événement a `id` (dédoublonnez dessus : jusqu'à 5 tentatives, ordre non garanti), `type`, `timestamp`
+(`Date`), `raw` et un `data` typé, discriminé par `event` :
+
+| `event` | `data` |
+|---|---|
+| `message.status_changed` | `messageId`, `recipient`, `status`, `providerMessageId`, `campaignId` |
+| `campaign.completed` | `campaignId`, `name`, `recipientsCount`, `messagesByStatus`, `creditsCharged`, `completedAt` |
+| `balance.low` | `balance`, `threshold` |
+| `test.ping` | `{}` |
+| `unknown` | un type ajouté après cette version du SDK : son nom est dans `type`, son contenu dans `data` (tel quel). Répondez 2xx. |
+
+### Express
+
+```ts
+import express from 'express';
+import { labyrintheWebhook } from '@labyrinthe/connect/express';
+
+const app = express();
+// AVANT express.json() (ou après express.raw({ type: 'application/json' })) : il faut le corps brut.
+app.post('/webhooks/labyrinthe', labyrintheWebhook({
+  secret: process.env.LABYRINTHE_WEBHOOK_SECRET,
+  onEvent: async (event) => {
+    if (event.event === 'message.status_changed') await updateMessage(event.data.messageId, event.data.status);
+  },
+}));
+app.use(express.json());
+```
+
+Signature ou contenu invalide → `400`. `onEvent` lève une erreur → `next(error)` (500, la livraison sera
+retentée). Sans `onEvent`, l'événement vérifié est placé dans `req.labyrintheEvent` puis `next()` est appelé.
+
+### Next.js (App Router)
+
+```ts
+// app/api/webhooks/labyrinthe/route.ts
+import { labyrintheWebhookHandler } from '@labyrinthe/connect/next';
+
+export const POST = labyrintheWebhookHandler({
+  secret: process.env.LABYRINTHE_WEBHOOK_SECRET,   // valeur par défaut
+  onEvent: async (event) => {
+    switch (event.event) {
+      case 'balance.low':
+        await alertFinance(event.data.balance, event.data.threshold);
+        break;
+    }
+  },
+});
+```
+
+Fonctionne avec les runtimes Node.js et Edge, et partout où un handler reçoit une `Request` Fetch et renvoie une
+`Response` (Hono, `Bun.serve`, `Deno.serve`…). `onEvent` peut renvoyer sa propre `Response` ; s'il lève une erreur,
+le handler répond 500.
+
+### Cloudflare Workers (ou tout autre runtime)
+
+```ts
+import { SignatureVerificationError, Webhooks } from '@labyrinthe/connect';
+
+export default {
+  async fetch(request: Request, env: { LABYRINTHE_WEBHOOK_SECRET: string }) {
+    try {
+      const event = await Webhooks.constructEvent(
+        await request.arrayBuffer(), request.headers.get('x-signature'), env.LABYRINTHE_WEBHOOK_SECRET,
+      );
+      // … traiter l'événement
+      return new Response('ok');
+    } catch (error) {
+      if (error instanceof SignatureVerificationError) return new Response('invalid', { status: 400 });
+      throw error;
+    }
+  },
+};
+```
+
+`Webhooks.constructEvent(rawBody, signatureHeader, secret, { toleranceSeconds })` est asynchrone (Web Crypto) et
+accepte une chaîne, un `Uint8Array`/`Buffer` ou un `ArrayBuffer` — jamais un objet déjà parsé. Elle lève
+`SignatureVerificationError` (signature absente ou fausse, horodatage hors tolérance) ou
+`InvalidWebhookPayloadError` (corps signé qui n'est pas une enveloppe) : répondez `400`.
+`Webhooks.sign(body, secret)` produit un en-tête valide pour tester votre endpoint. Répondez `2xx` en moins de
+10 secondes ; mettez les traitements longs en file.
+
+## Erreurs
+
+Toutes les erreurs héritent de `LabyrintheError` et ont `code` (stable, pour votre code), `message`, `status`
+(statut HTTP, ou `null` sans réponse) et `details`. Les erreurs de l'API héritent d'`ApiError` et exposent aussi
+`headers` et `requestId`.
+
+| Erreur | Quand |
+|---|---|
+| `AuthenticationError` | 401 — clé absente, invalide ou révoquée |
+| `PermissionError` | 403 — IP non autorisée (`FORBIDDEN`), OTP désactivé pour le compte (`OTP_DISABLED_FOR_ACCOUNT`) |
+| `NotFoundError` | 404 — message ou `otpId` inconnu |
+| `ValidationError` | 422 `VALIDATION_ERROR` — `fieldErrors` |
+| `RecipientNotSendableError` | 422 — `rejected`, `reason` ; rien n'a été envoyé |
+| `SenderIdNotApprovedError` | 422 — `sender` n'est pas un Sender ID approuvé |
+| `InvalidPhoneError` | 422 `INVALID_PHONE` (OTP) |
+| `InsufficientCreditsError` | 409 — `available`, `required` ; rien n'a été envoyé |
+| `IdempotencyKeyReusedError` | 409 — même clé, autre requête |
+| `RateLimitError` | 429 `TOO_MANY_REQUESTS` — `retryAfterMs` |
+| `OtpResendTooSoonError`, `OtpRateLimitedError` | 429 — héritent de `RateLimitError` ; `scope`, `limit` |
+| `ServiceUnavailableError` | 5xx, dont 503 `OTP_SERVICE_DISABLED` |
+| `ApiError` | tout autre code (liste ouverte : de nouveaux codes peuvent apparaître) |
+| `ConnectionError`, `TimeoutError` | erreur réseau (`CONNECTION_ERROR`) ou délai dépassé (`TIMEOUT`) |
+| `RequestAbortedError` | appel annulé par son `signal` |
+| `InvalidArgumentError` | donnée invalide détectée par le SDK, avant tout appel |
+| `UnexpectedResponseError` | réponse illisible pour le SDK |
+
+```ts
+import { ApiError, InsufficientCreditsError } from '@labyrinthe/connect';
+
+try {
+  await client.sms.send({ to: '0812345678', body: 'Bonjour' });
+} catch (error) {
+  if (error instanceof InsufficientCreditsError) alertFinance(error.available, error.required);
+  else if (error instanceof ApiError) console.error(error.code, error.status);
+  else throw error;
+}
+```
+
+## Relances, délais et annulation
+
+Le SDK relance automatiquement (par défaut 2 relances, backoff exponentiel 0,5 s → 1 s → 2 s avec jitter)
+**uniquement quand le rejeu ne peut pas produire deux fois un effet** :
+
+| Requête | Erreur réseau / délai | 5xx | 429 `TOO_MANY_REQUESTS` |
+|---|---|---|---|
+| `get`, `list`, `balance.get`, `senderIds.list`, `estimate` | relancée | relancée | relancée après `Retry-After` |
+| `send` / `sendMany` (toujours avec `Idempotency-Key`) | relancée, même clé | relancée, même clé | relancée après `Retry-After` |
+| `otp.send`, `otp.verify` | **jamais** | **jamais** | relancée (refusée avant traitement) |
+
+Les erreurs métier (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`) ne sont jamais relancées. Si l'API demande
+d'attendre plus que `maxRetryWaitMs` (10 s par défaut), le SDK lève `RateLimitError` au lieu d'attendre.
+
+Chaque méthode accepte un dernier argument `options` : `{ signal?: AbortSignal, timeoutMs?: number }`.
+
+```ts
+await client.balance.get({ signal: AbortSignal.timeout(5_000) });
+```
+
+## Configuration
+
+```ts
+const client = new Labyrinthe({
+  apiKey: process.env.LABYRINTHE_API_KEY,   // valeur par défaut
+  baseUrl: 'https://api.labyrinthe-rdc.com/api/public/v1', // défaut (ou LABYRINTHE_BASE_URL) ; "http://localhost:8000" est complété
+  timeoutMs: 30_000,              // par tentative
+  maxRetries: 2,                  // 0 désactive les relances
+  maxRetryWaitMs: 10_000,         // Retry-After maximal accepté
+  defaultCountryCode: '243',      // ajouté aux numéros locaux : 0812345678 → 243812345678
+  defaultSender: 'MABOUTIQUE',    // utilisé quand send() n'a pas de sender
+  fetch: customFetch,             // tout fetch WHATWG (par défaut, le fetch global)
+  logger: console,                // debug/info/warn/error(message, contexte) : ni clé, ni code, ni texte, numéros masqués
+});
+```
+
+`PhoneNumber.normalize('0812345678')` renvoie `"243812345678"` (ou `null`) avec les mêmes règles que l'API ;
+`PhoneNumber.isValid()` et `PhoneNumber.mask()` sont aussi exportés. Les numéros internationaux (`+33…`, `+1…`) ne
+sont jamais bloqués. `JSON.stringify(client)` et `console.log(client)` affichent `lsk_test_****`, jamais la clé.
+
+## Compatibilité des runtimes
+
+| Runtime | Support |
+|---|---|
+| Node.js 18, 20, 22, 24 | ✅ (`fetch` global ; sur Node 18, Web Crypto est chargé depuis le module crypto au premier usage) |
+| Vercel Edge, routes Edge de Next.js | ✅ |
+| Cloudflare Workers | ✅ (sans le drapeau `nodejs_compat`) |
+| Deno, Bun | ✅ (`npm:@labyrinthe/connect` sous Deno) |
+| Navigateurs | ❌ refusé par défaut : la clé API doit rester côté serveur |
+
+Le cœur n'importe aucun module Node.js et n'a aucune dépendance ; `express` et `next` sont des dépendances pair
+facultatives des seuls helpers `/express` et `/next`. Le `User-Agent` est
+`labyrinthe-node/<version> <runtime>/<version>`.
+
+## Développement
+
+```bash
+npm ci
+npm run lint && npm run typecheck
+npm test                 # tests unitaires + contrat OpenAPI (fetch simulé, sans réseau)
+npm run build && npm run check:dist && npm run publint && npm run attw
+
+# tests d'intégration contre un backend local, avec une clé de TEST uniquement
+LABYRINTHE_API_KEY=lsk_test_… LABYRINTHE_BASE_URL=http://localhost:8000 npm run test:integration
+```
+
+Le contrat de l'API est [`openapi/openapi.yaml`](../openapi/openapi.yaml) ; les tests de contrat gardent le SDK
+aligné. Exemples : [`examples/`](examples).
+
+## Licence
+
+MIT — voir [LICENSE](LICENSE).
