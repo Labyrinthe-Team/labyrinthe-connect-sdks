@@ -1,0 +1,170 @@
+# Plugin WordPress (wordpress/) : style (WPCS), PHPStan, traductions, zip, tests WordPress + WooCommerce
+# sur la matrice PHP × WordPress × WooCommerce, et Plugin Check sur le zip construit.
+name: wordpress
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'wordpress/**'
+      - 'php/**'
+      - 'openapi/openapi.yaml'
+      - '.github/workflows/wordpress.yml'
+  pull_request:
+    paths:
+      - 'wordpress/**'
+      - 'php/**'
+      - 'openapi/openapi.yaml'
+      - '.github/workflows/wordpress.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wordpress-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: wordpress
+
+jobs:
+  build:
+    name: Lint, PHPStan & zip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # PHP 8.3 : PHP-Scoper (préfixage des dépendances) demande PHP 8.2+.
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: json, mbstring, zip, sodium
+          coverage: none
+
+      - run: composer validate --strict
+
+      # composer install lance bin/prefix-dependencies.php (PHP-Scoper figé par tools/php-scoper/composer.lock).
+      - uses: ramsey/composer-install@v3
+        with:
+          working-directory: wordpress
+
+      - run: composer lint
+      - run: composer analyse
+
+      # Toutes les chaînes doivent être traduites en français.
+      - run: php bin/i18n.php --check
+
+      - run: composer build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wordpress-plugin
+          path: |
+            wordpress/vendor-prefixed/
+            wordpress/dist/
+          if-no-files-found: error
+
+  tests:
+    name: PHP ${{ matrix.php }} · WP ${{ matrix.wp }} · WC ${{ matrix.wc }}${{ matrix.hpos == 'no' && ' · posts storage' || '' }}
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Versions minimales déclarées : WordPress 6.4, WooCommerce 8.x, PHP 8.1.
+          - { php: '8.1', wp: '6.4.14', wp-phpunit: '6.4.*', wc: '8.5.5', hpos: 'yes' }
+          - { php: '8.1', wp: '6.4.14', wp-phpunit: '6.4.*', wc: '8.5.5', hpos: 'no' }
+          - { php: '8.2', wp: '6.7.11', wp-phpunit: '6.7.*', wc: '9.9.7', hpos: 'yes' }
+          - { php: '8.3', wp: 'latest', wp-phpunit: '', wc: 'latest', hpos: 'yes' }
+          - { php: '8.4', wp: 'latest', wp-phpunit: '', wc: 'latest', hpos: 'no' }
+          - { php: '8.5', wp: 'latest', wp-phpunit: '', wc: 'latest', hpos: 'yes' }
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping -proot" --health-interval=10s --health-timeout=5s --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: json, mbstring, mysqli, zip, sodium
+          coverage: none
+
+      # Sans scripts : vendor-prefixed/ vient du job build (même code que dans le zip).
+      - uses: ramsey/composer-install@v3
+        with:
+          working-directory: wordpress
+          composer-options: --no-scripts
+
+      - name: wp-phpunit matching the WordPress version
+        if: matrix.wp-phpunit != ''
+        run: composer require --dev --no-scripts --no-interaction --with-all-dependencies "wp-phpunit/wp-phpunit:${{ matrix.wp-phpunit }}"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: wordpress-plugin
+          path: wordpress
+
+      - name: WordPress, WooCommerce and test database
+        run: php bin/install-wp-tests.php --wp=${{ matrix.wp }} --wc=${{ matrix.wc }} --db-user=root --db-pass=root --db-host=127.0.0.1:3306
+
+      - name: PHPUnit (WordPress test suite)
+        run: vendor/bin/phpunit --exclude-group integration
+        env:
+          LABYRINTHE_TEST_HPOS: ${{ matrix.hpos }}
+
+  smoke:
+    name: Install, activate & uninstall the zip
+    needs: build
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping -proot" --health-interval=10s --health-timeout=5s --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          extensions: json, mbstring, mysqli, zip, sodium
+          coverage: none
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: wordpress-plugin
+          path: wordpress
+
+      - run: php bin/install-wp-tests.php --db-user=root --db-pass=root --db-host=127.0.0.1:3306
+      # Vrai site WordPress + WooCommerce : activation du zip, chargement (tables, route REST, bloc,
+      # compatibilité HPOS déclarée), puis désinstallation sans reste.
+      - run: php bin/smoke-test.php
+
+  plugin-check:
+    name: Plugin Check (zip)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: wordpress-plugin
+          path: wordpress
+
+      # Vérifications officielles de wordpress.org sur le contenu exact du zip.
+      - uses: wordpress/plugin-check-action@v1
+        with:
+          build-dir: wordpress/dist/labyrinthe-connect
+          slug: labyrinthe-connect
