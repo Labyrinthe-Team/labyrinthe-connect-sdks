@@ -1,0 +1,2591 @@
+{
+  "auth": {
+    "bearer": [
+      {
+        "key": "token",
+        "type": "string",
+        "value": "{{apiKey}}"
+      }
+    ],
+    "type": "bearer"
+  },
+  "event": [],
+  "info": {
+    "_postman_id": "7f8a06b0-d8ac-47fc-a902-2071f871bdb0",
+    "description": {
+      "content": "Generated from `openapi/openapi.yaml` (spec 1.1.0). Do not edit by hand: run `npm run generate` in `postman/`.\n\nSet the `apiKey` variable (secret) to a **test key** (`lsk_test_…`): nothing is sent, nothing is billed, and\n`POST /otp/send` returns `test_code`, saved automatically so that `POST /otp/verify` can be run right after.\nRun the whole collection in order (Collection Runner or Newman) to play the nominal flow.\n\n---\n\nAPI REST JSON pour envoyer des SMS, consulter le solde de crédits et les Sender IDs\napprouvés, et vérifier des numéros de téléphone par OTP (code à usage unique envoyé par SMS).\n\n## Authentification\nChaque requête porte une clé API créée dans l'espace client (Développeurs > Clés API) :\n\n    Authorization: Bearer lsk_live_xxxxxxxxxxxxxxxx\n\n- `lsk_live_…` : production. Les SMS partent réellement et consomment des crédits.\n- `lsk_test_…` : bac à sable. Fournisseur simulé, **rien n'est envoyé, aucun crédit n'est consommé**.\n  Les réponses ont la même forme qu'en production.\n\nUne clé peut être restreinte à une liste d'adresses IP (403 `FORBIDDEN` sinon).\nLa clé n'est affichée qu'une fois à sa création ; elle doit rester côté serveur,\n**jamais dans une application mobile ou un navigateur**.\n\n## Numéros de téléphone\nFormat international sans `+` (ex. `243812345678`). L'API accepte aussi `+243812345678`,\n`00243812345678` et le format local RDC (`0812345678`, `812345678`), complété avec l'indicatif\npar défaut de la plateforme (243). Les réponses renvoient toujours le format international sans `+`.\n\n## Crédits et segments\n1 crédit = 1 segment SMS. Un message en ASCII (GSM-7) tient en 160 caractères (153 par segment\nau-delà). **Tout caractère non ASCII** (é, à, ç, emoji, tiret long, guillemets typographiques…)\npasse le message en UCS-2 : 70 caractères (67 par segment au-delà), soit un coût souvent doublé.\nUtiliser `POST /sms/estimate` avant un envoi important.\n\n## Erreurs\nToutes les erreurs ont la même forme :\n\n    { \"error\": { \"code\": \"INSUFFICIENT_CREDITS\", \"message\": \"…\", \"details\": { … } } }\n\n`code` est stable et destiné au code ; `message` est en français et destiné aux humains ;\n`details` dépend du code (erreurs par champ pour `VALIDATION_ERROR`).\n\n## Limites de débit\n- 120 requêtes / minute **par clé API** sur l'ensemble de l'API ;\n- 10 requêtes / minute **par clé API** sur `POST /otp/send` (compteur séparé) ;\n- 120 requêtes / minute par adresse IP, toutes clés confondues ;\n- limites métier OTP par numéro et par compte (voir `/otp/send`).\n\nAu-delà : `429 TOO_MANY_REQUESTS`, avec l'en-tête `Retry-After` (secondes) et\n`details.retry_after_seconds`. Les réponses portent aussi `X-RateLimit-Limit` et\n`X-RateLimit-Remaining`.\n\n## Webhooks\nVoir la section `webhooks` : événements envoyés en POST JSON, signés en HMAC-SHA256.",
+      "type": "text/markdown"
+    },
+    "name": "Labyrinthe Connect API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "description": {
+        "content": "Envoi et suivi de messages.",
+        "type": "text/markdown"
+      },
+      "event": [],
+      "id": "59ccd1f5-3b4a-4f99-a54a-2edc72fdc962",
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 202', function () {",
+                  "  pm.response.to.have.status(202);",
+                  "});",
+                  "pm.test('JSON body with data', function () {",
+                  "  pm.expect(pm.response.json()).to.have.property('data');",
+                  "});",
+                  "const messages = pm.response.json().data || [];",
+                  "pm.test('At least one message', function () { pm.expect(messages.length).to.be.above(0); });",
+                  "if (messages[0]) { pm.collectionVariables.set('messageId', messages[0].id); }"
+                ],
+                "id": "8c0035bf-d58d-4f8d-a511-7a259e9542e9",
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "id": "096dd84a-8e99-4ffa-adc0-dc2729f8e0be",
+          "name": "POST /sms — Envoyer un ou plusieurs SMS",
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"recipient\": \"243812345678\",\n  \"body\": \"Votre commande 1042 est prête.\"\n}"
+            },
+            "description": {
+              "content": "Envoi asynchrone : `202 Accepted` confirme la mise en file et le débit des crédits,\npas la livraison. Suivre ensuite le statut par webhook `message.status_changed`\nou par `GET /sms/{id}`.\n\nFournir `recipient` (un numéro) **ou** `recipients` (jusqu'à 1000), pas les deux.\nUn message est créé par destinataire ; les doublons de la liste sont fusionnés.\n\n**Tout ou rien** : tous les destinataires, le Sender ID et le solde sont vérifiés avant\nle moindre envoi. Si un seul destinataire est refusé, rien n'est envoyé et l'erreur\n`RECIPIENT_NOT_SENDABLE` liste tous les refus (`details.rejected`). Si le solde ne couvre pas\ntout l'envoi, rien n'est envoyé (`INSUFFICIENT_CREDITS`).\n\n**Idempotence** : avec l'en-tête `Idempotency-Key`, une requête rejouée dans les 24 h renvoie\nles mêmes messages sans rien renvoyer ni débiter (en-tête de réponse `Idempotent-Replayed: true`).\nLa clé est propre à la clé API, et liée au contenu : la même clé avec un autre contenu renvoie\n`409 IDEMPOTENCY_KEY_REUSED`. Deux requêtes simultanées avec la même clé n'envoient qu'une fois.\nUne requête en erreur n'enregistre pas la clé (elle peut être rejouée après correction).\n",
+              "type": "text/plain"
+            },
+            "header": [
+              {
+                "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API.",
+                "disabled": false,
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "name": "Envoyer un ou plusieurs SMS",
+            "url": {
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sms"
+              ],
+              "query": [],
+              "variable": []
+            }
+          },
+          "response": [
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"data\": [\n    {\n      \"id\": \"51886b6a-0fcc-dbc5-c1ef-21d7cedf1a29\",\n      \"reference\": \"string\",\n      \"recipient\": \"243812345678\",\n      \"sender\": \"string\",\n      \"encoding\": \"gsm7\",\n      \"status\": \"undeliverable\",\n      \"segments\": 2842,\n      \"credits_charged\": 8208,\n      \"campaign_id\": \"string\",\n      \"provider_message_id\": \"string\",\n      \"error_code\": \"string\",\n      \"error_message\": \"string\",\n      \"created_at\": \"1961-02-01T06:36:30.614Z\",\n      \"submitted_at\": \"1989-07-30T01:25:11.411Z\",\n      \"delivered_at\": \"2013-03-03T01:04:37.131Z\"\n    },\n    {\n      \"id\": \"a07e5048-9b53-ca79-abec-2ff62a615c2a\",\n      \"reference\": \"string\",\n      \"recipient\": \"243812345678\",\n      \"sender\": \"string\",\n      \"encoding\": \"gsm7\",\n      \"status\": \"undeliverable\",\n      \"segments\": 7990,\n      \"credits_charged\": 3142,\n      \"campaign_id\": \"string\",\n      \"provider_message_id\": \"string\",\n      \"error_code\": \"string\",\n      \"error_message\": \"string\",\n      \"created_at\": \"1988-01-02T06:36:41.755Z\",\n      \"submitted_at\": \"1950-01-02T02:57:33.807Z\",\n      \"delivered_at\": \"2017-09-19T09:40:47.057Z\"\n    }\n  ]\n}",
+              "code": 202,
+              "cookie": [],
+              "header": [
+                {
+                  "description": "Nombre de requêtes autorisées par minute.",
+                  "disabled": false,
+                  "key": "X-RateLimit-Limit",
+                  "value": "8169"
+                },
+                {
+                  "description": "Requêtes restantes dans la minute en cours.",
+                  "disabled": false,
+                  "key": "X-RateLimit-Remaining",
+                  "value": "8169"
+                },
+                {
+                  "description": "`true` si la réponse est le rejeu d'une requête précédente (même `Idempotency-Key`).",
+                  "disabled": false,
+                  "key": "Idempotent-Replayed",
+                  "value": "true"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "6029a964-015c-4094-a5ad-e6400ecf06c8",
+              "name": "Message(s) mis en file d'envoi.",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"recipient\": \"243812345678\",\n  \"body\": \"Votre commande 1042 est prête.\"\n}"
+                },
+                "header": [
+                  {
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API.",
+                    "disabled": false,
+                    "key": "Idempotency-Key",
+                    "value": "string"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Accepted"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"Clé API invalide.\",\n    \"details\": {}\n  }\n}",
+              "code": 401,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "0182f966-f65a-4eb6-a13a-a156096bc7e8",
+              "name": "`UNAUTHENTICATED` : clé absente, invalide ou révoquée.",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"recipient\": \"243812345678\",\n  \"body\": \"Votre commande 1042 est prête.\"\n}"
+                },
+                "header": [
+                  {
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API.",
+                    "disabled": false,
+                    "key": "Idempotency-Key",
+                    "value": "string"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Unauthorized"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "code": 403,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "a749a8ef-e396-433c-a376-ee2917f35bcc",
+              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé.",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"recipient\": \"243812345678\",\n  \"body\": \"Votre commande 1042 est prête.\"\n}"
+                },
+                "header": [
+                  {
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API.",
+                    "disabled": false,
+                    "key": "Idempotency-Key",
+                    "value": "string"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Forbidden"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "code": 409,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "66abb6ad-3efa-4069-a3e8-5f43a6bccbc6",
+              "name": "- `INSUFFICIENT_CREDITS` : le solde ne couvre pas l'envoi (rien n'est envoyé) ;\n- `IDEMPOTENCY_KEY_REUSED` : `Idempotency-Key` déjà utilisée pour une requête différente.\n",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"recipient\": \"243812345678\",\n  \"body\": \"Votre commande 1042 est prête.\"\n}"
+                },
+                "header": [
+                  {
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API.",
+                    "disabled": false,
+                    "key": "Idempotency-Key",
+                    "value": "string"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Conflict"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "code": 422,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "acbc6794-167d-4c44-a031-0c6d612a9a3a",
+              "name": "- `VALIDATION_ERROR` : champ manquant ou invalide (`details` par champ) ;\n- `RECIPIENT_NOT_SENDABLE` : un ou plusieurs numéros invalides, en liste noire ou désinscrits\n  (`details.rejected`, rien n'est envoyé) ;\n- `SENDER_ID_NOT_APPROVED` : `sender` n'est pas un Sender ID approuvé du compte.\n",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"recipient\": \"243812345678\",\n  \"body\": \"Votre commande 1042 est prête.\"\n}"
+                },
+                "header": [
+                  {
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API.",
+                    "disabled": false,
+                    "key": "Idempotency-Key",
+                    "value": "string"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "code": 429,
+              "cookie": [],
+              "header": [
+                {
+                  "description": "Secondes à attendre avant de réessayer.",
+                  "disabled": false,
+                  "key": "Retry-After",
+                  "value": "8169"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "8c694fc7-c4b2-41e5-a96b-0653882743b2",
+              "name": "`TOO_MANY_REQUESTS` : limite de requêtes atteinte. Réessayer après `Retry-After` secondes.",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"recipient\": \"243812345678\",\n  \"body\": \"Votre commande 1042 est prête.\"\n}"
+                },
+                "header": [
+                  {
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API.",
+                    "disabled": false,
+                    "key": "Idempotency-Key",
+                    "value": "string"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Too Many Requests"
+            }
+          ]
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('JSON body with data', function () {",
+                  "  pm.expect(pm.response.json()).to.have.property('data');",
+                  "});"
+                ],
+                "id": "e603be35-b276-414b-a6a5-a4c18f52f7d2",
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "id": "127bb140-65a6-4849-a35e-45647ef87de7",
+          "name": "GET /sms — Lister les messages envoyés avec cette clé API",
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "description": {
+              "content": "Messages créés par **la clé API appelante** (pas ceux des autres clés ni de l'espace client),\ndu plus récent au plus ancien.\n",
+              "type": "text/plain"
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "GET",
+            "name": "Lister les messages envoyés avec cette clé API",
+            "url": {
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sms"
+              ],
+              "query": [
+                {
+                  "disabled": false,
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "disabled": false,
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "disabled": true,
+                  "key": "status",
+                  "value": "submitted"
+                },
+                {
+                  "description": "Numéro (tous formats acceptés, normalisé avant la recherche).",
+                  "disabled": true,
+                  "key": "recipient",
+                  "value": "243812345678"
+                },
+                {
+                  "description": "Référence fournie à l'envoi (correspondance exacte).",
+                  "disabled": true,
+                  "key": "reference",
+                  "value": "RAPPEL-2026-11-06"
+                },
+                {
+                  "description": "Date ou date-heure ISO 8601 (incluse).",
+                  "disabled": true,
+                  "key": "from",
+                  "value": "2026-11-01"
+                },
+                {
+                  "description": "Date (journée entière incluse) ou date-heure ISO 8601.",
+                  "disabled": true,
+                  "key": "to",
+                  "value": "2026-11-30"
+                }
+              ],
+              "variable": []
+            }
+          },
+          "response": [
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"data\": [\n    {\n      \"id\": \"aec4e414-795f-58fb-bd87-f2f0d001ef92\",\n      \"reference\": \"string\",\n      \"recipient\": \"243812345678\",\n      \"sender\": \"string\",\n      \"encoding\": \"ucs2\",\n      \"status\": \"expired\",\n      \"segments\": 1338,\n      \"credits_charged\": 1844,\n      \"campaign_id\": \"string\",\n      \"provider_message_id\": \"string\",\n      \"error_code\": \"string\",\n      \"error_message\": \"string\",\n      \"created_at\": \"2015-01-20T06:16:37.314Z\",\n      \"submitted_at\": \"2008-11-05T15:35:08.174Z\",\n      \"delivered_at\": \"1948-10-05T00:28:04.567Z\"\n    },\n    {\n      \"id\": \"6c0b158d-858f-455b-8da7-596ae8bd5fc5\",\n      \"reference\": \"string\",\n      \"recipient\": \"243812345678\",\n      \"sender\": \"string\",\n      \"encoding\": \"ucs2\",\n      \"status\": \"delivered\",\n      \"segments\": 3364,\n      \"credits_charged\": 544,\n      \"campaign_id\": \"string\",\n      \"provider_message_id\": \"string\",\n      \"error_code\": \"string\",\n      \"error_message\": \"string\",\n      \"created_at\": \"1956-06-04T21:20:03.651Z\",\n      \"submitted_at\": \"2011-11-23T13:12:49.403Z\",\n      \"delivered_at\": \"1978-10-03T09:21:55.151Z\"\n    }\n  ],\n  \"links\": {\n    \"first\": \"string\",\n    \"last\": \"string\",\n    \"prev\": \"string\",\n    \"next\": \"string\"\n  },\n  \"meta\": {\n    \"current_page\": 9605,\n    \"last_page\": 3558,\n    \"per_page\": 5976,\n    \"total\": 996,\n    \"from\": 4887,\n    \"path\": \"string\",\n    \"to\": 9826\n  }\n}",
+              "code": 200,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "e10e81eb-38b0-4ea1-a307-4a911aba43aa",
+              "name": "Page de messages.",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "15"
+                    },
+                    {
+                      "key": "status",
+                      "value": "submitted"
+                    },
+                    {
+                      "key": "recipient",
+                      "value": "string"
+                    },
+                    {
+                      "key": "reference",
+                      "value": "string"
+                    },
+                    {
+                      "key": "from",
+                      "value": "2026-11-01"
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-11-30"
+                    }
+                  ],
+                  "variable": []
+                }
+              },
+              "status": "OK"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"Clé API invalide.\",\n    \"details\": {}\n  }\n}",
+              "code": 401,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "7cec889e-71e6-489c-a9f6-99b616145645",
+              "name": "`UNAUTHENTICATED` : clé absente, invalide ou révoquée.",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "15"
+                    },
+                    {
+                      "key": "status",
+                      "value": "submitted"
+                    },
+                    {
+                      "key": "recipient",
+                      "value": "string"
+                    },
+                    {
+                      "key": "reference",
+                      "value": "string"
+                    },
+                    {
+                      "key": "from",
+                      "value": "2026-11-01"
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-11-30"
+                    }
+                  ],
+                  "variable": []
+                }
+              },
+              "status": "Unauthorized"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "code": 403,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "ab5359a9-7b52-4a4f-a3f1-739991a19b45",
+              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé.",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "15"
+                    },
+                    {
+                      "key": "status",
+                      "value": "submitted"
+                    },
+                    {
+                      "key": "recipient",
+                      "value": "string"
+                    },
+                    {
+                      "key": "reference",
+                      "value": "string"
+                    },
+                    {
+                      "key": "from",
+                      "value": "2026-11-01"
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-11-30"
+                    }
+                  ],
+                  "variable": []
+                }
+              },
+              "status": "Forbidden"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "code": 422,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "ec70bb6f-ffdd-41fd-a521-0c2ecd6f9962",
+              "name": "`VALIDATION_ERROR` : données invalides (`details` par champ).",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "15"
+                    },
+                    {
+                      "key": "status",
+                      "value": "submitted"
+                    },
+                    {
+                      "key": "recipient",
+                      "value": "string"
+                    },
+                    {
+                      "key": "reference",
+                      "value": "string"
+                    },
+                    {
+                      "key": "from",
+                      "value": "2026-11-01"
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-11-30"
+                    }
+                  ],
+                  "variable": []
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "code": 429,
+              "cookie": [],
+              "header": [
+                {
+                  "description": "Secondes à attendre avant de réessayer.",
+                  "disabled": false,
+                  "key": "Retry-After",
+                  "value": "8169"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "993a43b0-b6fb-488e-a5f4-b98772b6ed7d",
+              "name": "`TOO_MANY_REQUESTS` : limite de requêtes atteinte. Réessayer après `Retry-After` secondes.",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "15"
+                    },
+                    {
+                      "key": "status",
+                      "value": "submitted"
+                    },
+                    {
+                      "key": "recipient",
+                      "value": "string"
+                    },
+                    {
+                      "key": "reference",
+                      "value": "string"
+                    },
+                    {
+                      "key": "from",
+                      "value": "2026-11-01"
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-11-30"
+                    }
+                  ],
+                  "variable": []
+                }
+              },
+              "status": "Too Many Requests"
+            }
+          ]
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('JSON body with data', function () {",
+                  "  pm.expect(pm.response.json()).to.have.property('data');",
+                  "});",
+                  "pm.test('Same message', function () { pm.expect(pm.response.json().data.id).to.eql(pm.collectionVariables.get('messageId')); });"
+                ],
+                "id": "0746face-8d6a-4bd2-a820-cdd52f81c683",
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "id": "7288d006-3f7f-41c6-a3d7-7d45b0939e3f",
+          "name": "GET /sms/:id — Détail d'un message",
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "description": {
+              "content": "Recherche dans tous les messages du compte (quelle que soit la clé qui les a envoyés).",
+              "type": "text/plain"
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "GET",
+            "name": "Détail d'un message",
+            "url": {
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sms",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "description": "(Required) Identifiant du message (`id`).",
+                  "disabled": false,
+                  "key": "id",
+                  "type": "any",
+                  "value": "{{messageId}}"
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"data\": {\n    \"id\": \"7ea04f2a-105a-fd5a-215a-d2e067953b61\",\n    \"reference\": \"string\",\n    \"recipient\": \"243812345678\",\n    \"sender\": \"string\",\n    \"encoding\": \"gsm7\",\n    \"status\": \"submitted\",\n    \"segments\": 200,\n    \"credits_charged\": 7534,\n    \"campaign_id\": \"string\",\n    \"provider_message_id\": \"string\",\n    \"error_code\": \"string\",\n    \"error_message\": \"string\",\n    \"created_at\": \"2001-04-23T01:41:00.041Z\",\n    \"submitted_at\": \"1962-11-14T06:23:32.128Z\",\n    \"delivered_at\": \"1988-03-12T21:34:04.124Z\"\n  }\n}",
+              "code": 200,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "604c89eb-1dff-437a-ab30-e8eebcc4250c",
+              "name": "Message.",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms",
+                    ":id"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "description": "(Required) Identifiant du message (`id`).",
+                      "disabled": false,
+                      "key": "id",
+                      "type": "any",
+                      "value": "string"
+                    }
+                  ]
+                }
+              },
+              "status": "OK"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"Clé API invalide.\",\n    \"details\": {}\n  }\n}",
+              "code": 401,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "9b17264b-22a6-47f3-af0a-ef3a7d642a0a",
+              "name": "`UNAUTHENTICATED` : clé absente, invalide ou révoquée.",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms",
+                    ":id"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "description": "(Required) Identifiant du message (`id`).",
+                      "disabled": false,
+                      "key": "id",
+                      "type": "any",
+                      "value": "string"
+                    }
+                  ]
+                }
+              },
+              "status": "Unauthorized"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "code": 403,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "82b527d6-f318-4482-aeab-51d7c640a528",
+              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé.",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms",
+                    ":id"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "description": "(Required) Identifiant du message (`id`).",
+                      "disabled": false,
+                      "key": "id",
+                      "type": "any",
+                      "value": "string"
+                    }
+                  ]
+                }
+              },
+              "status": "Forbidden"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "code": 404,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "4b197649-ef39-43e1-a413-8f7a73c9371b",
+              "name": "`NOT_FOUND` : ressource introuvable pour ce compte.",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms",
+                    ":id"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "description": "(Required) Identifiant du message (`id`).",
+                      "disabled": false,
+                      "key": "id",
+                      "type": "any",
+                      "value": "string"
+                    }
+                  ]
+                }
+              },
+              "status": "Not Found"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "code": 429,
+              "cookie": [],
+              "header": [
+                {
+                  "description": "Secondes à attendre avant de réessayer.",
+                  "disabled": false,
+                  "key": "Retry-After",
+                  "value": "8169"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "22e912bb-e33c-4602-a628-6c908df742d3",
+              "name": "`TOO_MANY_REQUESTS` : limite de requêtes atteinte. Réessayer après `Retry-After` secondes.",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms",
+                    ":id"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "description": "(Required) Identifiant du message (`id`).",
+                      "disabled": false,
+                      "key": "id",
+                      "type": "any",
+                      "value": "string"
+                    }
+                  ]
+                }
+              },
+              "status": "Too Many Requests"
+            }
+          ]
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('JSON body with data', function () {",
+                  "  pm.expect(pm.response.json()).to.have.property('data');",
+                  "});"
+                ],
+                "id": "69fb4c59-2540-4219-a4cc-5755fa2542a2",
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "id": "de8ba9ae-649a-41c0-a82d-137f41c4f136",
+          "name": "POST /sms/estimate — Estimer le coût d'un envoi",
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"body\": \"Votre code est 482913\",\n  \"recipients\": [\n    \"243812345678\",\n    \"0899999999\"\n  ]\n}"
+            },
+            "description": {
+              "content": "Calcule l'encodage, le nombre de segments et les crédits nécessaires, sans rien envoyer.\nLes numéros invalides sont ignorés dans `recipients_count` (pas d'erreur).\n",
+              "type": "text/plain"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "name": "Estimer le coût d'un envoi",
+            "url": {
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sms",
+                "estimate"
+              ],
+              "query": [],
+              "variable": []
+            }
+          },
+          "response": [
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"data\": {\n    \"encoding\": \"ucs2\",\n    \"characters\": 3169,\n    \"segments_per_message\": 4861,\n    \"recipients_count\": 5230,\n    \"total_credits\": 962,\n    \"balance_after\": 368\n  }\n}",
+              "code": 200,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "c9229115-88d4-44fa-a668-1056db0f699c",
+              "name": "Estimation.",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"body\": \"Votre code est 482913\",\n  \"recipients\": [\n    \"243812345678\",\n    \"0899999999\"\n  ]\n}"
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms",
+                    "estimate"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "OK"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"Clé API invalide.\",\n    \"details\": {}\n  }\n}",
+              "code": 401,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "1c63ab95-c518-444e-af0a-9f6aaa8bd85a",
+              "name": "`UNAUTHENTICATED` : clé absente, invalide ou révoquée.",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"body\": \"Votre code est 482913\",\n  \"recipients\": [\n    \"243812345678\",\n    \"0899999999\"\n  ]\n}"
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms",
+                    "estimate"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Unauthorized"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "code": 403,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "f9efb899-060e-4b72-ae11-c4fb3d4a709b",
+              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé.",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"body\": \"Votre code est 482913\",\n  \"recipients\": [\n    \"243812345678\",\n    \"0899999999\"\n  ]\n}"
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms",
+                    "estimate"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Forbidden"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "code": 422,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "b06535e4-5238-41cb-a771-ee9d41ad155a",
+              "name": "`VALIDATION_ERROR` : données invalides (`details` par champ).",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"body\": \"Votre code est 482913\",\n  \"recipients\": [\n    \"243812345678\",\n    \"0899999999\"\n  ]\n}"
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms",
+                    "estimate"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "code": 429,
+              "cookie": [],
+              "header": [
+                {
+                  "description": "Secondes à attendre avant de réessayer.",
+                  "disabled": false,
+                  "key": "Retry-After",
+                  "value": "8169"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "650b88f5-5959-40e5-a929-4bd058596636",
+              "name": "`TOO_MANY_REQUESTS` : limite de requêtes atteinte. Réessayer après `Retry-After` secondes.",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"body\": \"Votre code est 482913\",\n  \"recipients\": [\n    \"243812345678\",\n    \"0899999999\"\n  ]\n}"
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms",
+                    "estimate"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Too Many Requests"
+            }
+          ]
+        }
+      ],
+      "name": "SMS"
+    },
+    {
+      "description": {
+        "content": "Solde de crédits et Sender IDs.",
+        "type": "text/markdown"
+      },
+      "event": [],
+      "id": "f67de0e3-1970-41c7-ac2f-0a0773659521",
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('JSON body with data', function () {",
+                  "  pm.expect(pm.response.json()).to.have.property('data');",
+                  "});"
+                ],
+                "id": "aa2ff15a-5d5d-4d17-a164-b89873ba5d9a",
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "id": "ea869318-b356-48d5-a31d-b75ddd62c320",
+          "name": "GET /balance — Solde de crédits SMS",
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "description": {},
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "GET",
+            "name": "Solde de crédits SMS",
+            "url": {
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "balance"
+              ],
+              "query": [],
+              "variable": []
+            }
+          },
+          "response": [
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"data\": {\n    \"balance\": 1489,\n    \"held\": 8648\n  }\n}",
+              "code": 200,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "c9c7e84f-f3e9-48c0-a89d-eeca2a7f2dfc",
+              "name": "Solde courant.",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "balance"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "OK"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"Clé API invalide.\",\n    \"details\": {}\n  }\n}",
+              "code": 401,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "7d8022e2-9dd0-409c-aeb0-2273a1f196c6",
+              "name": "`UNAUTHENTICATED` : clé absente, invalide ou révoquée.",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "balance"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Unauthorized"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "code": 403,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "726ab95e-537c-42a8-a98d-01414f2c8c4f",
+              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé.",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "balance"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Forbidden"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "code": 429,
+              "cookie": [],
+              "header": [
+                {
+                  "description": "Secondes à attendre avant de réessayer.",
+                  "disabled": false,
+                  "key": "Retry-After",
+                  "value": "8169"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "4508bbdb-d3be-4c3a-a062-caaea5369250",
+              "name": "`TOO_MANY_REQUESTS` : limite de requêtes atteinte. Réessayer après `Retry-After` secondes.",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "balance"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Too Many Requests"
+            }
+          ]
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('JSON body with data', function () {",
+                  "  pm.expect(pm.response.json()).to.have.property('data');",
+                  "});"
+                ],
+                "id": "cd5e0e8d-8c4c-466c-accc-4f44c451da3d",
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "id": "8f51cf6a-91b1-4694-ac7f-d22282f859dc",
+          "name": "GET /sender-ids — Sender IDs approuvés",
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "description": {
+              "content": "Noms d'expéditeur utilisables dans le champ `sender` de `POST /sms`. Sans `sender`,\nl'expéditeur par défaut de la plateforme est utilisé.\n",
+              "type": "text/plain"
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "GET",
+            "name": "Sender IDs approuvés",
+            "url": {
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sender-ids"
+              ],
+              "query": [],
+              "variable": []
+            }
+          },
+          "response": [
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"data\": [\n    {\n      \"id\": \"29fd574c-38f9-9422-6bc3-e795465d28e6\",\n      \"value\": \"MABOUTIQUE\",\n      \"status\": \"pending\",\n      \"is_default\": true,\n      \"purpose\": \"string\",\n      \"rejection_reason\": \"string\",\n      \"created_at\": \"1998-02-10T19:59:34.841Z\"\n    },\n    {\n      \"id\": \"954211b8-453c-8844-8faf-4d7c04fd5631\",\n      \"value\": \"MABOUTIQUE\",\n      \"status\": \"pending\",\n      \"is_default\": false,\n      \"purpose\": \"string\",\n      \"rejection_reason\": \"string\",\n      \"created_at\": \"2024-07-26T20:04:27.031Z\"\n    }\n  ]\n}",
+              "code": 200,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "18a6bcb5-8263-4b71-ad32-3324de9b9821",
+              "name": "Sender IDs au statut `approved`.",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sender-ids"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "OK"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"Clé API invalide.\",\n    \"details\": {}\n  }\n}",
+              "code": 401,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "c90143a0-016b-418d-ab48-5b752cc6f796",
+              "name": "`UNAUTHENTICATED` : clé absente, invalide ou révoquée.",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sender-ids"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Unauthorized"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "code": 403,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "53b7d03c-5920-40e8-a729-c35f7fd7e13d",
+              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé.",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sender-ids"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Forbidden"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "code": 429,
+              "cookie": [],
+              "header": [
+                {
+                  "description": "Secondes à attendre avant de réessayer.",
+                  "disabled": false,
+                  "key": "Retry-After",
+                  "value": "8169"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "46b20a3c-1786-46c6-a743-3afc21e6079b",
+              "name": "`TOO_MANY_REQUESTS` : limite de requêtes atteinte. Réessayer après `Retry-After` secondes.",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sender-ids"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Too Many Requests"
+            }
+          ]
+        }
+      ],
+      "name": "Compte"
+    },
+    {
+      "description": {
+        "content": "OTP as a service. Parcours type, depuis le serveur de l'intégrateur :\n1. `POST /otp/send` avec le numéro → conserver `otp_id` (session côté serveur) ;\n2. l'utilisateur saisit le code reçu par SMS ;\n3. `POST /otp/verify` avec `otp_id` et le code → `verified: true` ou un motif d'échec.\n\nLe code n'est jamais renvoyé par l'API (il est stocké haché). Longueur, alphabet, validité,\nnombre de tentatives, délai anti-renvoi, Sender ID et modèle de message viennent des\nparamètres OTP du compte (espace client > Vérification OTP), dans les bornes de la plateforme.",
+        "type": "text/markdown"
+      },
+      "event": [],
+      "id": "5a6b2b17-faf2-47f0-aa4e-fc4aa050d0b8",
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Numéro RDC aléatoire : les limites OTP par numéro ne se croisent pas entre deux exécutions.",
+                  "pm.collectionVariables.set('otpPhone', '0899' + String(Math.floor(Math.random() * 1e6)).padStart(6, '0'));"
+                ],
+                "id": "700e30fd-b7e2-4144-afc0-2d7ed792c379",
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test('JSON body with data', function () {",
+                  "  pm.expect(pm.response.json()).to.have.property('data');",
+                  "});",
+                  "const otp = pm.response.json().data || {};",
+                  "pm.test('otp_id returned', function () { pm.expect(otp.otp_id).to.be.a('string'); });",
+                  "pm.collectionVariables.set('otpId', otp.otp_id || '');",
+                  "// test_code n'existe qu'avec une clé lsk_test_ (aucun SMS envoyé).",
+                  "pm.collectionVariables.set('otpTestCode', otp.test_code || '');"
+                ],
+                "id": "2e70e313-7693-40f9-a0cd-04705056d893",
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "id": "e1c59204-cd1e-4eaf-abad-ed019f0704e1",
+          "name": "POST /otp/send — Envoyer un code de vérification par SMS",
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"phone\": \"{{otpPhone}}\",\n  \"locale\": \"fr\"\n}"
+            },
+            "description": {
+              "content": "Génère un code, l'envoie par SMS (même pipeline, même coût en crédits qu'un SMS normal)\net renvoie `otp_id`. Un nouvel envoi au même numéro **invalide le code précédent**.\n\nAvec une clé `lsk_test_…`, aucun SMS n'est envoyé et la réponse contient le code\n(`test_code`) pour tester `/otp/verify` de bout en bout. Jamais avec une clé live.\n\nLimites :\n- 10 requêtes / minute par clé API (`429 TOO_MANY_REQUESTS`) ;\n- délai minimal entre deux envois au même numéro (`429 OTP_RESEND_TOO_SOON`, `details.retry_after_seconds`) ;\n- plafond horaire par numéro et par compte (`429 OTP_RATE_LIMITED`, `details.scope`, `details.limit`).\n\nNe jamais relancer automatiquement cet appel : chaque succès envoie un SMS facturé.\n",
+              "type": "text/plain"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "name": "Envoyer un code de vérification par SMS",
+            "url": {
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "otp",
+                "send"
+              ],
+              "query": [],
+              "variable": []
+            }
+          },
+          "response": [
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"data\": {\n    \"otp_id\": \"aa53ded9-95cc-c5ed-9af4-d90145ce2dcf\",\n    \"expires_at\": \"2004-02-27T17:31:46.250Z\",\n    \"max_attempts\": 7917,\n    \"test_code\": \"string\"\n  }\n}",
+              "code": 201,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "17a8aa7c-c34f-41eb-a02c-b89c10a6d26e",
+              "name": "Code généré et envoyé.",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"phone\": \"243812345678\"\n}"
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "otp",
+                    "send"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Created"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"Clé API invalide.\",\n    \"details\": {}\n  }\n}",
+              "code": 401,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "5e621818-9109-47b7-a59f-4fdb463c531d",
+              "name": "`UNAUTHENTICATED` : clé absente, invalide ou révoquée.",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"phone\": \"243812345678\"\n}"
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "otp",
+                    "send"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Unauthorized"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "code": 403,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "e4494202-c6a9-4c6e-af46-997224e3ba9d",
+              "name": "- `FORBIDDEN` : adresse IP non autorisée pour cette clé ;\n- `OTP_DISABLED_FOR_ACCOUNT` : service OTP désactivé pour ce compte par la plateforme.\n",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"phone\": \"243812345678\"\n}"
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "otp",
+                    "send"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Forbidden"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "code": 409,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "cd3d3017-8b26-42ee-ac45-a76ee4c271be",
+              "name": "Crédits insuffisants (`INSUFFICIENT_CREDITS`).",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"phone\": \"243812345678\"\n}"
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "otp",
+                    "send"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Conflict"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "code": 422,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "c4e8b89e-b3f7-4700-add9-2dc4146a2d62",
+              "name": "- `VALIDATION_ERROR` ;\n- `INVALID_PHONE` : numéro inexploitable ;\n- `INVALID_OTP_TEMPLATE` : `template` sans le jeton `{code}` ;\n- `RECIPIENT_NOT_SENDABLE` : numéro en liste noire ou désinscrit ;\n- `SENDER_ID_NOT_APPROVED` : le Sender ID des paramètres OTP n'est plus approuvé.\n",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"phone\": \"243812345678\"\n}"
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "otp",
+                    "send"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "code": 429,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "f6df49cc-2448-4c04-a805-620765334df4",
+              "name": "- `TOO_MANY_REQUESTS` : limite de requêtes (en-tête `Retry-After`) ;\n- `OTP_RESEND_TOO_SOON` : renvoi trop rapproché (`details.retry_after_seconds`) ;\n- `OTP_RATE_LIMITED` : plafond horaire atteint (`details.scope` = `phone` | `account`).\n",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"phone\": \"243812345678\"\n}"
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "otp",
+                    "send"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Too Many Requests"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "code": 503,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "b252bbc3-a7bd-476f-aaa3-5c01da4cc739",
+              "name": "`OTP_SERVICE_DISABLED` : service OTP momentanément coupé sur la plateforme.",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"phone\": \"243812345678\"\n}"
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "otp",
+                    "send"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Service Unavailable"
+            }
+          ]
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('JSON body with data', function () {",
+                  "  pm.expect(pm.response.json()).to.have.property('data');",
+                  "});",
+                  "if (pm.collectionVariables.get('otpTestCode')) {",
+                  "  pm.test('Code verified (test mode)', function () { pm.expect(pm.response.json().data.verified).to.eql(true); });",
+                  "}"
+                ],
+                "id": "77e68b71-26bd-427b-a68f-6232f343b0d6",
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "id": "0bf0afbf-0459-40df-ab79-5507d4cbfbbd",
+          "name": "POST /otp/verify — Vérifier un code OTP",
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"otp_id\": \"{{otpId}}\",\n  \"code\": \"{{otpTestCode}}\"\n}"
+            },
+            "description": {
+              "content": "Un code incorrect n'est **pas** une erreur HTTP : la réponse est `200` avec\n`verified: false` et un motif. Chaque essai incorrect consomme une tentative ;\nau-delà du maximum, le code est définitivement bloqué (`max_attempts_reached`).\nLe code saisi est normalisé (espaces retirés, insensible à la casse).\n\nGratuit. Un `otp_id` d'un autre compte renvoie 404.\n",
+              "type": "text/plain"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "name": "Vérifier un code OTP",
+            "url": {
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "otp",
+                "verify"
+              ],
+              "query": [],
+              "variable": []
+            }
+          },
+          "response": [
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"data\": {\n    \"verified\": true,\n    \"reason\": null\n  }\n}",
+              "code": 200,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "e87c5fa4-4d02-4b3a-aa93-70b56e19e823",
+              "name": "Résultat de la vérification.",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"otp_id\": \"9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10\",\n  \"code\": \"482913\"\n}"
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "otp",
+                    "verify"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "OK"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"Clé API invalide.\",\n    \"details\": {}\n  }\n}",
+              "code": 401,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "bdd4fb9b-3efc-455b-a878-f7e49a67846d",
+              "name": "`UNAUTHENTICATED` : clé absente, invalide ou révoquée.",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"otp_id\": \"9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10\",\n  \"code\": \"482913\"\n}"
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "otp",
+                    "verify"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Unauthorized"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "code": 403,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "50dcd7b5-767c-4a22-a5e0-789c905c5b92",
+              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé.",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"otp_id\": \"9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10\",\n  \"code\": \"482913\"\n}"
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "otp",
+                    "verify"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Forbidden"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "code": 404,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "dfd43314-0b1d-4fa3-afb7-65cf29061207",
+              "name": "`NOT_FOUND` : ressource introuvable pour ce compte.",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"otp_id\": \"9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10\",\n  \"code\": \"482913\"\n}"
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "otp",
+                    "verify"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Not Found"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "code": 422,
+              "cookie": [],
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "b0126d7b-bcbf-4f04-a976-6844fec2786b",
+              "name": "`VALIDATION_ERROR` : données invalides (`details` par champ).",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"otp_id\": \"9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10\",\n  \"code\": \"482913\"\n}"
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "otp",
+                    "verify"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "code": 429,
+              "cookie": [],
+              "header": [
+                {
+                  "description": "Secondes à attendre avant de réessayer.",
+                  "disabled": false,
+                  "key": "Retry-After",
+                  "value": "8169"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "44860011-b196-40a2-a0f9-96c475f67266",
+              "name": "`TOO_MANY_REQUESTS` : limite de requêtes atteinte. Réessayer après `Retry-After` secondes.",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"otp_id\": \"9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10\",\n  \"code\": \"482913\"\n}"
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "otp",
+                    "verify"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Too Many Requests"
+            }
+          ]
+        }
+      ],
+      "name": "OTP"
+    }
+  ],
+  "variable": [
+    {
+      "description": "API root (see the environments).",
+      "key": "baseUrl",
+      "type": "string",
+      "value": "http://localhost:8000/api/public/v1"
+    },
+    {
+      "description": "lsk_test_… (sandbox) or lsk_live_…. Never commit it.",
+      "key": "apiKey",
+      "type": "secret",
+      "value": ""
+    },
+    {
+      "description": "Set by \"POST /sms\", used by \"GET /sms/:id\".",
+      "key": "messageId",
+      "type": "string",
+      "value": ""
+    },
+    {
+      "description": "Random DRC number generated before \"POST /otp/send\".",
+      "key": "otpPhone",
+      "type": "string",
+      "value": ""
+    },
+    {
+      "description": "Set by \"POST /otp/send\", used by \"POST /otp/verify\".",
+      "key": "otpId",
+      "type": "string",
+      "value": ""
+    },
+    {
+      "description": "test_code returned with a test key only.",
+      "key": "otpTestCode",
+      "type": "secret",
+      "value": ""
+    }
+  ]
+}
