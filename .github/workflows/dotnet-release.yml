@@ -1,0 +1,117 @@
+# Publication de Labyrinthe.Connect et Labyrinthe.Connect.AspNetCore sur NuGet, déclenchée par un tag dotnet-vX.Y.Z.
+#
+# Deux modes d'authentification, au choix :
+#   1. NuGet Trusted Publishing (recommandé, sans secret de longue durée) : sur nuget.org, Account > Trusted
+#      Publishing, ajouter une politique pour le dépôt labyrinthe-rdc/labyrinthe-connect-sdks, workflow
+#      dotnet-release.yml, environnement « nuget ». Renseigner la variable de dépôt NUGET_USER (le profil nuget.org
+#      propriétaire des packages). L'action NuGet/login échange le jeton OIDC contre une clé temporaire (1 h).
+#   2. Secret NUGET_API_KEY (repli) : clé nuget.org limitée au « Push » des packages Labyrinthe.Connect*, stockée dans
+#      l'environnement « nuget ». Si le secret existe, il est utilisé et Trusted Publishing est ignoré.
+# Côté GitHub : créer l'environnement « nuget » (Settings > Environments), idéalement avec des relecteurs
+# obligatoires et une règle limitant les tags à dotnet-v*.
+# Réserver d'abord le préfixe d'ID « Labyrinthe » sur nuget.org (ID prefix reservation).
+#
+# Prérequis : <Version> de dotnet/Directory.Build.props et LabyrintheClient.Version doivent valoir X.Y.Z.
+name: dotnet-release
+
+on:
+  push:
+    tags:
+      - 'dotnet-v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dotnet-release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: dotnet
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+
+jobs:
+  build:
+    name: Check, test & pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Check that the tag matches the package version
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#dotnet-v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag $TAG is not SemVer (expected dotnet-vX.Y.Z)"; exit 1
+          fi
+          props="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | head -n 1)"
+          constant="$(sed -n 's:.*public const string Version = "\(.*\)";.*:\1:p' src/Labyrinthe.Connect/LabyrintheClient.cs)"
+          if [[ "$props" != "$version" || "$constant" != "$version" ]]; then
+            echo "::error::Directory.Build.props is $props, LabyrintheClient.Version is $constant, but the tag is $version"; exit 1
+          fi
+
+      - run: dotnet restore Labyrinthe.Connect.sln
+      - run: dotnet format Labyrinthe.Connect.sln --verify-no-changes --no-restore
+      - run: dotnet build Labyrinthe.Connect.sln -c Release --no-restore -warnaserror
+      - run: dotnet test Labyrinthe.Connect.sln -c Release --no-build
+      - name: Pack (nupkg + snupkg, SourceLink)
+        run: |
+          dotnet pack src/Labyrinthe.Connect/Labyrinthe.Connect.csproj -c Release --no-build -o artifacts -warnaserror
+          dotnet pack src/Labyrinthe.Connect.AspNetCore/Labyrinthe.Connect.AspNetCore.csproj -c Release --no-build -o artifacts -warnaserror
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nuget
+          path: dotnet/artifacts/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to NuGet
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: nuget
+      url: https://www.nuget.org/packages/Labyrinthe.Connect
+    permissions:
+      id-token: write   # NuGet Trusted Publishing (OIDC)
+    env:
+      NUGET_API_KEY_SECRET: ${{ secrets.NUGET_API_KEY }}
+    steps:
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: nuget
+          path: artifacts/
+
+      - name: NuGet login (Trusted Publishing)
+        id: login
+        if: env.NUGET_API_KEY_SECRET == ''
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      # Le cœur d'abord : le package AspNetCore en dépend. Les .snupkg sont poussés avec leur .nupkg.
+      - name: Push
+        working-directory: artifacts
+        shell: bash
+        env:
+          NUGET_KEY: ${{ steps.login.outputs.NUGET_API_KEY || secrets.NUGET_API_KEY }}
+        run: |
+          for package in Labyrinthe.Connect.[0-9]*.nupkg Labyrinthe.Connect.AspNetCore.[0-9]*.nupkg; do
+            dotnet nuget push "$package" --api-key "$NUGET_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+          done
