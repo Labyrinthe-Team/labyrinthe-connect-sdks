@@ -1,0 +1,89 @@
+{
+    "name": "labyrinthe/connect-php",
+    "description": "Official PHP SDK for Labyrinthe Connect: send SMS and verify phone numbers with OTP (DR Congo and Central Africa).",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "labyrinthe",
+        "labyrinthe-connect",
+        "sms",
+        "otp",
+        "2fa",
+        "verification",
+        "sms-gateway",
+        "drc",
+        "congo",
+        "rdc",
+        "psr-18",
+        "sdk"
+    ],
+    "homepage": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/tree/main/php",
+    "authors": [
+        {
+            "name": "Labyrinthe Connect",
+            "email": "connect@labyrinthe-rdc.com",
+            "homepage": "https://labyrinthe-rdc.com"
+        }
+    ],
+    "support": {
+        "email": "connect@labyrinthe-rdc.com",
+        "issues": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/issues",
+        "source": "https://github.com/labyrinthe-rdc/labyrinthe-connect-php",
+        "docs": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/blob/main/php/README.md"
+    },
+    "require": {
+        "php": "^8.1",
+        "ext-json": "*",
+        "ext-mbstring": "*",
+        "guzzlehttp/guzzle": "^7.5",
+        "guzzlehttp/psr7": "^2.4",
+        "psr/http-client": "^1.0",
+        "psr/http-factory": "^1.0",
+        "psr/http-message": "^1.1 || ^2.0",
+        "psr/log": "^2.0 || ^3.0"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.64",
+        "phpstan/phpstan": "^2.1",
+        "phpstan/phpstan-phpunit": "^2.0",
+        "phpstan/phpstan-strict-rules": "^2.0",
+        "phpunit/phpunit": "^10.5 || ^11.5 || ^12.0",
+        "symfony/yaml": "^6.4 || ^7.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Labyrinthe\\Connect\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Labyrinthe\\Connect\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit --exclude-group integration",
+        "test:integration": "phpunit --group integration",
+        "analyse": "phpstan analyse --memory-limit=1G",
+        "format": "php-cs-fixer fix",
+        "lint": "php-cs-fixer fix --dry-run --diff",
+        "check": [
+            "@lint",
+            "@analyse",
+            "@test"
+        ]
+    },
+    "scripts-descriptions": {
+        "test": "Run the unit and contract test suites (no network).",
+        "test:integration": "Run the integration suite against a real backend (needs LABYRINTHE_API_KEY).",
+        "analyse": "Run PHPStan at level max.",
+        "format": "Fix code style with PHP-CS-Fixer.",
+        "lint": "Check code style without changing files.",
+        "check": "Lint, analyse and test."
+    },
+    "config": {
+        "sort-packages": true,
+        "preferred-install": "dist"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
