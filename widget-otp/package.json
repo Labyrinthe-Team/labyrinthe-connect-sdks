@@ -1,0 +1,133 @@
+{
+  "name": "@labyrinthe/otp-widget",
+  "version": "1.0.0",
+  "description": "Drop-in phone verification widget for Labyrinthe Connect: <labyrinthe-otp> web component, React wrapper and server handlers (Express, Next.js). No API key in the browser.",
+  "keywords": [
+    "labyrinthe",
+    "otp",
+    "sms",
+    "2fa",
+    "verification",
+    "web-component",
+    "custom-element",
+    "react",
+    "drc",
+    "congo"
+  ],
+  "homepage": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/tree/main/widget-otp#readme",
+  "bugs": {
+    "url": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/issues",
+    "email": "connect@labyrinthe-rdc.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks.git",
+    "directory": "widget-otp"
+  },
+  "license": "MIT",
+  "author": "Labyrinthe Connect <connect@labyrinthe-rdc.com>",
+  "type": "module",
+  "sideEffects": [
+    "./dist/index.js",
+    "./dist/index.cjs",
+    "./dist/labyrinthe-otp.min.js"
+  ],
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./react": {
+      "import": {
+        "types": "./dist/react.d.ts",
+        "default": "./dist/react.js"
+      },
+      "require": {
+        "types": "./dist/react.d.cts",
+        "default": "./dist/react.cjs"
+      }
+    },
+    "./server": {
+      "import": {
+        "types": "./dist/server.d.ts",
+        "default": "./dist/server.js"
+      },
+      "require": {
+        "types": "./dist/server.d.cts",
+        "default": "./dist/server.cjs"
+      }
+    },
+    "./cdn": "./dist/labyrinthe-otp.min.js",
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.cts",
+  "unpkg": "./dist/labyrinthe-otp.min.js",
+  "jsdelivr": "./dist/labyrinthe-otp.min.js",
+  "files": [
+    "dist",
+    "README.md",
+    "README.fr.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.src.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run tests/integration.test.ts",
+    "size": "node scripts/size.mjs",
+    "check:dist": "node scripts/check-dist.mjs && node scripts/check-dist.cjs",
+    "publint": "publint --strict",
+    "attw": "attw --pack . --profile node16 --exclude-entrypoints ./cdn",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build && npm run check:dist && npm run size && npm run publint && npm run attw",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "@labyrinthe/connect": "^1.0.0",
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "@labyrinthe/connect": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
+    "@eslint/js": "9.39.5",
+    "@types/express": "5.0.6",
+    "@types/node": "20.19.43",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "eslint": "9.39.5",
+    "express": "5.2.1",
+    "happy-dom": "21.0.4",
+    "publint": "0.3.25",
+    "react": "19.2.9",
+    "react-dom": "19.2.9",
+    "tsup": "8.5.1",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.0",
+    "vite": "6.4.4",
+    "vitest": "3.2.7"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

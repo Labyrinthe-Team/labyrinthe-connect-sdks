@@ -1,0 +1,7 @@
+{
+  // Utilisé par tsup pour générer les déclarations (.d.ts / .d.cts).
+  "extends": "./tsconfig.src.json",
+  "compilerOptions": {
+    "noEmit": false
+  }
+}

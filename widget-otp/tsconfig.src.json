@@ -1,0 +1,9 @@
+{
+  // Les sources ne dépendent d'aucun type Node : navigateur + Fetch / Web Crypto (Node ≥ 18, edge, Deno, Bun).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [],
+    "stripInternal": true
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,35 @@
+{
+  // Vérification de types du package entier (sources, tests, exemples).
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "useUnknownInCatchVariables": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "paths": {
+      // Le wrapper React importe l'élément par le nom du package (une seule définition de classe).
+      "@labyrinthe/otp-widget": ["./src/index.ts"],
+      "@labyrinthe/otp-widget/server": ["./src/server/index.ts"],
+      "@labyrinthe/otp-widget/react": ["./src/react.tsx"],
+      // SDK Node du monorepo (dépendance pair du helper serveur), pour les tests et les exemples.
+      "@labyrinthe/connect": ["../node/src/index.ts"]
+    }
+  },
+  "include": ["src", "tests", "examples", "*.config.ts"]
+}
