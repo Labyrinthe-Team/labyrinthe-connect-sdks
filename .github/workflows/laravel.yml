@@ -1,0 +1,95 @@
+# Intégration Laravel (laravel/) : matrice Laravel 10 → 13 × versions de PHP compatibles.
+# Le package dépend du SDK PHP du monorepo (dépôt Composer « path » vers ../php) :
+# toute modification de php/ relance aussi ce workflow.
+name: laravel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'laravel/**'
+      - 'php/src/**'
+      - 'php/composer.json'
+      - '.github/workflows/laravel.yml'
+  pull_request:
+    paths:
+      - 'laravel/**'
+      - 'php/src/**'
+      - 'php/composer.json'
+      - '.github/workflows/laravel.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: laravel-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: laravel
+
+jobs:
+  quality:
+    name: Lint & Larastan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: json, mbstring
+          coverage: none
+
+      - run: composer validate --strict
+
+      - uses: ramsey/composer-install@v3
+        with:
+          working-directory: laravel
+
+      - run: composer lint
+      - run: composer analyse
+
+  tests:
+    name: Laravel ${{ matrix.laravel }} / PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { laravel: '10', testbench: '^8.22', php: '8.1' }
+          - { laravel: '10', testbench: '^8.22', php: '8.2' }
+          - { laravel: '10', testbench: '^8.22', php: '8.3' }
+          - { laravel: '11', testbench: '^9.0', php: '8.2' }
+          - { laravel: '11', testbench: '^9.0', php: '8.3' }
+          - { laravel: '11', testbench: '^9.0', php: '8.4' }
+          - { laravel: '12', testbench: '^10.0', php: '8.2' }
+          - { laravel: '12', testbench: '^10.0', php: '8.3' }
+          - { laravel: '12', testbench: '^10.0', php: '8.4' }
+          - { laravel: '12', testbench: '^10.0', php: '8.5' }
+          - { laravel: '13', testbench: '^11.0', php: '8.3' }
+          - { laravel: '13', testbench: '^11.0', php: '8.4' }
+          - { laravel: '13', testbench: '^11.0', php: '8.5' }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: json, mbstring
+          coverage: none
+
+      # Laravel 10 et 11 ne reçoivent plus de correctifs : Composer bloque leurs
+      # versions visées par des avis de sécurité. On les teste quand même pour
+      # les intégrateurs qui n'ont pas encore migré.
+      - name: Allow end-of-life Laravel versions
+        if: matrix.laravel == '10' || matrix.laravel == '11'
+        run: composer config audit.block-insecure false
+
+      - name: Select Laravel ${{ matrix.laravel }}
+        run: composer require --dev --no-update --no-interaction "laravel/framework:^${{ matrix.laravel }}.0" "orchestra/testbench:${{ matrix.testbench }}"
+
+      - run: composer update --prefer-dist --no-interaction --no-progress --with-all-dependencies
+
+      - run: vendor/bin/phpunit
