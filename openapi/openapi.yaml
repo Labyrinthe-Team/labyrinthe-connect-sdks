@@ -1,0 +1,1014 @@
+openapi: 3.1.0
+# Source de vérité de l'API développeurs Labyrinthe Connect, écrite à partir
+# du code du backend (routes/api/public-v1.php, contrôleurs Developer/*,
+# ressources Developer/*, bootstrap/app.php). Copiée dans le backend
+# (docs/openapi.yaml, servie sur /api/public/openapi.yaml) par `npm run sync`.
+# Toute évolution de l'API publique commence ici.
+info:
+  title: Labyrinthe Connect — API développeurs
+  version: "1.1.0"
+  summary: Envoi de SMS et vérification OTP par API.
+  description: |
+    API REST JSON pour envoyer des SMS, consulter le solde de crédits et les Sender IDs
+    approuvés, et vérifier des numéros de téléphone par OTP (code à usage unique envoyé par SMS).
+
+    ## Authentification
+    Chaque requête porte une clé API créée dans l'espace client (Développeurs > Clés API) :
+
+        Authorization: Bearer lsk_live_xxxxxxxxxxxxxxxx
+
+    - `lsk_live_…` : production. Les SMS partent réellement et consomment des crédits.
+    - `lsk_test_…` : bac à sable. Fournisseur simulé, **rien n'est envoyé, aucun crédit n'est consommé**.
+      Les réponses ont la même forme qu'en production.
+
+    Une clé peut être restreinte à une liste d'adresses IP (403 `FORBIDDEN` sinon).
+    La clé n'est affichée qu'une fois à sa création ; elle doit rester côté serveur,
+    **jamais dans une application mobile ou un navigateur**.
+
+    ## Numéros de téléphone
+    Format international sans `+` (ex. `243812345678`). L'API accepte aussi `+243812345678`,
+    `00243812345678` et le format local RDC (`0812345678`, `812345678`), complété avec l'indicatif
+    par défaut de la plateforme (243). Les réponses renvoient toujours le format international sans `+`.
+
+    ## Crédits et segments
+    1 crédit = 1 segment SMS. Un message en ASCII (GSM-7) tient en 160 caractères (153 par segment
+    au-delà). **Tout caractère non ASCII** (é, à, ç, emoji, tiret long, guillemets typographiques…)
+    passe le message en UCS-2 : 70 caractères (67 par segment au-delà), soit un coût souvent doublé.
+    Utiliser `POST /sms/estimate` avant un envoi important.
+
+    ## Erreurs
+    Toutes les erreurs ont la même forme :
+
+        { "error": { "code": "INSUFFICIENT_CREDITS", "message": "…", "details": { … } } }
+
+    `code` est stable et destiné au code ; `message` est en français et destiné aux humains ;
+    `details` dépend du code (erreurs par champ pour `VALIDATION_ERROR`).
+
+    ## Limites de débit
+    - 120 requêtes / minute **par clé API** sur l'ensemble de l'API ;
+    - 10 requêtes / minute **par clé API** sur `POST /otp/send` (compteur séparé) ;
+    - 120 requêtes / minute par adresse IP, toutes clés confondues ;
+    - limites métier OTP par numéro et par compte (voir `/otp/send`).
+
+    Au-delà : `429 TOO_MANY_REQUESTS`, avec l'en-tête `Retry-After` (secondes) et
+    `details.retry_after_seconds`. Les réponses portent aussi `X-RateLimit-Limit` et
+    `X-RateLimit-Remaining`.
+
+    ## Webhooks
+    Voir la section `webhooks` : événements envoyés en POST JSON, signés en HMAC-SHA256.
+  contact:
+    name: Labyrinthe Connect
+    email: connect@labyrinthe-rdc.com
+  license:
+    name: Propriétaire
+    identifier: LicenseRef-Proprietary
+
+servers:
+  - url: https://api.labyrinthe-rdc.com/api/public/v1
+    description: Production
+  - url: http://localhost:8000/api/public/v1
+    description: Local (développement)
+
+security:
+  - ApiKeyAuth: []
+
+tags:
+  - name: SMS
+    description: Envoi et suivi de messages.
+  - name: Compte
+    description: Solde de crédits et Sender IDs.
+  - name: OTP
+    description: |
+      OTP as a service. Parcours type, depuis le serveur de l'intégrateur :
+      1. `POST /otp/send` avec le numéro → conserver `otp_id` (session côté serveur) ;
+      2. l'utilisateur saisit le code reçu par SMS ;
+      3. `POST /otp/verify` avec `otp_id` et le code → `verified: true` ou un motif d'échec.
+
+      Le code n'est jamais renvoyé par l'API (il est stocké haché). Longueur, alphabet, validité,
+      nombre de tentatives, délai anti-renvoi, Sender ID et modèle de message viennent des
+      paramètres OTP du compte (espace client > Vérification OTP), dans les bornes de la plateforme.
+
+paths:
+  /sms:
+    post:
+      tags: [SMS]
+      operationId: sendSms
+      summary: Envoyer un ou plusieurs SMS
+      description: |
+        Envoi asynchrone : `202 Accepted` confirme la mise en file et le débit des crédits,
+        pas la livraison. Suivre ensuite le statut par webhook `message.status_changed`
+        ou par `GET /sms/{id}`.
+
+        Fournir `recipient` (un numéro) **ou** `recipients` (jusqu'à 1000), pas les deux.
+        Un message est créé par destinataire ; les doublons de la liste sont fusionnés.
+
+        **Tout ou rien** : tous les destinataires, le Sender ID et le solde sont vérifiés avant
+        le moindre envoi. Si un seul destinataire est refusé, rien n'est envoyé et l'erreur
+        `RECIPIENT_NOT_SENDABLE` liste tous les refus (`details.rejected`). Si le solde ne couvre pas
+        tout l'envoi, rien n'est envoyé (`INSUFFICIENT_CREDITS`).
+
+        **Idempotence** : avec l'en-tête `Idempotency-Key`, une requête rejouée dans les 24 h renvoie
+        les mêmes messages sans rien renvoyer ni débiter (en-tête de réponse `Idempotent-Replayed: true`).
+        La clé est propre à la clé API, et liée au contenu : la même clé avec un autre contenu renvoie
+        `409 IDEMPOTENCY_KEY_REUSED`. Deux requêtes simultanées avec la même clé n'envoient qu'une fois.
+        Une requête en erreur n'enregistre pas la clé (elle peut être rejouée après correction).
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendSmsRequest'
+            examples:
+              unitaire:
+                summary: Un destinataire
+                value: { recipient: "243812345678", body: "Votre commande 1042 est prête." }
+              plusieurs:
+                summary: Plusieurs destinataires, avec référence
+                value: { recipients: ["243812345678", "0899999999"], body: "Rappel : reunion demain 9h.", sender: "MABOUTIQUE", reference: "RAPPEL-2026-11-06" }
+      responses:
+        '202':
+          description: Message(s) mis en file d'envoi.
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/X-RateLimit-Limit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/X-RateLimit-Remaining' }
+            Idempotent-Replayed:
+              description: "`true` si la réponse est le rejeu d'une requête précédente (même `Idempotency-Key`)."
+              schema: { type: string, enum: ['true'] }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Message' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: |
+            - `INSUFFICIENT_CREDITS` : le solde ne couvre pas l'envoi (rien n'est envoyé) ;
+            - `IDEMPOTENCY_KEY_REUSED` : `Idempotency-Key` déjà utilisée pour une requête différente.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/InsufficientCreditsError'
+                  - $ref: '#/components/schemas/Error'
+        '422':
+          description: |
+            - `VALIDATION_ERROR` : champ manquant ou invalide (`details` par champ) ;
+            - `RECIPIENT_NOT_SENDABLE` : un ou plusieurs numéros invalides, en liste noire ou désinscrits
+              (`details.rejected`, rien n'est envoyé) ;
+            - `SENDER_ID_NOT_APPROVED` : `sender` n'est pas un Sender ID approuvé du compte.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/ValidationError'
+                  - $ref: '#/components/schemas/RecipientNotSendableError'
+                  - $ref: '#/components/schemas/Error'
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+    get:
+      tags: [SMS]
+      operationId: listSms
+      summary: Lister les messages envoyés avec cette clé API
+      description: |
+        Messages créés par **la clé API appelante** (pas ceux des autres clés ni de l'espace client),
+        du plus récent au plus ancien.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - name: per_page
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 15 }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/MessageStatus' }
+        - name: recipient
+          in: query
+          description: Numéro (tous formats acceptés, normalisé avant la recherche).
+          schema: { type: string }
+        - name: reference
+          in: query
+          description: Référence fournie à l'envoi (correspondance exacte).
+          schema: { type: string, maxLength: 64 }
+        - name: from
+          in: query
+          description: Date ou date-heure ISO 8601 (incluse).
+          schema: { type: string, examples: ["2026-11-01", "2026-11-01T08:00:00Z"] }
+        - name: to
+          in: query
+          description: Date (journée entière incluse) ou date-heure ISO 8601.
+          schema: { type: string, examples: ["2026-11-30"] }
+      responses:
+        '200':
+          description: Page de messages.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Message' }
+                  - $ref: '#/components/schemas/Paginated'
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /sms/estimate:
+    post:
+      tags: [SMS]
+      operationId: estimateSms
+      summary: Estimer le coût d'un envoi
+      description: |
+        Calcule l'encodage, le nombre de segments et les crédits nécessaires, sans rien envoyer.
+        Les numéros invalides sont ignorés dans `recipients_count` (pas d'erreur).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EstimateSmsRequest' }
+            example: { body: "Votre code est 482913", recipients: ["243812345678", "0899999999"] }
+      responses:
+        '200':
+          description: Estimation.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Estimate' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /sms/{id}:
+    get:
+      tags: [SMS]
+      operationId: getSms
+      summary: Détail d'un message
+      description: Recherche dans tous les messages du compte (quelle que soit la clé qui les a envoyés).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Identifiant du message (`id`).
+          schema: { type: string }
+      responses:
+        '200':
+          description: Message.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Message' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /balance:
+    get:
+      tags: [Compte]
+      operationId: getBalance
+      summary: Solde de crédits SMS
+      responses:
+        '200':
+          description: Solde courant.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Balance' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /sender-ids:
+    get:
+      tags: [Compte]
+      operationId: listSenderIds
+      summary: Sender IDs approuvés
+      description: |
+        Noms d'expéditeur utilisables dans le champ `sender` de `POST /sms`. Sans `sender`,
+        l'expéditeur par défaut de la plateforme est utilisé.
+      responses:
+        '200':
+          description: Sender IDs au statut `approved`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/SenderId' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /otp/send:
+    post:
+      tags: [OTP]
+      operationId: sendOtp
+      summary: Envoyer un code de vérification par SMS
+      description: |
+        Génère un code, l'envoie par SMS (même pipeline, même coût en crédits qu'un SMS normal)
+        et renvoie `otp_id`. Un nouvel envoi au même numéro **invalide le code précédent**.
+
+        Avec une clé `lsk_test_…`, aucun SMS n'est envoyé et la réponse contient le code
+        (`test_code`) pour tester `/otp/verify` de bout en bout. Jamais avec une clé live.
+
+        Limites :
+        - 10 requêtes / minute par clé API (`429 TOO_MANY_REQUESTS`) ;
+        - délai minimal entre deux envois au même numéro (`429 OTP_RESEND_TOO_SOON`, `details.retry_after_seconds`) ;
+        - plafond horaire par numéro et par compte (`429 OTP_RATE_LIMITED`, `details.scope`, `details.limit`).
+
+        Ne jamais relancer automatiquement cet appel : chaque succès envoie un SMS facturé.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SendOtpRequest' }
+            examples:
+              defaut:
+                summary: Paramètres du compte
+                value: { phone: "243812345678" }
+              personnalise:
+                summary: Modèle et langue imposés
+                value: { phone: "0812345678", template: "Votre code MaBoutique : {code}. Valable {minutes} min.", locale: fr }
+      responses:
+        '201':
+          description: Code généré et envoyé.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/OtpSendResult' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403':
+          description: |
+            - `FORBIDDEN` : adresse IP non autorisée pour cette clé ;
+            - `OTP_DISABLED_FOR_ACCOUNT` : service OTP désactivé pour ce compte par la plateforme.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Crédits insuffisants (`INSUFFICIENT_CREDITS`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InsufficientCreditsError' }
+        '422':
+          description: |
+            - `VALIDATION_ERROR` ;
+            - `INVALID_PHONE` : numéro inexploitable ;
+            - `INVALID_OTP_TEMPLATE` : `template` sans le jeton `{code}` ;
+            - `RECIPIENT_NOT_SENDABLE` : numéro en liste noire ou désinscrit ;
+            - `SENDER_ID_NOT_APPROVED` : le Sender ID des paramètres OTP n'est plus approuvé.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/ValidationError'
+                  - $ref: '#/components/schemas/RecipientNotSendableError'
+                  - $ref: '#/components/schemas/Error'
+        '429':
+          description: |
+            - `TOO_MANY_REQUESTS` : limite de requêtes (en-tête `Retry-After`) ;
+            - `OTP_RESEND_TOO_SOON` : renvoi trop rapproché (`details.retry_after_seconds`) ;
+            - `OTP_RATE_LIMITED` : plafond horaire atteint (`details.scope` = `phone` | `account`).
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/OtpResendTooSoonError'
+                  - $ref: '#/components/schemas/OtpRateLimitedError'
+                  - $ref: '#/components/schemas/TooManyRequestsError'
+        '503':
+          description: "`OTP_SERVICE_DISABLED` : service OTP momentanément coupé sur la plateforme."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /otp/verify:
+    post:
+      tags: [OTP]
+      operationId: verifyOtp
+      summary: Vérifier un code OTP
+      description: |
+        Un code incorrect n'est **pas** une erreur HTTP : la réponse est `200` avec
+        `verified: false` et un motif. Chaque essai incorrect consomme une tentative ;
+        au-delà du maximum, le code est définitivement bloqué (`max_attempts_reached`).
+        Le code saisi est normalisé (espaces retirés, insensible à la casse).
+
+        Gratuit. Un `otp_id` d'un autre compte renvoie 404.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VerifyOtpRequest' }
+            example: { otp_id: "9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10", code: "482913" }
+      responses:
+        '200':
+          description: Résultat de la vérification.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/OtpVerifyResult' }
+              examples:
+                valide:
+                  value: { data: { verified: true, reason: null } }
+                incorrect:
+                  value: { data: { verified: false, reason: invalid_code } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+webhooks:
+  message.status_changed:
+    post:
+      operationId: onMessageStatusChanged
+      summary: Le statut d'un message a changé
+      description: |
+        Envoyé à chaque changement de statut d'un message du compte (API, espace client ou campagne).
+        Voir `WebhookEnvelope` pour la signature et les règles de livraison.
+      parameters:
+        - $ref: '#/components/parameters/WebhookSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/WebhookEnvelope'
+                - type: object
+                  properties:
+                    event: { const: message.status_changed }
+                    data: { $ref: '#/components/schemas/MessageStatusChangedData' }
+            example:
+              id: "1f0c7e52-8d3a-4b6e-9c2f-5a7d1e3b9f40"
+              event: message.status_changed
+              data:
+                message_id: "9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10"
+                recipient: "243812345678"
+                status: delivered
+                provider_message_id: "DD-88231"
+                campaign_id: null
+              timestamp: 1793952000
+      responses:
+        '200':
+          description: Toute réponse 2xx accuse réception. Sinon, nouvel essai.
+  campaign.completed:
+    post:
+      operationId: onCampaignCompleted
+      summary: Une campagne est terminée
+      description: Tous les messages de la campagne ont atteint un statut final (ou plus aucun n'est en file).
+      parameters:
+        - $ref: '#/components/parameters/WebhookSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/WebhookEnvelope'
+                - type: object
+                  properties:
+                    event: { const: campaign.completed }
+                    data: { $ref: '#/components/schemas/CampaignCompletedData' }
+            example:
+              id: "7b2e4c10-3f5a-4d8e-a1b9-0c6d2e8f4a71"
+              event: campaign.completed
+              data:
+                campaign_id: "3c9a1f7e-2b4d-4e6a-8f0c-9d1b5e7a3c20"
+                name: "Promo de novembre"
+                recipients_count: 1200
+                messages_by_status: { delivered: 1150, failed: 30, undeliverable: 20 }
+                credits_charged: 1200
+                completed_at: "2026-11-06T10:15:00+00:00"
+              timestamp: 1794046500
+      responses:
+        '200':
+          description: Accusé de réception.
+  balance.low:
+    post:
+      operationId: onBalanceLow
+      summary: Le solde est passé sous le seuil du compte
+      description: |
+        Émis une fois quand le solde passe sous le seuil de solde bas du compte (réglé dans l'espace
+        client). Il n'est émis à nouveau qu'après être repassé au-dessus (achat, crédit).
+      parameters:
+        - $ref: '#/components/parameters/WebhookSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/WebhookEnvelope'
+                - type: object
+                  properties:
+                    event: { const: balance.low }
+                    data: { $ref: '#/components/schemas/BalanceLowData' }
+            example:
+              id: "c4d8e2a0-6b1f-4a3c-9e7d-2f5b8a1c6e93"
+              event: balance.low
+              data: { balance: 950, threshold: 1000 }
+              timestamp: 1794046500
+      responses:
+        '200':
+          description: Accusé de réception.
+  test.ping:
+    post:
+      operationId: onTestPing
+      summary: Événement de test
+      description: Envoyé uniquement par le bouton « Tester » de l'espace client (Développeurs > Webhooks).
+      parameters:
+        - $ref: '#/components/parameters/WebhookSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/WebhookEnvelope'
+                - type: object
+                  properties:
+                    event: { const: test.ping }
+                    data: { type: object }
+      responses:
+        '200':
+          description: Accusé de réception.
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: "lsk_live_… | lsk_test_…"
+      description: Clé API du compte. À garder côté serveur.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API.
+      schema: { type: string, maxLength: 255 }
+    Page:
+      name: page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, default: 1 }
+    WebhookSignature:
+      name: X-Signature
+      in: header
+      required: true
+      description: "`sha256=` suivi du HMAC-SHA256 hexadécimal du corps brut, avec le secret de l'endpoint."
+      schema: { type: string, pattern: '^sha256=[0-9a-f]{64}$' }
+
+  headers:
+    X-RateLimit-Limit:
+      description: Nombre de requêtes autorisées par minute.
+      schema: { type: integer }
+    X-RateLimit-Remaining:
+      description: Requêtes restantes dans la minute en cours.
+      schema: { type: integer }
+
+  schemas:
+    PhoneNumber:
+      type: string
+      description: Numéro international (sans `+` de préférence) ou format local RDC.
+      examples: ["243812345678", "+243812345678", "0812345678"]
+
+    SendSmsRequest:
+      type: object
+      required: [body]
+      properties:
+        recipient:
+          $ref: '#/components/schemas/PhoneNumber'
+          description: Un destinataire (alternative à `recipients`).
+        recipients:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items: { $ref: '#/components/schemas/PhoneNumber' }
+          description: Plusieurs destinataires (alternative à `recipient`). Tout ou rien.
+        body:
+          type: string
+          minLength: 1
+          maxLength: 1600
+        sender:
+          type: string
+          maxLength: 11
+          description: Sender ID approuvé du compte. Par défaut, l'expéditeur de la plateforme.
+        reference:
+          type: string
+          maxLength: 64
+          description: |
+            Référence libre de l'intégrateur (n° de commande…), renvoyée dans `Message.reference`
+            et filtrable (`GET /sms?reference=`). Non unique : un envoi multiple la partage.
+
+    EstimateSmsRequest:
+      type: object
+      required: [body, recipients]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 1600 }
+        recipients:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/PhoneNumber' }
+
+    MessageStatus:
+      type: string
+      description: |
+        - `queued` : en file chez Labyrinthe ;
+        - `submitted` : transmis au fournisseur ;
+        - `sent` : accepté par l'opérateur ;
+        - `delivered` : remis au téléphone (final) ;
+        - `failed`, `rejected`, `expired`, `undeliverable` : échec (final).
+      enum: [queued, submitted, sent, delivered, failed, rejected, expired, undeliverable]
+
+    Message:
+      type: object
+      description: Le texte du message n'est pas renvoyé (il peut contenir un code OTP).
+      required: [id, reference, recipient, sender, encoding, status, segments, credits_charged, campaign_id,
+        provider_message_id, error_code, error_message, created_at, submitted_at, delivered_at]
+      properties:
+        id: { type: string, format: uuid }
+        reference: { type: [string, 'null'], description: Référence fournie à l'envoi. }
+        recipient: { type: string, examples: ["243812345678"] }
+        sender: { type: string, description: Expéditeur affiché sur le téléphone. }
+        encoding: { type: string, enum: [gsm7, ucs2] }
+        status: { $ref: '#/components/schemas/MessageStatus' }
+        segments: { type: integer, minimum: 1 }
+        credits_charged:
+          type: integer
+          minimum: 0
+          description: Crédits débités (égal à `segments` ; débit fictif avec une clé de test).
+        campaign_id: { type: [string, 'null'], description: Campagne d'origine (messages envoyés depuis l'espace client). }
+        provider_message_id: { type: [string, 'null'] }
+        error_code: { type: [string, 'null'] }
+        error_message: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        submitted_at: { type: [string, 'null'], format: date-time, description: Transmission au fournisseur. }
+        delivered_at: { type: [string, 'null'], format: date-time, description: Accusé de remise. }
+
+    Estimate:
+      type: object
+      required: [encoding, characters, segments_per_message, recipients_count, total_credits, balance_after]
+      properties:
+        encoding: { type: string, enum: [gsm7, ucs2] }
+        characters: { type: integer }
+        segments_per_message: { type: integer }
+        recipients_count: { type: integer, description: Destinataires valides. }
+        total_credits: { type: integer }
+        balance_after:
+          type: [integer, 'null']
+          description: Solde après envoi (négatif si insuffisant) ; `null` si le compte n'a jamais eu de crédits.
+
+    Balance:
+      type: object
+      required: [balance, held]
+      properties:
+        balance: { type: integer, description: Crédits disponibles. }
+        held: { type: integer, description: Crédits bloqués par des campagnes en cours. }
+
+    SenderIdStatus:
+      type: string
+      enum: [pending, pending_provider, approved, rejected, suspended]
+
+    SenderId:
+      type: object
+      required: [id, value, status, is_default]
+      properties:
+        id: { type: string, format: uuid }
+        value: { type: string, maxLength: 11, examples: ["MABOUTIQUE"] }
+        status: { $ref: '#/components/schemas/SenderIdStatus' }
+        purpose: { type: [string, 'null'] }
+        rejection_reason: { type: [string, 'null'] }
+        is_default: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    SendOtpRequest:
+      type: object
+      required: [phone]
+      properties:
+        phone: { $ref: '#/components/schemas/PhoneNumber' }
+        template:
+          type: string
+          maxLength: 1600
+          description: |
+            Doit contenir `{code}`. Jetons facultatifs : `{app_name}`, `{minutes}`.
+            Par défaut : modèle des paramètres OTP du compte, sinon modèle standard de la langue.
+        locale:
+          type: string
+          enum: [fr, en]
+          description: Langue du modèle standard. Par défaut, celle des paramètres OTP du compte.
+
+    OtpSendResult:
+      type: object
+      required: [otp_id, expires_at, max_attempts]
+      properties:
+        otp_id: { type: string, format: uuid }
+        expires_at: { type: string, format: date-time }
+        max_attempts: { type: integer, minimum: 1 }
+        test_code:
+          type: string
+          description: Présent **uniquement** avec une clé `lsk_test_…` (aucun SMS envoyé). Jamais en live.
+
+    VerifyOtpRequest:
+      type: object
+      required: [otp_id, code]
+      properties:
+        otp_id: { type: string }
+        code: { type: string, maxLength: 20 }
+
+    OtpVerifyResult:
+      type: object
+      required: [verified, reason]
+      properties:
+        verified: { type: boolean }
+        reason:
+          description: "`null` si `verified` est vrai."
+          oneOf:
+            - type: 'null'
+            - type: string
+              enum: [invalid_code, expired, already_used, max_attempts_reached]
+
+    Paginated:
+      type: object
+      description: Pagination standard (liens et métadonnées).
+      required: [links, meta]
+      properties:
+        links:
+          type: object
+          properties:
+            first: { type: [string, 'null'] }
+            last: { type: [string, 'null'] }
+            prev: { type: [string, 'null'] }
+            next: { type: [string, 'null'] }
+        meta:
+          type: object
+          required: [current_page, last_page, per_page, total]
+          properties:
+            current_page: { type: integer }
+            from: { type: [integer, 'null'] }
+            last_page: { type: integer }
+            path: { type: string }
+            per_page: { type: integer }
+            to: { type: [integer, 'null'] }
+            total: { type: integer }
+
+    ErrorCode:
+      type: string
+      description: |
+        Codes connus (liste ouverte : un SDK doit accepter un code inconnu).
+      examples:
+        - UNAUTHENTICATED
+        - FORBIDDEN
+        - NOT_FOUND
+        - VALIDATION_ERROR
+        - TOO_MANY_REQUESTS
+        - INSUFFICIENT_CREDITS
+        - IDEMPOTENCY_KEY_REUSED
+        - RECIPIENT_NOT_SENDABLE
+        - SENDER_ID_NOT_APPROVED
+        - INVALID_PHONE
+        - INVALID_OTP_TEMPLATE
+        - OTP_RESEND_TOO_SOON
+        - OTP_RATE_LIMITED
+        - OTP_DISABLED_FOR_ACCOUNT
+        - OTP_SERVICE_DISABLED
+        - HTTP_ERROR
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code: { $ref: '#/components/schemas/ErrorCode' }
+            message: { type: string }
+            details:
+              type: [object, array]
+              description: Objet (souvent vide) ; contenu selon `code`.
+
+    ValidationError:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code: { const: VALIDATION_ERROR }
+                details:
+                  type: object
+                  description: Messages d'erreur par champ.
+                  additionalProperties:
+                    type: array
+                    items: { type: string }
+                  examples:
+                    - { body: ["Le champ body est obligatoire."] }
+
+    InsufficientCreditsError:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code: { const: INSUFFICIENT_CREDITS }
+                details:
+                  type: object
+                  required: [available, required]
+                  properties:
+                    available: { type: integer }
+                    required: { type: integer }
+
+    RecipientNotSendableError:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code: { const: RECIPIENT_NOT_SENDABLE }
+                details:
+                  type: object
+                  required: [reason]
+                  properties:
+                    reason:
+                      $ref: '#/components/schemas/RejectionReason'
+                      description: Motif du premier refus.
+                    rejected:
+                      type: array
+                      description: Tous les destinataires refusés (envoi `POST /sms`).
+                      items:
+                        type: object
+                        required: [recipient, reason]
+                        properties:
+                          recipient: { type: string, description: "Numéro tel que reçu, ou normalisé." }
+                          reason: { $ref: '#/components/schemas/RejectionReason' }
+
+    RejectionReason:
+      type: string
+      enum: [invalid_phone, blacklisted, opted_out]
+
+    TooManyRequestsError:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code: { const: TOO_MANY_REQUESTS }
+                details:
+                  type: object
+                  properties:
+                    retry_after_seconds: { type: integer, minimum: 0 }
+
+    OtpResendTooSoonError:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code: { const: OTP_RESEND_TOO_SOON }
+                details:
+                  type: object
+                  required: [retry_after_seconds]
+                  properties:
+                    retry_after_seconds: { type: integer, minimum: 1 }
+
+    OtpRateLimitedError:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code: { const: OTP_RATE_LIMITED }
+                details:
+                  type: object
+                  required: [scope, limit]
+                  properties:
+                    scope: { type: string, enum: [phone, account] }
+                    limit: { type: integer }
+
+    WebhookEnvelope:
+      type: object
+      description: |
+        Corps de chaque événement webhook, envoyé en `POST` `application/json`.
+
+        **Vérification** : calculer `HMAC-SHA256(secret, corps brut)` en hexadécimal et comparer en
+        temps constant à l'en-tête `X-Signature` (sans le préfixe `sha256=`). Toujours vérifier sur le
+        corps **brut**, avant tout parsing JSON. Rejeter un `timestamp` trop ancien (ex. > 5 min) pour
+        éviter le rejeu.
+
+        **Livraison** : toute réponse 2xx dans les 10 s vaut accusé de réception. Sinon, jusqu'à
+        5 tentatives (après 30 s, 2 min, 5 min, 15 min). Un même événement peut donc arriver plusieurs
+        fois : dédoublonner sur `id`, identique d'une tentative à l'autre. L'ordre d'arrivée n'est
+        pas garanti.
+
+        En-têtes informatifs : `X-Webhook-Id` (= `id`), `X-Webhook-Event` (= `event`),
+        `X-Webhook-Timestamp` (= `timestamp`). Seul le corps signé fait foi.
+      required: [id, event, data, timestamp]
+      properties:
+        id: { type: string, format: uuid, description: "Identifiant de l'événement, stable entre les tentatives." }
+        event: { type: string, enum: [message.status_changed, campaign.completed, balance.low, test.ping] }
+        data: { type: object }
+        timestamp: { type: integer, description: Horodatage Unix (secondes) de l'envoi de cette tentative. }
+
+    CampaignCompletedData:
+      type: object
+      required: [campaign_id, name, recipients_count, messages_by_status, credits_charged, completed_at]
+      properties:
+        campaign_id: { type: string, format: uuid }
+        name: { type: string }
+        recipients_count: { type: integer }
+        messages_by_status:
+          type: object
+          description: Nombre de messages par statut final.
+          additionalProperties: { type: integer }
+        credits_charged: { type: integer }
+        completed_at: { type: [string, 'null'], format: date-time }
+
+    BalanceLowData:
+      type: object
+      required: [balance, threshold]
+      properties:
+        balance: { type: integer, description: Solde après l'opération qui a franchi le seuil. }
+        threshold: { type: integer }
+
+    MessageStatusChangedData:
+      type: object
+      required: [message_id, recipient, status, provider_message_id, campaign_id]
+      properties:
+        message_id: { type: string, format: uuid }
+        recipient: { type: string }
+        status: { $ref: '#/components/schemas/MessageStatus' }
+        provider_message_id: { type: [string, 'null'] }
+        campaign_id: { type: [string, 'null'], format: uuid }
+
+  responses:
+    Unauthenticated:
+      description: "`UNAUTHENTICATED` : clé absente, invalide ou révoquée."
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: { code: UNAUTHENTICATED, message: "Clé API invalide.", details: {} } }
+    Forbidden:
+      description: "`FORBIDDEN` : adresse IP non autorisée pour cette clé."
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: "`NOT_FOUND` : ressource introuvable pour ce compte."
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: "`VALIDATION_ERROR` : données invalides (`details` par champ)."
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ValidationError' }
+    TooManyRequests:
+      description: "`TOO_MANY_REQUESTS` : limite de requêtes atteinte. Réessayer après `Retry-After` secondes."
+      headers:
+        Retry-After:
+          description: Secondes à attendre avant de réessayer.
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/TooManyRequestsError' }
