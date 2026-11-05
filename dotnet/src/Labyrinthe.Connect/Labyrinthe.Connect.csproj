@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.0;net8.0</TargetFrameworks>
+    <RootNamespace>Labyrinthe.Connect</RootNamespace>
+    <AssemblyName>Labyrinthe.Connect</AssemblyName>
+    <PackageId>Labyrinthe.Connect</PackageId>
+    <Title>Labyrinthe Connect</Title>
+    <Description>Official .NET client for Labyrinthe Connect: send SMS and verify phone numbers with one-time codes (OTP) in the DR Congo and Central Africa. Safe retries with idempotency, typed errors, webhook verification.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <IsTrimmable>true</IsTrimmable>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <!-- netstandard2.0 : System.Text.Json et IAsyncEnumerable viennent de packages (intégrés à net8.0). -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Labyrinthe.Connect.Tests" />
+  </ItemGroup>
+
+</Project>
