@@ -1,0 +1,86 @@
+# SDK .NET (dotnet/) : format, build -warnaserror, tests unitaires + contrat OpenAPI et pack,
+# avec les SDK .NET 8 et 9, sur Linux et Windows. Les tests d'intégration sont ignorés sans LABYRINTHE_API_KEY.
+name: dotnet
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dotnet/**'
+      - 'openapi/**'
+      - '.github/workflows/dotnet.yml'
+  pull_request:
+    paths:
+      - 'dotnet/**'
+      - 'openapi/**'
+      - '.github/workflows/dotnet.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dotnet-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: dotnet
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+
+jobs:
+  build:
+    name: SDK ${{ matrix.sdk }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        sdk: ['8.0.x', '9.0.x']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # SourceLink / builds déterministes
+
+      # Le runtime 8.0 est toujours installé : les tests ciblent net8.0. global.json (rollForward latestMajor)
+      # sélectionne le SDK le plus récent installé, donc celui de la matrice.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            ${{ matrix.sdk }}
+
+      - run: dotnet --info
+
+      - run: dotnet restore Labyrinthe.Connect.sln
+
+      - name: Format
+        run: dotnet format Labyrinthe.Connect.sln --verify-no-changes --no-restore
+
+      - name: Build (warnings are errors)
+        run: dotnet build Labyrinthe.Connect.sln -c Release --no-restore -warnaserror
+
+      - name: Unit + OpenAPI contract tests
+        run: dotnet test Labyrinthe.Connect.sln -c Release --no-build --logger "trx;LogFileName=results.trx" --collect "XPlat Code Coverage" --results-directory TestResults
+
+      - name: Pack (nupkg + snupkg)
+        run: |
+          dotnet pack src/Labyrinthe.Connect/Labyrinthe.Connect.csproj -c Release --no-build -o artifacts -warnaserror
+          dotnet pack src/Labyrinthe.Connect.AspNetCore/Labyrinthe.Connect.AspNetCore.csproj -c Release --no-build -o artifacts -warnaserror
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest' && matrix.sdk == '8.0.x'
+        with:
+          name: dotnet-packages
+          path: dotnet/artifacts/
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dotnet-test-results-${{ matrix.os }}-${{ matrix.sdk }}
+          path: dotnet/TestResults/
+          if-no-files-found: ignore
