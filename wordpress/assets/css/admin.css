@@ -1,0 +1,81 @@
+/* Pages d'administration de Labyrinthe Connect (couleurs de l'administration WordPress). */
+.labyrinthe-connect .labyrinthe-badge {
+	border-radius: 3px;
+	font-size: 12px;
+	font-weight: 600;
+	margin-left: 8px;
+	padding: 2px 8px;
+	vertical-align: middle;
+}
+
+.labyrinthe-badge--test {
+	background: #fcf9e8;
+	border: 1px solid #dba617;
+	color: #6d4c00;
+}
+
+.labyrinthe-badge--live {
+	background: #edfaef;
+	border: 1px solid #00a32a;
+	color: #005c12;
+}
+
+.labyrinthe-connect .labyrinthe-statuses textarea {
+	min-width: 0;
+}
+
+.labyrinthe-connect .labyrinthe-statuses .check-column {
+	padding-top: 14px;
+	vertical-align: top;
+}
+
+.labyrinthe-counter--unicode {
+	color: #996800;
+}
+
+.labyrinthe-result {
+	margin: 8px 0 0;
+}
+
+.labyrinthe-result--ok {
+	color: #007017;
+}
+
+.labyrinthe-result--error,
+.labyrinthe-error {
+	color: #b32d2e;
+}
+
+.labyrinthe-variables {
+	margin: 12px 0 24px;
+}
+
+.labyrinthe-variables summary {
+	cursor: pointer;
+	font-weight: 600;
+}
+
+.labyrinthe-status {
+	border-radius: 3px;
+	display: inline-block;
+	padding: 1px 6px;
+}
+
+.labyrinthe-status--ok {
+	background: #edfaef;
+	color: #005c12;
+}
+
+.labyrinthe-status--fail {
+	background: #fcf0f1;
+	color: #8a2424;
+}
+
+.labyrinthe-status--pending {
+	background: #f0f6fc;
+	color: #043959;
+}
+
+.labyrinthe-muted {
+	color: #646970;
+}

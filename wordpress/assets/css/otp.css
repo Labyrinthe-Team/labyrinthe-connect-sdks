@@ -1,0 +1,91 @@
+/* Formulaire OTP de Labyrinthe Connect : discret, hérite des styles du thème. */
+.labyrinthe-otp {
+	margin: 1em 0;
+}
+
+.labyrinthe-otp__title {
+	margin: 0 0 0.5em;
+}
+
+.labyrinthe-otp__toggle-wrap {
+	margin: 0.5em 0;
+}
+
+.labyrinthe-otp__toggle {
+	background: none;
+	border: 0;
+	color: inherit;
+	cursor: pointer;
+	padding: 0;
+	text-decoration: underline;
+}
+
+.labyrinthe-otp__step label {
+	display: block;
+	margin-bottom: 0.25em;
+}
+
+.labyrinthe-otp__step input[type="tel"],
+.labyrinthe-otp__step input[type="text"] {
+	box-sizing: border-box;
+	max-width: 100%;
+	width: 100%;
+}
+
+.labyrinthe-otp__code {
+	font-variant-numeric: tabular-nums;
+	letter-spacing: 0.2em;
+}
+
+.labyrinthe-otp__actions {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75em;
+	margin: 0.5em 0;
+}
+
+.labyrinthe-otp__resend {
+	background: none;
+	border: 0;
+	color: inherit;
+	cursor: pointer;
+	padding: 0;
+	text-decoration: underline;
+}
+
+.labyrinthe-otp__resend:disabled {
+	cursor: default;
+	opacity: 0.6;
+	text-decoration: none;
+}
+
+.labyrinthe-otp__remember {
+	display: block;
+	margin: 0.5em 0;
+}
+
+.labyrinthe-otp__message:empty,
+.labyrinthe-otp__test-code[hidden] {
+	display: none;
+}
+
+.labyrinthe-otp__message--error {
+	color: #b32d2e;
+}
+
+.labyrinthe-otp--verified .labyrinthe-otp__message {
+	color: #007017;
+}
+
+.labyrinthe-otp__test-code {
+	background: #fcf9e8;
+	border-left: 4px solid #dba617;
+	padding: 0.5em 0.75em;
+}
+
+/* Page de connexion de WordPress */
+.login .labyrinthe-otp {
+	border-top: 1px solid #dcdcde;
+	padding-top: 0.5em;
+}
