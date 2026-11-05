@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vérification du numéro — démo</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+        font-family: Inter, system-ui, sans-serif;
+        background: #f8faf9;
+      }
+      @media (prefers-color-scheme: dark) {
+        body { background: #111715; }
+      }
+      /* Personnalisation : variables CSS et ::part() */
+      labyrinthe-otp { width: 100%; --lab-otp-radius: 12px; }
+      labyrinthe-otp::part(root) { box-shadow: 0 8px 30px rgb(0 0 0 / 0.08); }
+    </style>
+    <script src="/labyrinthe-otp.min.js" defer></script>
+  </head>
+  <body>
+    <labyrinthe-otp send-url="/api/otp/send" verify-url="/api/otp/verify" locale="fr"></labyrinthe-otp>
+
+    <script>
+      const widget = document.querySelector('labyrinthe-otp');
+      widget.addEventListener('labyrinthe-otp:sent', (e) => console.log('sent to', e.detail.phoneMasked));
+      widget.addEventListener('labyrinthe-otp:error', (e) => console.warn('error', e.detail.code));
+      // UX only: the server already trusted the number in onVerified().
+      widget.addEventListener('labyrinthe-otp:verified', (e) => {
+        const target = e.detail.data && e.detail.data.redirect;
+        if (target) setTimeout(() => location.assign(target), 800);
+      });
+    </script>
+  </body>
+</html>
