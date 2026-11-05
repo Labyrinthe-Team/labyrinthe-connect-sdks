@@ -1,0 +1,69 @@
+# SDK Java (java/) : ./mvnw verify sur JDK 11, 17 et 21.
+# - JDK 11 : cœur (cd.labyrinthe:labyrinthe-connect) + exemples Java, tests unitaires et contrat OpenAPI,
+#   -Xlint:all -Werror, SpotBugs, Javadoc ;
+# - JDK 17 et 21 : en plus le starter Spring Boot, l'exemple Spring Boot et le formatage (Spotless).
+# Les tests d'intégration sont ignorés (pas de LABYRINTHE_API_KEY en CI).
+name: java
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'java/**'
+      - 'openapi/**'
+      - '.github/workflows/java.yml'
+  pull_request:
+    paths:
+      - 'java/**'
+      - 'openapi/**'
+      - '.github/workflows/java.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: java-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: java
+
+jobs:
+  verify:
+    name: JDK ${{ matrix.java }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['11', '17', '21']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+          cache-dependency-path: |
+            java/pom.xml
+            java/*/pom.xml
+            java/.mvn/wrapper/maven-wrapper.properties
+
+      # Unitaires + contrat (../openapi/openapi.yaml), analyse, Javadoc, jars sources et Javadoc.
+      - run: ./mvnw -B -ntp verify
+
+      - name: Install the jar alone and use it without any dependency
+        if: matrix.java == '11'
+        run: |
+          jar="$(ls core/target/labyrinthe-connect-*.jar | grep -v -e sources -e javadoc)"
+          cat > /tmp/Smoke.java <<'EOF'
+          public class Smoke {
+            public static void main(String[] args) {
+              System.out.println(cd.labyrinthe.connect.Version.userAgent());
+              System.out.println(cd.labyrinthe.connect.PhoneNumbers.normalize("0812345678").orElseThrow());
+            }
+          }
+          EOF
+          javac -cp "$jar" -d /tmp /tmp/Smoke.java
+          java -cp "$jar:/tmp" Smoke
