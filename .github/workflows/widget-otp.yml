@@ -1,0 +1,94 @@
+# Widget OTP (widget-otp/) : lint, types, build, taille, publint, attw sur Node 22,
+# puis tests (composant happy-dom, wrapper React, helper serveur) sur Node 20 → 24,
+# et contrôle du build (helper serveur compris) sur Node 18.
+#
+# Les tests utilisent les sources du SDK Node du monorepo (../node/src) : node/** est
+# dans les filtres de chemins.
+name: widget-otp
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'widget-otp/**'
+      - 'node/src/**'
+      - '.github/workflows/widget-otp.yml'
+  pull_request:
+    paths:
+      - 'widget-otp/**'
+      - 'node/src/**'
+      - '.github/workflows/widget-otp.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: widget-otp-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: widget-otp
+
+jobs:
+  quality:
+    name: Lint, types, build, size & package checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: widget-otp/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run check:dist
+      # Budget : 10 kB min+gzip pour le bundle autonome du widget.
+      - run: npm run size
+      - run: npm run publint
+      - run: npm run attw
+
+  tests:
+    name: Tests on Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # happy-dom (DOM simulé des tests) demande Node ≥ 20.
+        node: ['20', '22', '24']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: widget-otp/package-lock.json
+
+      - run: npm ci
+      # Sans réseau : le test d'intégration est ignoré sans LABYRINTHE_API_KEY.
+      - run: npm test
+      - run: npm run build
+      - run: npm run check:dist
+
+  node18:
+    name: Build runs on Node 18
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: npm
+          cache-dependency-path: widget-otp/package-lock.json
+
+      - run: npm ci
+      - run: npm run build
+      # Import sans DOM (SSR) et helper serveur (Web Crypto via node:crypto sur Node 18).
+      - run: npm run check:dist
