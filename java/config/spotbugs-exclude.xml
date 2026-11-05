@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Exclusions SpotBugs, chacune justifiée et limitée au strict nécessaire. -->
+<FindBugsFilter>
+  <!-- Modèles, exceptions et pages : les collections exposées sont non modifiables
+       (Collections.unmodifiable*, List.copyOf) ; les dépendances injectées (Transport, HttpClient)
+       sont partagées volontairement. -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+  </Match>
+
+  <!-- Détails et en-têtes des exceptions : transient (Map d'interface, non sérialisable) ; après
+       désérialisation, les accesseurs renvoient une Map vide. Choix documenté. -->
+  <Match>
+    <Class name="~cd\.labyrinthe\.connect\.exception\.(LabyrintheException|ApiException)"/>
+    <Bug pattern="SE_TRANSIENT_FIELD_NOT_RESTORED"/>
+  </Match>
+
+  <!-- Comparaison exacte voulue : on teste si un double est un entier (d == Math.rint(d)). -->
+  <Match>
+    <Class name="~cd\.labyrinthe\.connect\.internal\.Json(Reader)?"/>
+    <Bug pattern="FE_FLOATING_POINT_EQUALITY"/>
+  </Match>
+</FindBugsFilter>

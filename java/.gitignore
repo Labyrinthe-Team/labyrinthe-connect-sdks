@@ -1,0 +1,12 @@
+# Maven
+target/
+# Maven Wrapper : script seul (distributionType=only-script), jamais de jar dans le dépôt.
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.vscode/

@@ -1,0 +1,343 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Projet parent du SDK Java Labyrinthe Connect.
+
+  Modules :
+  - core                 : cd.labyrinthe:labyrinthe-connect (Java 11+, aucune dépendance d'exécution) ;
+  - spring-boot-starter  : cd.labyrinthe:labyrinthe-connect-spring-boot-starter (Java 17+, Spring Boot 3) ;
+  - examples             : exemples compilés à chaque build, jamais publiés.
+
+  Le starter et l'exemple Spring Boot ne sont construits qu'à partir du JDK 17 (profil « jdk17 ») :
+  sur un JDK 11, seul le cœur est compilé et testé.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>cd.labyrinthe</groupId>
+  <artifactId>labyrinthe-connect-parent</artifactId>
+  <version>1.0.0</version>
+  <packaging>pom</packaging>
+
+  <name>Labyrinthe Connect SDK (parent)</name>
+  <description>Official Java SDK for Labyrinthe Connect: send SMS and verify phone numbers with one-time codes (OTP).</description>
+  <url>https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/tree/main/java</url>
+  <inceptionYear>2026</inceptionYear>
+
+  <organization>
+    <name>Labyrinthe Connect</name>
+    <url>https://labyrinthe-rdc.com</url>
+  </organization>
+
+  <licenses>
+    <license>
+      <name>MIT License</name>
+      <url>https://opensource.org/license/mit</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <id>labyrinthe</id>
+      <name>Labyrinthe Connect</name>
+      <email>connect@labyrinthe-rdc.com</email>
+      <organization>Labyrinthe Connect</organization>
+      <organizationUrl>https://labyrinthe-rdc.com</organizationUrl>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/labyrinthe-rdc/labyrinthe-connect-sdks.git</developerConnection>
+    <url>https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/tree/main/java</url>
+    <tag>HEAD</tag>
+  </scm>
+
+  <issueManagement>
+    <system>GitHub</system>
+    <url>https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/issues</url>
+  </issueManagement>
+
+  <modules>
+    <module>core</module>
+    <module>examples</module>
+  </modules>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <!-- Builds reproductibles. -->
+    <project.build.outputTimestamp>2026-11-06T00:00:00Z</project.build.outputTimestamp>
+    <maven.compiler.release>11</maven.compiler.release>
+
+    <junit.version>5.14.3</junit.version>
+    <snakeyaml.version>2.5</snakeyaml.version>
+    <spring-boot.version>3.5.15</spring-boot.version>
+
+    <spotbugs.version>4.10.4</spotbugs.version>
+    <spotbugs-plugin.version>4.10.4.1</spotbugs-plugin.version>
+    <spotless.version>3.10.4</spotless.version>
+    <google-java-format.version>1.36.1</google-java-format.version>
+
+    <!-- Tests d'intégration : exclus par défaut uniquement si l'on passe -Dgroups=… (voir README). -->
+    <test.groups></test.groups>
+    <test.excludedGroups></test.excludedGroups>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>cd.labyrinthe</groupId>
+        <artifactId>labyrinthe-connect</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>cd.labyrinthe</groupId>
+        <artifactId>labyrinthe-connect-spring-boot-starter</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.yaml</groupId>
+        <artifactId>snakeyaml</artifactId>
+        <version>${snakeyaml.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-clean-plugin</artifactId>
+          <version>3.5.0</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-resources-plugin</artifactId>
+          <version>3.4.0</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.15.0</version>
+          <configuration>
+            <release>${maven.compiler.release}</release>
+            <showWarnings>true</showWarnings>
+            <compilerArgs>
+              <arg>-Xlint:all</arg>
+              <arg>-Werror</arg>
+            </compilerArgs>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>3.5.6</version>
+          <configuration>
+            <groups>${test.groups}</groups>
+            <excludedGroups>${test.excludedGroups}</excludedGroups>
+            <trimStackTrace>false</trimStackTrace>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>3.5.0</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-source-plugin</artifactId>
+          <version>3.4.0</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-javadoc-plugin</artifactId>
+          <version>3.12.0</version>
+          <configuration>
+            <doclint>all,-missing</doclint>
+            <failOnWarnings>true</failOnWarnings>
+            <quiet>true</quiet>
+            <notimestamp>true</notimestamp>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-install-plugin</artifactId>
+          <version>3.1.4</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-deploy-plugin</artifactId>
+          <version>3.1.4</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-gpg-plugin</artifactId>
+          <version>3.2.8</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-enforcer-plugin</artifactId>
+          <version>3.6.2</version>
+        </plugin>
+        <plugin>
+          <groupId>org.sonatype.central</groupId>
+          <artifactId>central-publishing-maven-plugin</artifactId>
+          <version>0.10.0</version>
+        </plugin>
+        <plugin>
+          <groupId>com.github.spotbugs</groupId>
+          <artifactId>spotbugs-maven-plugin</artifactId>
+          <version>${spotbugs-plugin.version}</version>
+          <dependencies>
+            <dependency>
+              <groupId>com.github.spotbugs</groupId>
+              <artifactId>spotbugs</artifactId>
+              <version>${spotbugs.version}</version>
+            </dependency>
+          </dependencies>
+          <configuration>
+            <effort>Max</effort>
+            <threshold>Low</threshold>
+            <failOnError>true</failOnError>
+            <excludeFilterFile>${maven.multiModuleProjectDirectory}/config/spotbugs-exclude.xml</excludeFilterFile>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>com.diffplug.spotless</groupId>
+          <artifactId>spotless-maven-plugin</artifactId>
+          <version>${spotless.version}</version>
+          <configuration>
+            <!-- LF partout (CI Linux, .gitattributes), quel que soit le système du développeur. -->
+            <lineEndings>UNIX</lineEndings>
+            <java>
+              <googleJavaFormat>
+                <version>${google-java-format.version}</version>
+                <style>GOOGLE</style>
+              </googleJavaFormat>
+              <removeUnusedImports/>
+            </java>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>enforce</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireMavenVersion>
+                  <version>[3.9,)</version>
+                </requireMavenVersion>
+                <requireJavaVersion>
+                  <version>[11,)</version>
+                </requireJavaVersion>
+                <dependencyConvergence/>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <!-- JDK 17+ : starter Spring Boot, exemple Spring Boot et formatage (google-java-format exige Java 17). -->
+    <profile>
+      <id>jdk17</id>
+      <activation>
+        <jdk>[17,)</jdk>
+      </activation>
+      <modules>
+        <module>spring-boot-starter</module>
+      </modules>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>com.diffplug.spotless</groupId>
+            <artifactId>spotless-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>check-format</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>check</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+
+    <!-- Tests d'intégration seuls : ./mvnw verify -Pintegration (LABYRINTHE_API_KEY=lsk_test_… requis). -->
+    <profile>
+      <id>integration</id>
+      <properties>
+        <test.groups>integration</test.groups>
+      </properties>
+    </profile>
+
+    <!-- Publication sur Maven Central : ./mvnw -Prelease deploy (voir .github/workflows/java-release.yml). -->
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+                <configuration>
+                  <!-- La phrase de passe vient de MAVEN_GPG_PASSPHRASE (jamais en ligne de commande). -->
+                  <bestPractices>true</bestPractices>
+                  <gpgArguments>
+                    <arg>--pinentry-mode</arg>
+                    <arg>loopback</arg>
+                  </gpgArguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <extensions>true</extensions>
+            <configuration>
+              <!-- Identifiants dans settings.xml, serveur « central » (MAVEN_CENTRAL_USERNAME / PASSWORD). -->
+              <publishingServerId>central</publishingServerId>
+              <autoPublish>true</autoPublish>
+              <waitUntil>published</waitUntil>
+              <excludeArtifacts>
+                <artifact>labyrinthe-connect-examples</artifact>
+              </excludeArtifacts>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+</project>
