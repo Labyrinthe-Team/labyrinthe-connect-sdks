@@ -1,0 +1,88 @@
+# Publication du SDK Java sur Maven Central, déclenchée par un tag java-vX.Y.Z.
+# Artefacts publiés : cd.labyrinthe:labyrinthe-connect-parent (pom), cd.labyrinthe:labyrinthe-connect,
+# cd.labyrinthe:labyrinthe-connect-spring-boot-starter (jars, sources, Javadoc, signatures GPG).
+# Le module examples n'est jamais publié.
+#
+# Prérequis (une seule fois) :
+#   - espace de noms cd.labyrinthe vérifié sur https://central.sonatype.com (preuve DNS sur labyrinthe.cd,
+#     ou groupId à adapter : voir java/README, points ouverts) ;
+#   - environnement GitHub « maven-central » (Settings > Environments), relecteurs obligatoires conseillés,
+#     tags limités à java-v* ;
+#   - secrets de cet environnement :
+#       MAVEN_CENTRAL_USERNAME / MAVEN_CENTRAL_PASSWORD : jeton utilisateur du portail Central
+#         (Account > Generate User Token), pas le mot de passe du compte ;
+#       GPG_PRIVATE_KEY : clé privée armurée (gpg --armor --export-secret-keys <id>), clé publique
+#         envoyée sur keys.openpgp.org ;
+#       GPG_PASSPHRASE : sa phrase de passe.
+#
+# Prérequis par version : <version> de java/pom.xml et des pom des modules = X.Y.Z (le build vérifie
+# que la constante Version.VERSION, lue depuis le pom, correspond) et CHANGELOG à jour.
+name: java-release
+
+on:
+  push:
+    tags:
+      - 'java-v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: java-release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: java
+
+jobs:
+  publish:
+    name: Publish to Maven Central
+    runs-on: ubuntu-latest
+    environment:
+      name: maven-central
+      url: https://central.sonatype.com/artifact/cd.labyrinthe/labyrinthe-connect
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: |
+            java/pom.xml
+            java/*/pom.xml
+          # Écrit ~/.m2/settings.xml (serveur « central ») et importe la clé GPG.
+          server-id: central
+          server-username: MAVEN_CENTRAL_USERNAME
+          server-password: MAVEN_CENTRAL_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+      - name: Check that the tag matches the project version
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#java-v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag $TAG is not a release version (expected java-vX.Y.Z or java-vX.Y.Z-rc.N)"; exit 1
+          fi
+          for module in . core spring-boot-starter examples; do
+            actual="$(./mvnw -B -ntp -q -f "$module/pom.xml" help:evaluate -Dexpression=project.version -DforceStdout)"
+            if [[ "$actual" != "$version" ]]; then
+              echo "::error::$module/pom.xml is $actual, but the tag is $version"; exit 1
+            fi
+          done
+          if [[ "$version" == *-SNAPSHOT ]]; then
+            echo "::error::SNAPSHOT versions are not released"; exit 1
+          fi
+
+      # verify complet (tests, analyse, Javadoc) puis signature et envoi au portail Central.
+      - name: Build, sign and publish
+        run: ./mvnw -B -ntp -Prelease deploy
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
