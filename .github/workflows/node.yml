@@ -1,0 +1,71 @@
+# SDK Node.js / TypeScript (node/) : lint, types, build, publint, attw sur Node 22,
+# puis tests unitaires + contrat OpenAPI et contrôle du build sur Node 18 → 24.
+name: node
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'node/**'
+      - 'openapi/**'
+      - '.github/workflows/node.yml'
+  pull_request:
+    paths:
+      - 'node/**'
+      - 'openapi/**'
+      - '.github/workflows/node.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: node-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: node
+
+jobs:
+  quality:
+    name: Lint, types, build & package checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: node/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run check:dist
+      - run: npm run publint
+      - run: npm run attw
+
+  tests:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['18', '20', '22', '24']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: node/package-lock.json
+
+      - run: npm ci
+      # Tests unitaires + contrat (../openapi/openapi.yaml). Sans réseau : l'intégration est ignorée sans LABYRINTHE_API_KEY.
+      - run: npm test
+      # Le build doit s'importer (ESM) et se charger (CJS) sur chaque version supportée.
+      - run: npm run build
+      - run: npm run check:dist
