@@ -1,0 +1,77 @@
+# Spécification OpenAPI (openapi/) : validation Redocly, et en option comparaison
+# avec les routes du backend (nécessite l'accès au dépôt privé du backend).
+#
+# Pour activer `check-routes` :
+#   - variable de dépôt  LABYRINTHE_BACKEND_REPOSITORY = "organisation/labyrinthe-connect-backend"
+#   - secret             LABYRINTHE_BACKEND_TOKEN      = jeton (fine-grained, lecture seule « Contents ») sur ce dépôt
+name: openapi
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'openapi/**'
+      - '.github/workflows/openapi.yml'
+  pull_request:
+    paths:
+      - 'openapi/**'
+      - '.github/workflows/openapi.yml'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: openapi
+
+jobs:
+  lint:
+    name: Lint (Redocly)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: openapi/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+
+  check-routes:
+    name: Spec ↔ backend routes
+    if: ${{ vars.LABYRINTHE_BACKEND_REPOSITORY != '' }}
+    runs-on: ubuntu-latest
+    env:
+      LABYRINTHE_BACKEND_DIR: ${{ github.workspace }}/backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.LABYRINTHE_BACKEND_REPOSITORY }}
+          token: ${{ secrets.LABYRINTHE_BACKEND_TOKEN }}
+          path: backend
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Prepare the backend (no database needed for route:list)
+        working-directory: backend
+        run: |
+          composer install --no-interaction --no-progress --prefer-dist
+          cp .env.example .env
+          php artisan key:generate
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: openapi/package-lock.json
+
+      - run: npm ci
+      - run: npm run check:routes
