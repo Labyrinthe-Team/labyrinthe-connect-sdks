@@ -1,0 +1,13 @@
+{
+    "name": "labyrinthe/connect-wordpress-tools-php-scoper",
+    "description": "Isolated install of PHP-Scoper (dependency prefixing), pinned by composer.lock for reproducible builds.",
+    "type": "project",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=8.2",
+        "humbug/php-scoper": "^0.18"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

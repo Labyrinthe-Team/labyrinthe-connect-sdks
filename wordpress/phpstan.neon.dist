@@ -1,0 +1,19 @@
+# PHPStan : WordPress (szepeviktor/phpstan-wordpress, chargé par phpstan/extension-installer)
+# et WooCommerce (php-stubs/woocommerce-stubs). Le SDK préfixé est lu dans vendor-prefixed/.
+parameters:
+    level: 8
+    paths:
+        - labyrinthe-connect.php
+        - uninstall.php
+        - includes
+        - blocks/otp-login/index.asset.php
+    scanDirectories:
+        - vendor-prefixed
+    scanFiles:
+        - vendor/php-stubs/woocommerce-stubs/woocommerce-stubs.php
+        - vendor/php-stubs/woocommerce-stubs/woocommerce-packages-stubs.php
+        - tests/stubs/woocommerce-store-api.php
+    bootstrapFiles:
+        - tests/phpstan-bootstrap.php
+    tmpDir: .phpstan.cache
+    treatPhpDocTypesAsCertain: false

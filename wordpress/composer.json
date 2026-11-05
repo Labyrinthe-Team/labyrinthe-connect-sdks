@@ -1,0 +1,106 @@
+{
+    "name": "labyrinthe/connect-wordpress",
+    "description": "Official WordPress / WooCommerce plugin for Labyrinthe Connect: order SMS notifications, OTP phone verification and login (DR Congo and Central Africa).",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "keywords": [
+        "labyrinthe",
+        "labyrinthe-connect",
+        "wordpress",
+        "woocommerce",
+        "sms",
+        "otp",
+        "drc",
+        "congo",
+        "rdc"
+    ],
+    "homepage": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/tree/main/wordpress",
+    "authors": [
+        {
+            "name": "Labyrinthe Connect",
+            "email": "connect@labyrinthe-rdc.com",
+            "homepage": "https://labyrinthe-rdc.com"
+        }
+    ],
+    "support": {
+        "email": "connect@labyrinthe-rdc.com",
+        "issues": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/issues"
+    },
+    "require": {
+        "php": ">=8.1",
+        "labyrinthe/connect-php": "^1.0"
+    },
+    "require-dev": {
+        "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+        "php-stubs/woocommerce-stubs": "^9.0 || ^10.0",
+        "phpcompatibility/phpcompatibility-wp": "^2.1",
+        "phpstan/extension-installer": "^1.4",
+        "phpstan/phpstan": "^2.1",
+        "phpunit/phpunit": "^9.6",
+        "szepeviktor/phpstan-wordpress": "^2.0",
+        "wp-coding-standards/wpcs": "^3.1",
+        "wp-phpunit/wp-phpunit": "^6.4 || ^7.0",
+        "yoast/phpunit-polyfills": "^2.0 || ^3.0 || ^4.0"
+    },
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../php",
+            "options": {
+                "symlink": false,
+                "versions": {
+                    "labyrinthe/connect-php": "1.0.0"
+                }
+            }
+        }
+    ],
+    "autoload-dev": {
+        "psr-4": {
+            "LabyrintheConnect\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "prefix-dependencies": "@php bin/prefix-dependencies.php",
+        "post-install-cmd": "@prefix-dependencies",
+        "post-update-cmd": "@prefix-dependencies",
+        "install-wp-tests": "@php bin/install-wp-tests.php",
+        "lint": "phpcs",
+        "format": "phpcbf",
+        "analyse": "phpstan analyse --memory-limit=1G",
+        "test": "phpunit --exclude-group integration",
+        "test:integration": "phpunit --group integration",
+        "i18n": "@php bin/i18n.php",
+        "build": "@php bin/build-zip.php",
+        "check": [
+            "@lint",
+            "@analyse",
+            "@test"
+        ]
+    },
+    "scripts-descriptions": {
+        "prefix-dependencies": "Copy the runtime dependencies (PHP SDK, Guzzle, PSR) into vendor-prefixed/ under the LabyrintheConnect\\Vendor namespace (PHP-Scoper).",
+        "install-wp-tests": "Download WordPress and WooCommerce into .wp-tests/ and create the test database.",
+        "lint": "PHPCS with the WordPress Coding Standards.",
+        "format": "Fix what PHPCS can fix.",
+        "analyse": "PHPStan (WordPress + WooCommerce stubs).",
+        "test": "PHPUnit with the WordPress test suite (needs MySQL, see README).",
+        "test:integration": "Tests against a real backend (needs LABYRINTHE_API_KEY).",
+        "i18n": "Regenerate languages/*.pot and compile the .mo / .json files (WP-CLI).",
+        "build": "Build dist/labyrinthe-connect.zip.",
+        "check": "Lint, analyse and test."
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true,
+            "phpstan/extension-installer": true
+        },
+        "platform": {
+            "php": "8.1.0"
+        },
+        "platform-check": false,
+        "preferred-install": "dist",
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

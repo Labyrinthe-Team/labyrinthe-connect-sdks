@@ -1,0 +1,15 @@
+{
+    "name": "labyrinthe/connect-wordpress-tools-wp-cli",
+    "description": "Isolated install of WP-CLI and its i18n command (make-pot, make-mo, make-json).",
+    "type": "project",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=8.1",
+        "wp-cli/extension-command": "^2.1",
+        "wp-cli/i18n-command": "^2.6",
+        "wp-cli/wp-cli": "^2.11"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

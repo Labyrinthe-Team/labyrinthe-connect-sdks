@@ -1,0 +1,9 @@
+# Généré par composer install (bin/prefix-dependencies.php) et composer build
+vendor-prefixed/
+dist/
+
+# WordPress, WooCommerce et configuration de la suite de tests (bin/install-wp-tests.php)
+.wp-tests/
+
+# Outils de build installés (versions figées par tools/*/composer.lock)
+tools/*/vendor/
