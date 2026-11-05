@@ -1,0 +1,87 @@
+# Publie chaque package dans son dépôt miroir en lecture seule, que Packagist lit
+# (Packagist exige un composer.json à la racine du dépôt) :
+#
+#   php/      → labyrinthe-connect-php      (labyrinthe/connect-php)
+#   laravel/  → labyrinthe-connect-laravel  (labyrinthe/connect-laravel)
+#
+# - push sur main      : la branche main du miroir est mise à jour (versions dev-main) ;
+# - tag php-vX.Y.Z     : le miroir PHP reçoit le tag vX.Y.Z (nouvelle version Packagist) ;
+# - tag laravel-vX.Y.Z : idem pour le miroir Laravel.
+#
+# Secret requis : MONOREPO_SPLIT_TOKEN, jeton GitHub (fine-grained) avec « Contents: Read and write »
+# sur les deux dépôts miroirs. Le GITHUB_TOKEN par défaut ne peut pas pousser vers un autre dépôt.
+# Variable facultative : SPLIT_ORGANIZATION (par défaut, le propriétaire de ce dépôt).
+name: split
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'php-v*'
+      - 'laravel-v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: split-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  split:
+    name: Split ${{ matrix.package.directory }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - { directory: php, repository: labyrinthe-connect-php, tag_prefix: php-v }
+          - { directory: laravel, repository: labyrinthe-connect-laravel, tag_prefix: laravel-v }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve target
+        id: target
+        shell: bash
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          PREFIX: ${{ matrix.package.tag_prefix }}
+        run: |
+          if [[ "$REF_TYPE" == "tag" ]]; then
+            if [[ "$REF_NAME" != "$PREFIX"* ]]; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"   # tag d'un autre package
+              exit 0
+            fi
+            version="${REF_NAME#"$PREFIX"}"
+            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::Tag $REF_NAME is not SemVer (expected ${PREFIX}X.Y.Z)"
+              exit 1
+            fi
+            echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      # Le dépôt « path » vers ../php ne sert qu'au développement dans le monorepo :
+      # on le retire du composer.json publié (en production : labyrinthe/connect-php ^1.0 depuis Packagist).
+      - name: Drop development-only repositories
+        if: steps.target.outputs.skip == 'false' && matrix.package.directory == 'laravel'
+        run: |
+          jq 'del(.repositories)' laravel/composer.json > /tmp/composer.json
+          mv /tmp/composer.json laravel/composer.json
+
+      - name: Split to ${{ matrix.package.repository }}
+        if: steps.target.outputs.skip == 'false'
+        uses: symplify/monorepo-split-github-action@v2.3.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.MONOREPO_SPLIT_TOKEN }}
+        with:
+          package_directory: ${{ matrix.package.directory }}
+          repository_organization: ${{ vars.SPLIT_ORGANIZATION || github.repository_owner }}
+          repository_name: ${{ matrix.package.repository }}
+          branch: main
+          tag: ${{ steps.target.outputs.tag }}
+          user_name: labyrinthe-connect-bot
+          user_email: connect@labyrinthe-rdc.com
