@@ -1,0 +1,53 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{csproj,props,targets,xml,json,yml,yaml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+# Style
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_var_for_built_in_types = true:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = true:suggestion
+csharp_prefer_braces = true:warning
+csharp_using_directive_placement = outside_namespace:warning
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+csharp_new_line_before_open_brace = all
+csharp_style_expression_bodied_methods = when_on_single_line:silent
+csharp_style_expression_bodied_properties = true:silent
+dotnet_style_qualification_for_field = false:silent
+dotnet_style_qualification_for_property = false:silent
+dotnet_style_qualification_for_method = false:silent
+
+# Diagnostics
+# IDE0005 (usings inutiles) n'est fiable qu'avec GenerateDocumentationFile ; vérifié par dotnet format.
+dotnet_diagnostic.IDE0005.severity = warning
+# Les exceptions du SDK exigent un code et un statut : pas de constructeurs « standard » sans paramètre.
+dotnet_diagnostic.CA1032.severity = none
+# Bibliothèque : ConfigureAwait(false) partout.
+dotnet_diagnostic.CA2007.severity = warning
+
+[{tests,examples}/**.cs]
+# Tests et exemples : pas de ConfigureAwait, noms de méthodes de test libres.
+dotnet_diagnostic.CA2007.severity = none
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1515.severity = none
+dotnet_diagnostic.CA1861.severity = none
+dotnet_diagnostic.CA1062.severity = none
+dotnet_diagnostic.CA1303.severity = none
+dotnet_diagnostic.CA1307.severity = none
+dotnet_diagnostic.CA1305.severity = none
+dotnet_diagnostic.CA2000.severity = none
+dotnet_diagnostic.CA1849.severity = none

@@ -1,0 +1,8 @@
+# Sorties de build et outillage local
+bin/
+obj/
+.dotnet/
+artifacts/
+TestResults/
+*.user
+.vs/

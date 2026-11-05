@@ -1,0 +1,8 @@
+# Fins de ligne LF partout (dotnet format --verify-no-changes vérifie end_of_line = lf, y compris sous Windows).
+* text=auto eol=lf
+*.png binary
+*.snk binary
+
+# Exclus des archives (git archive) : outillage local et artefacts.
+/.dotnet export-ignore
+/artifacts export-ignore
