@@ -1,0 +1,2 @@
+providers:
+  - Labyrinthe\Connect\Laravel\LabyrintheServiceProvider

@@ -1,0 +1,109 @@
+{
+    "name": "labyrinthe/connect-laravel",
+    "description": "Laravel integration for Labyrinthe Connect: SMS notification channel, OTP helpers and validation rules, signed webhooks, test fake.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "labyrinthe",
+        "labyrinthe-connect",
+        "laravel",
+        "sms",
+        "otp",
+        "2fa",
+        "notification-channel",
+        "notifications",
+        "webhooks",
+        "drc",
+        "congo",
+        "rdc"
+    ],
+    "homepage": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/tree/main/laravel",
+    "authors": [
+        {
+            "name": "Labyrinthe Connect",
+            "email": "connect@labyrinthe-rdc.com",
+            "homepage": "https://labyrinthe-rdc.com"
+        }
+    ],
+    "support": {
+        "email": "connect@labyrinthe-rdc.com",
+        "issues": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/issues",
+        "source": "https://github.com/labyrinthe-rdc/labyrinthe-connect-laravel",
+        "docs": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/blob/main/laravel/README.md"
+    },
+    "require": {
+        "php": "^8.1",
+        "guzzlehttp/psr7": "^2.4",
+        "illuminate/cache": "^10.0 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/contracts": "^10.0 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/events": "^10.0 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/http": "^10.0 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/notifications": "^10.0 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/routing": "^10.0 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/support": "^10.0 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/validation": "^10.0 || ^11.0 || ^12.0 || ^13.0",
+        "labyrinthe/connect-php": "^1.0"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.64",
+        "larastan/larastan": "^2.9 || ^3.0",
+        "orchestra/testbench": "^8.22 || ^9.0 || ^10.0 || ^11.0",
+        "phpunit/phpunit": "^10.5 || ^11.5 || ^12.0"
+    },
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../php",
+            "options": {
+                "symlink": true,
+                "versions": {
+                    "labyrinthe/connect-php": "1.0.0"
+                }
+            }
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "Labyrinthe\\Connect\\Laravel\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Labyrinthe\\Connect\\Laravel\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Labyrinthe\\Connect\\Laravel\\LabyrintheServiceProvider"
+            ],
+            "aliases": {
+                "Labyrinthe": "Labyrinthe\\Connect\\Laravel\\Facades\\Labyrinthe"
+            }
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "analyse": "phpstan analyse --memory-limit=1G",
+        "format": "php-cs-fixer fix",
+        "lint": "php-cs-fixer fix --dry-run --diff",
+        "check": [
+            "@lint",
+            "@analyse",
+            "@test"
+        ]
+    },
+    "scripts-descriptions": {
+        "test": "Run the test suite (Orchestra Testbench, no network).",
+        "analyse": "Run PHPStan with Larastan.",
+        "format": "Fix code style with PHP-CS-Fixer.",
+        "lint": "Check code style without changing files.",
+        "check": "Lint, analyse and test."
+    },
+    "config": {
+        "sort-packages": true,
+        "preferred-install": "dist"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
