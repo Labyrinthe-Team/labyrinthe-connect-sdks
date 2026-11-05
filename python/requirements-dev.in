@@ -1,0 +1,18 @@
+# Outils de développement (sources des épinglages de requirements-dev.txt).
+# Régénérer : uv pip compile --universal --python-version 3.9 --exclude-newer <date - 2 semaines> requirements-dev.in -o requirements-dev.txt
+httpx>=0.25,<1
+pytest
+pytest-asyncio
+pytest-cov
+respx
+jsonschema
+pyyaml
+types-PyYAML
+mypy
+ruff
+build
+twine
+Django
+django-stubs
+fastapi
+flask

@@ -1,0 +1,122 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "labyrinthe-connect"
+version = "1.0.0"
+description = "Official Python SDK for Labyrinthe Connect: send SMS and verify phone numbers (OTP) in the DR Congo and Central Africa."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Labyrinthe Connect", email = "connect@labyrinthe-rdc.com" }]
+keywords = ["sms", "otp", "2fa", "verification", "labyrinthe", "drc", "congo", "api", "sdk"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Framework :: AsyncIO",
+    "Framework :: Django",
+    "Framework :: FastAPI",
+    "Framework :: Flask",
+    "Topic :: Communications :: Telephony",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = ["httpx>=0.25,<1"]
+
+[project.optional-dependencies]
+django = ["Django>=3.2"]
+fastapi = ["fastapi>=0.95"]
+flask = ["Flask>=2.3"]
+
+[project.urls]
+Homepage = "https://labyrinthe-rdc.com"
+Documentation = "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/tree/main/python#readme"
+Repository = "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks"
+Issues = "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/issues"
+Changelog = "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/blob/main/python/CHANGELOG.md"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/labyrinthe_connect"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/labyrinthe_connect",
+    "tests",
+    "examples",
+    "README.md",
+    "README.fr.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "requirements-dev.in",
+    "requirements-dev.txt",
+]
+
+# --- Qualité -------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "-m", "not integration"]
+markers = ["integration: runs against a real backend (needs LABYRINTHE_API_KEY=lsk_test_…)"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "error",
+    # Starlette récent préfère httpx2 pour son TestClient (tests uniquement).
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests", "examples"]
+warn_unreachable = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = ["yaml", "jsonschema.*", "referencing.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.format]
+# Les blocs de code des README gardent leurs commentaires alignés.
+exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "A", "C4", "SIM", "RUF", "PT", "ASYNC", "TC", "PIE", "RET"]
+ignore = [
+    "UP006",   # typing.Dict/List : lisibles en 3.9 hors annotations différées
+    "UP007",   # Optional/Union gardés (évalués à l'exécution par FastAPI sur 3.9)
+    "UP035",
+    "UP045",
+    "RUF022",  # __all__ trié à la main (constantes d'abord)
+    "TC001",
+    "TC002",
+    "TC003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "S311", "PT011", "B017"]
+"examples/**" = ["S105", "S106"]
+
+[tool.coverage.run]
+source = ["labyrinthe_connect"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError"]
