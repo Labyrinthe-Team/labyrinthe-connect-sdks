@@ -1,0 +1,44 @@
+# Collection Postman (postman/) : la collection versionnée doit correspondre à la spec.
+# `npm run check` régénère la collection depuis openapi/openapi.yaml et échoue si le fichier diffère.
+# Newman n'est pas lancé ici (il faut un backend) : `LABYRINTHE_API_KEY=lsk_test_… npm test` en local.
+name: postman
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'openapi/**'
+      - 'postman/**'
+      - '.github/workflows/postman.yml'
+  pull_request:
+    paths:
+      - 'openapi/**'
+      - 'postman/**'
+      - '.github/workflows/postman.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: postman-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: postman
+
+jobs:
+  check:
+    name: Collection up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: postman/package-lock.json
+
+      - run: npm ci
+      - run: npm run check
