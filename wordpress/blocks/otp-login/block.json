@@ -1,0 +1,27 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "labyrinthe-connect/otp-login",
+	"version": "1.0.0",
+	"title": "SMS login (Labyrinthe Connect)",
+	"category": "widgets",
+	"icon": "smartphone",
+	"description": "Lets visitors log in with a one-time code received by SMS.",
+	"keywords": [ "otp", "sms", "login" ],
+	"textdomain": "labyrinthe-connect",
+	"attributes": {
+		"redirect": {
+			"type": "string",
+			"default": ""
+		},
+		"title": {
+			"type": "string",
+			"default": ""
+		}
+	},
+	"supports": {
+		"html": false,
+		"multiple": false
+	},
+	"editorScript": "file:./index.js"
+}
