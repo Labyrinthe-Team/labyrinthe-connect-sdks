@@ -1,0 +1,72 @@
+package cd.labyrinthe.connect.exception;
+
+import cd.labyrinthe.connect.internal.JsonReader;
+import java.util.Collections;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.TreeMap;
+
+/**
+ * The API answered with an error ({@code {"error": {"code", "message", "details"}}}).
+ *
+ * <p>Subclasses exist for the codes an integration usually handles; any other code (including codes
+ * added to the API later) is thrown as a plain {@code ApiException}.
+ */
+public class ApiException extends LabyrintheException {
+
+  private static final long serialVersionUID = 1L;
+
+  private final transient Map<String, String> headers;
+
+  /**
+   * Creates an API error.
+   *
+   * @param message message of the API (in French) or of the SDK
+   * @param code API error code
+   * @param statusCode HTTP status
+   * @param details {@code error.details}
+   * @param headers response headers ({@code null} for none)
+   */
+  public ApiException(
+      String message,
+      String code,
+      int statusCode,
+      Map<String, ?> details,
+      Map<String, String> headers) {
+    super(message, code, statusCode, details);
+    Map<String, String> copy = new TreeMap<>();
+    if (headers != null) {
+      headers.forEach((name, value) -> copy.put(name.toLowerCase(Locale.ROOT), value));
+    }
+    this.headers = Collections.unmodifiableMap(copy);
+  }
+
+  /**
+   * Response headers, with lower-case names.
+   *
+   * @return unmodifiable headers
+   */
+  public Map<String, String> headers() {
+    return headers == null ? Collections.emptyMap() : headers;
+  }
+
+  /**
+   * Request identifier for support ({@code X-Request-Id}), when the API provides one.
+   *
+   * @return the identifier, if any
+   */
+  public Optional<String> requestId() {
+    return Optional.ofNullable(headers().get("x-request-id"));
+  }
+
+  /**
+   * An integer detail.
+   *
+   * @param key name of the detail
+   * @return the value, or {@code null}
+   */
+  Long detailLong(String key) {
+    return JsonReader.toLong(details().get(key));
+  }
+}
