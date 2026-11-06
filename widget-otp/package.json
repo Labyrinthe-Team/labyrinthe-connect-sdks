@@ -14,14 +14,14 @@
     "drc",
     "congo"
   ],
-  "homepage": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/tree/main/widget-otp#readme",
+  "homepage": "https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/tree/main/widget-otp#readme",
   "bugs": {
-    "url": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/issues",
+    "url": "https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/issues",
     "email": "connect@labyrinthe-rdc.com"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks.git",
+    "url": "git+https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks.git",
     "directory": "widget-otp"
   },
   "license": "MIT",
