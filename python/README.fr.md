@@ -256,8 +256,29 @@ les erreurs API de `ApiError` (`headers`, `api_version`). Même hiérarchie que 
 suspendu, sous-classe de `PermissionError`), `NotFoundError` (404), `ValidationError` (`field_errors`), `RecipientNotSendableError` (`rejected`),
 `SenderIdNotApprovedError`, `InvalidPhoneError`, `InsufficientCreditsError` (`available`, `required`),
 `IdempotencyKeyReusedError`, `IdempotencyRequestInProgressError` (`retry_after`), `IdempotencyKeyUnresolvedError` (résultat inconnu, jamais relancée), `RateLimitError` (`retry_after`), `OtpResendTooSoonError`, `OtpRateLimitedError`,
-`ServiceUnavailableError`, `ApiError` (code inconnu), `APIConnectionError`, `APITimeoutError`,
+`ServiceUnavailableError` (5xx), `FeatureDisabledError` (503 `FEATURE_DISABLED` / `OTP_SERVICE_DISABLED`, maintenance,
+sous-classe de `ServiceUnavailableError`), `ApiError` (code inconnu), `APIConnectionError`, `APITimeoutError`,
 `InvalidArgumentError`, `UnexpectedResponseError`. Testez `code`, jamais `message` (en français, pour les humains).
+
+### Maintenance (`FeatureDisabledError`)
+
+La plateforme peut couper toute l'API (`blocked_by == "api"`, refus avant l'authentification) ou une fonction
+(`api.sms_send`, `api.otp_send`, `api.otp_verify`, ou tout le service OTP `otp` avec `OTP_SERVICE_DISABLED`). Rien
+n'est envoyé ni débité. `admin_message` : message de l'administrateur (`None` sinon) ; `until` : réactivation
+programmée (`datetime` avec fuseau, `None` si inconnue) ; `retry_after` : secondes restantes (`Retry-After`, `None`
+sans date programmée). Le SDK a déjà attendu et relancé si `retry_after` tient dans `max_retry_wait` ; ne relancez
+jamais en boucle : mettez le travail en file d'attente ou prévenez l'utilisateur.
+
+```python
+from labyrinthe_connect import FeatureDisabledError
+
+try:
+    client.sms.send(to="0812345678", body="Votre commande est expédiée")
+except FeatureDisabledError as erreur:
+    # Rien n'a été envoyé : réessayer plus tard, après erreur.until s'il est connu.
+    file.enqueue_in(erreur.retry_after or 600, envoyer_sms_expedition, commande_id)
+    logger.warning("SMS en pause (%s) : %s", erreur.blocked_by, erreur.admin_message or erreur.message)
+```
 
 ### Identifiant de requête
 
@@ -271,14 +292,16 @@ l'API — y compris sur une erreur réseau.
 
 2 relances par défaut, backoff exponentiel 0,5 s → 1 s → 2 s avec jitter, **uniquement sans risque** :
 
-| Requête | Erreur réseau / timeout | 5xx | 429 `TOO_MANY_REQUESTS` | 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` |
-|---|---|---|---|---|
-| lectures, `estimate` | relancée | relancée | après `Retry-After` | — |
-| `send` / `send_many` / `otp.send` (toujours avec `Idempotency-Key`) | relancée, même clé | relancée, même clé | après `Retry-After` | après `Retry-After`, même clé |
-| `otp.verify` | **jamais** | **jamais** | relancée | — |
+| Requête | Erreur réseau / timeout | 5xx | 429 `TOO_MANY_REQUESTS` | 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` | 503 `FEATURE_DISABLED` / `OTP_SERVICE_DISABLED` |
+|---|---|---|---|---|---|
+| lectures, `estimate` | relancée | relancée | après `Retry-After` | — | seulement après `Retry-After` |
+| `send` / `send_many` / `otp.send` (toujours avec `Idempotency-Key`) | relancée, même clé | relancée, même clé | après `Retry-After` | après `Retry-After`, même clé | seulement après `Retry-After`, même clé |
+| `otp.verify` | **jamais** | **jamais** | relancée | — | seulement après `Retry-After` (refusée avant traitement) |
 
 Jamais de relance sur une autre erreur métier (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`, `IDEMPOTENCY_KEY_UNRESOLVED`). Au-delà de
-`max_retry_wait` (10 s), `RateLimitError` est levée sans attendre. Les redirections ne sont jamais suivies.
+`max_retry_wait` (10 s), l'erreur (`RateLimitError`…) est levée sans attendre. Une maintenance 503
+(`FeatureDisabledError`) n'est jamais relancée par backoff : seulement après exactement `Retry-After`, s'il est
+présent et dans `max_retry_wait`. Les redirections ne sont jamais suivies.
 
 ## Configuration
 

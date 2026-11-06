@@ -343,7 +343,8 @@ expose `headers` and `api_version` (`X-Api-Version`).
 | `IdempotencyKeyUnresolvedError` | 409 `IDEMPOTENCY_KEY_UNRESOLVED` — outcome of the original request unknown; never retried: check, then send with a new key |
 | `RateLimitError` | 429 `TOO_MANY_REQUESTS` — `retry_after` (seconds) |
 | `OtpResendTooSoonError`, `OtpRateLimitedError` | 429 — extend `RateLimitError`; `retry_after`, `scope`, `limit` |
-| `ServiceUnavailableError` | 5xx, including 503 `OTP_SERVICE_DISABLED` |
+| `ServiceUnavailableError` | 5xx |
+| `FeatureDisabledError` | 503 `FEATURE_DISABLED` / `OTP_SERVICE_DISABLED` — maintenance, nothing was done (extends `ServiceUnavailableError`); `feature`, `blocked_by`, `admin_message`, `until`, `retry_after` |
 | `ApiError` | any other code (the list is open: new codes may appear) |
 | `APIConnectionError`, `APITimeoutError` | network error (`CONNECTION_ERROR`) or timeout (`TIMEOUT`) |
 | `InvalidArgumentError` | invalid input detected by the SDK, before any call (also a `ValueError`) |
@@ -364,6 +365,26 @@ except ApiError as error:
     logger.error("Labyrinthe Connect error %s (HTTP %s, request %s)", error.code, error.status, error.request_id)
 ```
 
+### Maintenance (`FeatureDisabledError`)
+
+The platform can switch off the whole API (`blocked_by == "api"`, refused before authentication) or one function
+(`api.sms_send`, `api.otp_send`, `api.otp_verify`, or the whole OTP service `otp` with `OTP_SERVICE_DISABLED`).
+Nothing is sent and no credit is used. `admin_message` is the administrator's message (`None` without one), `until`
+the scheduled re-enable (aware `datetime`, `None` when unknown) and `retry_after` the seconds left (`Retry-After`,
+`None` when no date is scheduled). The SDK already waited and retried when `retry_after` fits in `max_retry_wait`;
+never retry in a loop: queue the work or tell the user.
+
+```python
+from labyrinthe_connect import FeatureDisabledError
+
+try:
+    client.sms.send(to="0812345678", body="Your order has shipped")
+except FeatureDisabledError as error:
+    # Nothing was sent: try again later, after error.until when it is known.
+    queue.enqueue_in(error.retry_after or 600, send_shipping_sms, order_id)
+    logger.warning("SMS paused by Labyrinthe Connect (%s): %s", error.blocked_by, error.admin_message or error.message)
+```
+
 ### Request IDs
 
 Every API response carries an `X-Request-Id` header, to give to support. The SDK exposes it as `request_id` on every
@@ -382,14 +403,16 @@ balance.request_id   # "checkout-1042"
 The SDK retries automatically (default: 2 retries, exponential backoff 0.5 s → 1 s → 2 s with jitter) **only when a
 replay cannot cause a side effect twice**:
 
-| Request | Network error / timeout | 5xx | 429 `TOO_MANY_REQUESTS` | 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` |
-|---|---|---|---|---|
-| `get`, `list`, `balance.get`, `sender_ids.list`, `estimate` | retried | retried | retried after `Retry-After` | — |
-| `send` / `send_many` / `otp.send` (always with an `Idempotency-Key`) | retried, same key | retried, same key | retried after `Retry-After` | retried after `Retry-After`, same key |
-| `otp.verify` | **never** | **never** | retried (refused before processing) | — |
+| Request | Network error / timeout | 5xx | 429 `TOO_MANY_REQUESTS` | 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` | 503 `FEATURE_DISABLED` / `OTP_SERVICE_DISABLED` |
+|---|---|---|---|---|---|
+| `get`, `list`, `balance.get`, `sender_ids.list`, `estimate` | retried | retried | retried after `Retry-After` | — | only after `Retry-After` |
+| `send` / `send_many` / `otp.send` (always with an `Idempotency-Key`) | retried, same key | retried, same key | retried after `Retry-After` | retried after `Retry-After`, same key | only after `Retry-After`, same key |
+| `otp.verify` | **never** | **never** | retried (refused before processing) | — | only after `Retry-After` (refused before processing) |
 
 Business errors (other 4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`, `IDEMPOTENCY_KEY_UNRESOLVED`) are never retried. When the API asks to wait longer
-than `max_retry_wait` (default 10 s), the SDK raises `RateLimitError` instead of waiting. Redirects are never
+than `max_retry_wait` (default 10 s), the SDK raises the error (`RateLimitError`…) instead of waiting. A maintenance
+503 (`FeatureDisabledError`) is never retried with a backoff: only after exactly `Retry-After`, when it is present
+and within `max_retry_wait`. Redirects are never
 followed. Every method accepts `timeout=` (seconds, per attempt) to override the client's.
 
 ## Configuration

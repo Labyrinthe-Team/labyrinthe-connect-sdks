@@ -5,6 +5,25 @@ All notable changes to `labyrinthe-connect` (Python) are documented here. This p
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-06
+
+Built against the API specification 1.3.0. Backwards compatible with 1.1.x.
+
+### Added
+- `FeatureDisabledError` (503 `FEATURE_DISABLED`, any operation), a subclass of `ServiceUnavailableError`: the
+  platform switched off the whole API (`blocked_by == "api"`) or one function (`api.sms_send`, `api.otp_send`,
+  `api.otp_verify`); nothing was done. Properties `feature`, `blocked_by`, `admin_message` (`details.message`),
+  `until` (aware `datetime`, `None` when unknown or unreadable) and `retry_after` (`Retry-After` seconds, `None` when
+  no re-enable is scheduled). Exported from `labyrinthe_connect`.
+
+### Changed
+- 503 `OTP_SERVICE_DISABLED` (`otp.send`) is now raised as `FeatureDisabledError` (still a `ServiceUnavailableError`),
+  with the same details (`feature` and `blocked_by` = `otp`).
+- Retries: `FEATURE_DISABLED` and `OTP_SERVICE_DISABLED` are never retried with an exponential backoff. They are
+  retried for every operation, `otp.verify` included (refused before processing), only when `Retry-After` is present
+  and not longer than `max_retry_wait`, after exactly that delay; otherwise the error is raised at once. Other 5xx
+  are unchanged.
+
 ## [1.1.1] - 2026-11-06
 
 ### Added
@@ -76,7 +95,8 @@ First stable release, built against the API specification 1.1.0.
 - `phone` helpers (normalisation identical to the API, validation, masking); `logging` logger
   `labyrinthe_connect` (no key, code, body or full number); fully typed (`py.typed`); only dependency: `httpx`.
 
-[Unreleased]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/python-v1.1.1...HEAD
+[Unreleased]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/python-v1.2.0...HEAD
+[1.2.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/python-v1.1.1...python-v1.2.0
 [1.1.1]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/python-v1.1.0...python-v1.1.1
 [1.1.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/python-v1.0.0...python-v1.1.0
 [1.0.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/releases/tag/python-v1.0.0
