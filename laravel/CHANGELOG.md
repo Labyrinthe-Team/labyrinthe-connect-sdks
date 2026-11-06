@@ -70,6 +70,6 @@ First stable release, for Laravel 10, 11, 12 and 13, on top of `labyrinthe/conne
   `assertSmsSentCount`, `assertNothingSent`, `assertOtpSent`, `assertNoOtpSent`) and helpers (`otpCode`,
   `withBalance`, `withSenderIds`, `withOtpCode`, `failNextRequest`).
 
-[Unreleased]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/laravel-v1.1.0...HEAD
-[1.1.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/laravel-v1.0.0...laravel-v1.1.0
-[1.0.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/releases/tag/laravel-v1.0.0
+[Unreleased]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/laravel-v1.1.0...HEAD
+[1.1.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/laravel-v1.0.0...laravel-v1.1.0
+[1.0.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/releases/tag/laravel-v1.0.0
