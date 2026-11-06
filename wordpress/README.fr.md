@@ -1,81 +1,326 @@
 # Labyrinthe Connect pour WordPress et WooCommerce
 
-Plugin WordPress officiel de [Labyrinthe Connect](https://labyrinthe-rdc.com) (slug `labyrinthe-connect`) : SMS de
-commande WooCommerce, vérification du téléphone et connexion avec un code reçu par SMS. Il s'appuie sur le
-[SDK PHP](../php) et sur la [spécification de l'API](../openapi/openapi.yaml) (1.3.0), via le SDK PHP 1.2.0.
+![Version](https://img.shields.io/badge/version-1.2.0-008374)
+[![CI](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/actions/workflows/wordpress.yml/badge.svg)](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/actions/workflows/wordpress.yml)
+[![Licence : GPL v2 ou ultérieure](https://img.shields.io/badge/licence-GPL--2.0--or--later-blue.svg)](LICENSE)
+![WordPress](https://img.shields.io/badge/wordpress-6.4%2B-21759b)
+![PHP](https://img.shields.io/badge/php-%E2%89%A5%208.1-777bb4)
 
-*English version: [README.md](README.md). La documentation utilisateur pour wordpress.org est [`readme.txt`](readme.txt).*
+Plugin WordPress officiel de [Labyrinthe Connect](https://labyrinthe-rdc.com), la plateforme SMS et OTP de la RD
+Congo et de l'Afrique centrale (slug `labyrinthe-connect`). Sans écrire de code : SMS de commande WooCommerce à chaque
+statut, SMS au gérant pour chaque nouvelle commande, vérification du téléphone par SMS à l'inscription et à la
+commande, et connexion avec un code reçu par SMS (formulaire de connexion, shortcode, bloc). Les SMS partent en
+arrière-plan et jamais deux fois, chaque SMS laisse une note de commande, et une clé `lsk_test_` permet de tout tester
+sans rien envoyer ni payer. Plugin 1.2.0, qui embarque le [SDK PHP](../php) 1.2.0 (spécification de l'API 1.3.0).
+
+*English version: [README.md](README.md). La documentation utilisateur pour wordpress.org est
+[`readme.txt`](readme.txt).*
+
+[Prérequis](#prérequis) · [Installation](#installation) · [Démarrage rapide](#démarrage-rapide) ·
+[Réglages](#réglages) · [SMS de commande WooCommerce](#sms-de-commande-woocommerce) ·
+[OTP](#otp--vérification-du-téléphone-et-connexion) · [Webhooks](#webhooks) ·
+[Journal, mode test et sécurité](#journal-des-sms-mode-test-et-sécurité) · [Erreurs et maintenance](#erreurs-et-maintenance) ·
+[Relances et idempotence](#relances-et-idempotence) · [Hooks pour les développeurs](#hooks-et-filtres-pour-les-développeurs) ·
+[Dépannage](#dépannage) · [Développement](#développement)
+
+## Prérequis
 
 | | |
 |---|---|
 | WordPress | 6.4 ou plus (testé jusqu'à 7.1) |
-| PHP | **8.1 ou plus** — exigé par le SDK PHP (`labyrinthe/connect-php` demande `^8.1`). Sur un PHP plus ancien, le plugin affiche un avis et reste inactif. La plupart des hébergeurs mutualisés proposent PHP 8.1 à 8.3 dans leur panneau (souvent « Version PHP ») ; PHP 7.4 et 8.0 ne reçoivent plus de correctifs de sécurité. |
-| WooCommerce | 8.0 ou plus, facultatif (testé jusqu'à 11.2), compatible HPOS et validation de commande en blocs |
+| PHP | **8.1 ou plus** (exigé par le SDK PHP). Sur un PHP plus ancien, le plugin affiche un avis et reste inactif. |
+| WooCommerce | 8.0 ou plus, **facultatif** (testé jusqu'à 11.2), compatible HPOS et validation de commande en blocs. Sans lui, l'inscription et la connexion par OTP fonctionnent toujours. |
+| Compte | un compte Labyrinthe Connect et une clé API (espace client > *Développeurs > Clés API*) |
 | Licence | GPL-2.0-or-later (SDK et dépendances embarqués : MIT) |
 
-## Démarrage en 5 minutes (propriétaire du site)
+## Installation
 
-1. Installer `dist/labyrinthe-connect.zip` (*Extensions > Ajouter > Téléverser*), activer.
-2. *Labyrinthe Connect > Réglages* : coller une clé `lsk_test_…`, **Tester la connexion**, **Envoyer un SMS de test**.
-3. Onglet *WooCommerce* : activer les statuts qui envoient un SMS. Onglet *OTP* : connexion par SMS, vérification à
-   l'inscription / à la commande.
-4. Facultatif : déclarer l'URL du webhook (`/wp-json/labyrinthe/v1/webhook`) dans l'espace client et coller son secret.
-5. Passer à la clé `lsk_live_…`.
-
-## Fonctionnement
-
-| Fonction | Comment |
+| Depuis | Comment |
 |---|---|
-| SMS par statut de commande | `woocommerce_order_status_changed` ne fait que **planifier** une action Action Scheduler (`labyrinthe_connect_order_sms`, unique par commande + statut). L'action rend le modèle et l'envoie avec le SDK : aucun appel réseau pendant le paiement. |
-| Aucun doublon | Action unique, métadonnée `_labyrinthe_sms_sent` sur la commande, et `Idempotency-Key: wc-<site>-<commande>-<statut>` réutilisée à chaque nouvel essai (l'API la rejoue pendant 24 h). |
-| Nouveaux essais | Erreur réseau, 5xx ou `TOO_MANY_REQUESTS` : le SDK relance une fois (sans risque, même clé), puis l'action est replanifiée (5, 10, 15 min ; 4 tentatives). Les erreurs métier (`INSUFFICIENT_CREDITS`, `RECIPIENT_NOT_SENDABLE`…) ne sont pas relancées. |
-| Notes de commande | Une note par SMS : envoyé (numéro masqué, segments, encodage, identifiant) ou échec avec le code d'erreur et l'**identifiant de requête** (`X-Request-Id`, à communiquer au support) ; remise ou échec définitif (avec `error_code` / `error_message`) via les webhooks. Les SMS de commande portent `reference: order-<identifiant de commande>` : un accusé retrouve sa commande même si la ligne du journal a été purgée. |
-| SMS au gérant | `woocommerce_checkout_order_processed` et `woocommerce_store_api_checkout_order_processed` → `labyrinthe_connect_admin_order_sms`. |
-| Modèles | Variables `{order_number}`, `{order_id}`, `{order_status}`, `{order_total}` (`25.00 USD`, en ASCII), `{order_date}`, `{order_url}`, `{payment_method}`, `{customer_name}`, `{customer_first_name}`, `{customer_phone}`, `{shop_name}`, `{shop_url}`, `{tracking_number}`, `{tracking_url}`. Aperçu des caractères, de l'encodage et des segments compté par l'API (`POST /sms/estimate`, rien n'est envoyé), avec une estimation locale pendant la saisie ou sans clé API (tout caractère hors ASCII → UCS-2). Retrait des accents en option, fait par l'API (`strip_accents`) pour les SMS de commande, les SMS de test et les codes OTP ; les modèles français par défaut sont sans accents. |
-| OTP | Actions `admin-ajax.php` `labyrinthe_otp_send` / `labyrinthe_otp_verify` (nonce). L'`otp_id` reste dans un transient côté serveur, lié à un cookie aléatoire httpOnly ; il n'atteint jamais le navigateur. Chaque envoi porte une `Idempotency-Key` stable (`wp-otp-<site>-<empreinte session + contexte + numéro>-<rang>`) : un double clic ou une relance après une coupure réseau rejoue le même envoi (même code, aucun second SMS) ; seul « Renvoyer le code » après un envoi réussi en crée un autre ; le SDK relance une fois (réseau, 5xx, 429). Le champ du code suit `code_length` / `code_type` (longueur, clavier numérique ou texte, `autocomplete="one-time-code"`), le compte à rebours suit `resend_after_seconds`, un code faux affiche `attempts_remaining`. **Web OTP** : `web_otp_domain` (domaine du site par défaut, modifiable ou désactivable dans les réglages ; ignoré pour `localhost` ou une adresse IP) ajoute `@domaine #code` au SMS, et Chrome sur Android remplit et vérifie le code. Limite par IP (réglage, 5 codes / heure par défaut) en plus des limites du backend. Le `test_code` n'est renvoyé qu'aux administrateurs, avec une clé `lsk_test_`. |
-| Connexion par SMS | Formulaire de connexion WordPress, « Mon compte » WooCommerce, `[labyrinthe_otp_login redirect="/mon-compte/"]`, bloc `labyrinthe-connect/otp-login`. Le compte est retrouvé par la métadonnée `labyrinthe_phone` (remplie uniquement par une vérification OTP ou par un administrateur). Un numéro inconnu reçoit la même réponse sans aucun SMS (pas d'énumération, pas de crédit dépensé). Les administrateurs sont refusés sauf autorisation. |
-| Vérification | Inscription (WordPress et WooCommerce) et commande (classique : `woocommerce_after_checkout_validation` ; blocs : `RouteException` dans `woocommerce_store_api_checkout_update_order_from_request`). |
-| Webhooks | `POST /wp-json/labyrinthe/v1/webhook` : signature vérifiée par le SDK sur le corps brut (temps constant, tolérance de 5 min), dédoublonnage sur `id` (clé primaire, `INSERT IGNORE`), mise à jour du journal (un statut définitif n'est jamais remplacé par un statut intermédiaire ; `error_code` / `error_message` enregistrés), notes de commande, `otp.verified` / `otp.failed` → actions `labyrinthe_otp_verified` / `labyrinthe_otp_failed`. |
-| Journal des SMS | Table `{prefix}labyrinthe_sms_log`, `WP_List_Table` filtrable (commande, identifiant de message, code d'erreur, identifiant de requête) ; numéros masqués, textes jamais enregistrés ; identifiant de requête de chaque appel (`wp-<uuid>`, envoyé en `X-Request-Id`, utile aussi pour une erreur réseau) ; purge quotidienne (réglage, 90 jours par défaut). |
-| Résultat inconnu | `409 IDEMPOTENCY_KEY_UNRESOLVED` (`IdempotencyKeyUnresolvedException`) : la requête d'origine avec cette clé a échoué de façon inattendue côté API et un SMS a pu partir. Échec définitif, jamais relancé ni replanifié : note de commande et ligne du journal avec le code d'erreur et l'identifiant de requête, invitant à vérifier les messages dans l'espace Labyrinthe Connect avant tout envoi manuel. OTP : le visiteur voit un message neutre (« demandez un nouveau code si vous ne l'avez pas reçu ») ; sa demande suivante part avec une nouvelle clé d'idempotence. |
-| Maintenance | `503 FEATURE_DISABLED` / `OTP_SERVICE_DISABLED` (`FeatureDisabledException`) : la plateforme a coupé l'API, l'envoi de SMS ou l'OTP ; rien n'est parti. OTP : code d'échec `FEATURE_DISABLED` avec le message de l'administrateur (texte brut) ou un message traduit « momentanément indisponible », l'heure de retour si elle est connue, et `retry_after` pour le compte à rebours. SMS de commande : replanifié à l'heure de retour annoncée (`Retry-After`), sinon 5, 10, 15 min ; jamais relancé en boucle. `Send_Result::$retry_after` donne le délai. |
-| Compte suspendu | `403 ACCOUNT_SUSPENDED` (`AccountSuspendedException`) : avis d'erreur clair dans l'administration avec l'identifiant de requête, jamais relancé ; effacé au premier appel réussi. Les visiteurs ne voient qu'un message neutre. |
-| Numéros | Normalisés par le plugin (indicatif du pays de facturation pour un numéro local), puis envoyés en `+<numéro international>` (le `+` empêche le SDK d'ajouter 243 à un numéro étranger de 10 chiffres ou moins ; le SDK 1.1.1 le transmet à l'API avec son `+`). L'API conserve l'indicatif pour les SMS comme pour les OTP (`+2481234567` → `2481234567` ; `BACKEND-TODO.md` n° 34 corrigé côté API). |
+| Fichier zip | Téléchargez `labyrinthe-connect.zip` dans les [versions GitHub](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/releases) (tags `wordpress-vX.Y.Z`), puis *Extensions > Ajouter > Téléverser une extension*, et activez. |
+| WP-CLI | `wp plugin install labyrinthe-connect.zip --activate` |
+| wordpress.org | *Extensions > Ajouter*, rechercher « Labyrinthe Connect » (le plugin est prêt mais pas encore publié). |
+| Sources | `composer install && composer build` dans ce dossier produit `dist/labyrinthe-connect.zip` (voir [Développement](#développement)). Une copie du dossier sans `composer install` n'a pas `vendor-prefixed/` et affiche un avis. |
 
-Les hooks pour les développeurs et les constantes de `wp-config.php` (`LABYRINTHE_CONNECT_API_KEY`,
-`LABYRINTHE_CONNECT_WEBHOOK_SECRET`, `LABYRINTHE_CONNECT_BASE_URL`) sont listés dans le [README anglais](README.md#hooks-for-developers).
+## Démarrage rapide
 
-## Choix techniques
+1. Activez le plugin, ouvrez *Labyrinthe Connect > Réglages*.
+2. Collez une clé `lsk_test_…`, enregistrez, cliquez sur **Tester la connexion** puis sur **Envoyer un SMS de test**
+   (rien n'est envoyé, rien n'est facturé).
+3. Onglet *WooCommerce* : activez les statuts qui envoient un SMS. Onglet *OTP* : connexion par SMS, vérification à
+   l'inscription ou à la commande.
+4. Facultatif, pour les accusés de remise : ajoutez l'URL du webhook affichée dans les réglages à l'espace client
+   (*Développeurs > Webhooks*) et collez son secret.
+5. Remplacez la clé de test par votre clé `lsk_live_…`.
 
-- **SDK préfixé** : les dépendances d'exécution (`labyrinthe/connect-php`, Guzzle, interfaces PSR) sont copiées par
-  PHP-Scoper dans `vendor-prefixed/` sous `LabyrintheConnect\Vendor\`, avec un autoloader PSR-4 généré : aucune autre
-  extension embarquant une autre version de Guzzle ou des interfaces PSR ne peut entrer en conflit. PHP-Scoper est figé
-  par `tools/php-scoper/composer.lock` ; `bin/prefix-dependencies.php` reconstruit le dossier de zéro et vérifie le
-  résultat. (Strauss 0.31 a d'abord été essayé : il ne fonctionne pas sous Windows.)
-- **HTTP par WordPress** : le SDK reçoit un client PSR-18 au-dessus de `wp_remote_request()` (proxy, certificats et
-  `pre_http_request` respectés ; les tests s'en servent comme serveur simulé).
-- **Secrets** : clé API et secret de webhook chiffrés avec libsodium (`secretbox`, clé dérivée de `wp_salt()`), jamais
-  réaffichés (seulement `lsk_test_…ABCD`), jamais envoyés au navigateur ni journalisés.
-- **Aucun appel à l'API au chargement d'une page publique** : seules les actions AJAX, les actions planifiées et la page
-  de réglages appellent l'API.
-- **Désinstallation** (`uninstall.php`) : options, tables, transients, métadonnées des comptes et des commandes (articles
-  et tables HPOS), actions planifiées, sur chaque site d'un réseau multisite.
+## Réglages
+
+*Labyrinthe Connect > Réglages* (capacité `manage_options`), trois onglets. Tout est enregistré dans l'option
+`labyrinthe_connect_settings`.
+
+**Général**
+
+| Réglage | Défaut | |
+|---|---|---|
+| Clé API | — | chiffrée en base, jamais réaffichée (seulement `lsk_test_…ABCD`) ; champ vide = garder la clé actuelle |
+| Expéditeur | celui de la plateforme | un Sender ID approuvé du compte (**Actualiser** recharge la liste) |
+| Indicatif par défaut | `243` | pour les numéros saisis au format local ; les commandes WooCommerce utilisent d'abord le pays de facturation |
+| Accents | désactivé | « Retirer les accents et les guillemets typographiques avant l'envoi » : fait par l'API (`strip_accents`) pour les SMS de commande, les SMS de test et les codes OTP |
+| URL du webhook | — | `https://votre-site/wp-json/labyrinthe/v1/webhook`, à copier dans l'espace client |
+| Secret du webhook | — | chiffré, sert à vérifier chaque livraison |
+| Conservation du journal | `90` jours | `0` conserve sans limite ; les lignes plus anciennes sont purgées chaque jour |
+| Outils | — | **Tester la connexion** (mode et solde) et **Envoyer un SMS de test** |
+
+**WooCommerce**
+
+| Réglage | Défaut | |
+|---|---|---|
+| SMS au client quand le statut de la commande change | *En cours* et *Terminée* activés | un interrupteur et un modèle par statut (statuts personnalisés compris) |
+| SMS au gérant pour chaque nouvelle commande | désactivé | un ou plusieurs numéros (séparés par des virgules) et un modèle |
+| Variables disponibles | — | liste des `{variables}` ci-dessous, avec l'aperçu en direct des caractères, de l'encodage et des segments |
+
+**OTP (vérification et connexion)**
+
+| Réglage | Défaut | |
+|---|---|---|
+| Connexion par SMS | désactivé | autoriser la connexion avec un code ; l'ajouter aux formulaires de connexion WordPress et WooCommerce (activé) ; autoriser aussi les administrateurs (désactivé, déconseillé) |
+| Inscription | désactivé | exiger un numéro vérifié par SMS pour créer un compte (WordPress et WooCommerce) |
+| Commande | désactivé | exiger que le téléphone de facturation soit vérifié par SMS pour commander (validation classique et en blocs) |
+| Message | modèle OTP du compte | facultatif, doit contenir `{code}` ; `{app_name}` et `{minutes}` sont disponibles |
+| Remplissage automatique du code | activé | Web OTP : ajoute `@domaine #code` au SMS pour que Chrome sur Android remplisse le code |
+| Domaine | domaine du site | celui de la page où le code est saisi ; ignoré pour `localhost` ou une adresse IP |
+| Limite par visiteur | `5` | codes par heure et par adresse IP, en plus des limites de Labyrinthe Connect |
+
+Longueur du code, validité et nombre d'essais viennent des paramètres OTP de l'espace client. Les utilisateurs ont
+un champ *Numéro pour la connexion par SMS* dans leur profil (modifiable par les administrateurs).
+
+**Constantes de `wp-config.php`** (prioritaires sur les réglages, jamais enregistrées en base) :
+
+```php
+define( 'LABYRINTHE_CONNECT_API_KEY', 'lsk_test_…' );
+define( 'LABYRINTHE_CONNECT_WEBHOOK_SECRET', '…' );
+define( 'LABYRINTHE_CONNECT_BASE_URL', 'http://localhost:8000' );   // autre environnement (par défaut : production)
+```
+
+## SMS de commande WooCommerce
+
+- **Le paiement n'est jamais ralenti** : `woocommerce_order_status_changed` ne fait que planifier une action Action
+  Scheduler (`labyrinthe_connect_order_sms`, groupe `labyrinthe-connect`, unique par commande et statut) ; l'API est
+  appelée quelques secondes plus tard. Une nouvelle commande planifie `labyrinthe_connect_admin_order_sms` pour le
+  gérant (`woocommerce_checkout_order_processed` et son équivalent Store API).
+- **Destinataire** : le téléphone de facturation (sinon celui de livraison), normalisé avec le pays de facturation.
+  Une commande sans numéro reçoit une note et aucun SMS.
+- **Notes de commande** : une par SMS : envoyé (numéro masqué, segments, encodage, identifiant du message), échec (code
+  d'erreur et **identifiant de requête** pour le support), puis remis ou échec définitif quand le webhook est
+  configuré. Les SMS de commande portent la référence `order-<identifiant de commande>`.
+- **Variables** : `{order_number}`, `{order_id}`, `{order_status}`, `{order_total}` (`25.00 USD`, en ASCII),
+  `{order_date}`, `{order_url}`, `{payment_method}`, `{customer_name}`, `{customer_first_name}`, `{customer_phone}`,
+  `{shop_name}`, `{shop_url}`, `{tracking_number}`, `{tracking_url}` (extensions de suivi d'expédition). Ajoutez les
+  vôtres avec le filtre `labyrinthe_connect_order_sms_variables`.
+- **Coût** : un accent, un guillemet typographique ou un emoji fait passer le SMS en Unicode (70 caractères au lieu de
+  160, souvent le double du prix). L'aperçu sous chaque modèle est compté par l'API (`POST /sms/estimate`, rien n'est
+  envoyé) ; activez *Accents* pour rester en GSM-7. Les modèles français par défaut sont sans accents exprès.
+
+## OTP : vérification du téléphone et connexion
+
+Les codes sont générés, envoyés et vérifiés par Labyrinthe Connect (un SMS de code coûte comme un SMS ; la
+vérification est gratuite).
+
+| Où | Ce que fait le visiteur |
+|---|---|
+| Inscription (WordPress et WooCommerce) | saisit un numéro, reçoit un code, le saisit ; le compte ne peut pas être créé sans cela. Le numéro vérifié est enregistré dans la métadonnée utilisateur `labyrinthe_phone`. |
+| Commande (classique et blocs) | vérifie le téléphone de facturation avant de valider la commande. |
+| Connexion | « Se connecter avec un code reçu par SMS » sur `wp-login.php` et *Mon compte* de WooCommerce, le shortcode `[labyrinthe_otp_login redirect="/mon-compte/" title="…"]` ou le bloc **Connexion par SMS (Labyrinthe Connect)** (`labyrinthe-connect/otp-login`, attributs `redirect` et `title`). |
+
+- Le compte est retrouvé par sa métadonnée `labyrinthe_phone`, remplie uniquement par une vérification OTP ou par un
+  administrateur. Un numéro inconnu reçoit la même réponse qu'un numéro connu, sans aucun SMS (pas d'énumération des
+  comptes, pas de crédit dépensé). Un numéro partagé par plusieurs comptes ne permet pas de se connecter ; les
+  administrateurs sont refusés sauf autorisation.
+- L'`otp_id` n'atteint jamais le navigateur : il reste dans un transient côté serveur, lié à un cookie httpOnly
+  aléatoire (`labyrinthe_otp`, 1 heure).
+- Le champ du code suit l'API : `code_length`, clavier numérique ou texte (`code_type`),
+  `autocomplete="one-time-code"` ; le compte à rebours de renvoi suit `resend_after_seconds` ; un code faux affiche les
+  essais restants.
+- **Web OTP** (Chrome sur Android) remplit et vérifie le code automatiquement quand *Remplissage automatique du code*
+  est activé.
+- **Limites** : *Limite par visiteur* (par IP, 5 codes / heure par défaut), plus les limites de la plateforme (délai
+  de renvoi et plafond horaire par numéro et par compte). Derrière un proxy ou un CDN, voir le filtre
+  `labyrinthe_connect_client_ip`.
+- **Mode test** : avec une clé `lsk_test_`, aucun SMS ne part et les administrateurs voient le code à l'écran.
+
+## Webhooks
+
+Copiez l'*URL du webhook* (`/wp-json/labyrinthe/v1/webhook`) dans l'espace client (*Développeurs > Webhooks*) et
+collez le secret dans les réglages. Chaque livraison est vérifiée par le SDK sur le corps brut (HMAC-SHA256 en temps
+constant, horodatage signé de moins de 5 minutes), dédoublonnée sur son `id` (les livraisons sont retentées jusqu'à
+5 fois), puis :
+
+| Événement | Effet | Action WordPress |
+|---|---|---|
+| tous | — | `labyrinthe_webhook_received( $envelope )` |
+| `message.status_changed` | journal des SMS mis à jour (un statut définitif n'est jamais remplacé), note de commande à la remise ou à l'échec définitif | `labyrinthe_message_status_changed( $envelope, $log_row )` |
+| `otp.verified` / `otp.failed` | — (jamais le code) | `labyrinthe_otp_verified( $envelope )`, `labyrinthe_otp_failed( $envelope )` |
+| `campaign.completed` | — | `labyrinthe_campaign_completed( $envelope )` |
+| `balance.low` | avis d'administration « solde de crédits SMS bas » (7 jours, masquable) | `labyrinthe_balance_low( $envelope )` |
+| `test.ping` | « Dernier événement de test reçu » affiché dans les réglages | `labyrinthe_webhook_test_ping( $envelope )` |
+
+`$envelope` est le `{ id, event, data, timestamp }` décodé. Réponses : `200` (traité ou doublon), `400` (signature ou
+contenu invalide), `503` tant qu'aucun secret n'est configuré (Labyrinthe Connect réessaie plus tard).
+
+## Journal des SMS, mode test et sécurité
+
+- *Labyrinthe Connect > Journal des SMS* : chaque SMS et chaque envoi d'OTP du site, filtrable par type et par statut,
+  recherche par commande, identifiant de message, code d'erreur ou identifiant de requête. Les numéros sont stockés
+  **masqués**, les textes ne sont **jamais** stockés. Purge quotidienne après la durée de conservation.
+- **Mode test** (clé `lsk_test_`) : l'API simule tout, rien n'est envoyé, rien n'est facturé ; les notes de commande et
+  le journal ressemblent à la production et indiquent « mode test ».
+- **Secrets** : la clé API et le secret du webhook sont chiffrés avec libsodium (clé dérivée des salts de
+  `wp-config.php`), jamais envoyés au navigateur, jamais journalisés. Le SDK ne journalise jamais les codes ni les
+  numéros complets.
+- **Aucun appel à l'API au chargement d'une page publique** : seuls les actions AJAX, les actions planifiées et la
+  page de réglages appellent l'API.
+- **Confidentialité** : un texte proposé pour la politique de confidentialité est ajouté dans *Réglages >
+  Confidentialité*. Le service externe est décrit dans [`readme.txt`](readme.txt) (*External services*).
+- **Désinstallation** : options, tables, transients, métadonnées utilisateur et de commande et actions planifiées sont
+  supprimés, sur chaque site d'un réseau.
+
+## Erreurs et maintenance
+
+| Situation | Ce qui se passe |
+|---|---|
+| Numéro invalide, destinataire refusé (`INVALID_PHONE`, `RECIPIENT_NOT_SENDABLE`) | note de commande / message clair au visiteur ; pas de relance |
+| `INSUFFICIENT_CREDITS` | note de commande avec l'erreur ; pas de relance : achetez des crédits dans l'espace client |
+| `UNAUTHENTICATED` | « La clé API a été refusée (invalide ou révoquée) » dans les outils des réglages |
+| `ACCOUNT_SUSPENDED` | avis d'erreur dans l'administration avec l'identifiant de requête, effacé au prochain appel réussi ; les visiteurs voient un message neutre |
+| Erreur réseau, 5xx, `TOO_MANY_REQUESTS` | SMS de commande : relancé (voir plus bas) ; OTP : « veuillez réessayer » |
+| `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED` | compte à rebours / « trop de codes demandés » |
+| `IDEMPOTENCY_KEY_UNRESOLVED` | le résultat de la première tentative est inconnu (un SMS a pu partir) : échec définitif, jamais relancé ; la note de commande invite à vérifier d'abord les messages dans l'espace Labyrinthe Connect. OTP : message neutre « demandez un nouveau code si vous ne l'avez pas reçu ». |
+| **Maintenance** `503 FEATURE_DISABLED` / `OTP_SERVICE_DISABLED` | rien n'est parti, aucun crédit consommé. Les visiteurs voient le message de l'administrateur (ou « momentanément indisponible », traduit) avec l'heure de retour prévue quand elle est connue. Les SMS de commande sont replanifiés à l'heure de retour annoncée (`Retry-After`), sinon après 5, 10 puis 15 minutes ; jamais relancés en boucle. |
+
+## Relances et idempotence
+
+- **Jamais deux fois le même SMS** : chaque SMS de commande porte `Idempotency-Key: wc-<site>-<commande>-<statut>`,
+  réutilisée à chaque tentative (l'API la rejoue pendant 24 h), l'action planifiée est unique, et la commande garde
+  la trace des SMS envoyés (métadonnée `_labyrinthe_sms_sent`).
+- SMS de commande : le SDK relance une fois quand c'est sans risque (erreur réseau, 5xx, 429), puis l'action est
+  replanifiée après 5, 10 et 15 minutes (4 tentatives au total). Les erreurs métier ne sont pas relancées.
+- OTP : chaque envoi porte une clé stable construite à partir de la session, du contexte, du numéro et du rang de
+  l'envoi : un double clic ou une relance réseau rejoue le même envoi (même code, pas de second SMS) ; seul
+  « Envoyer un nouveau code » après un envoi réussi en crée un autre. Les vérifications ne sont jamais relancées après
+  une erreur réseau.
+- Chaque appel à l'API porte un `X-Request-Id` (`wp-<uuid>`), écrit dans les notes de commande en échec et dans le
+  journal des SMS : communiquez-le au support (connect@labyrinthe-rdc.com).
+
+## Hooks et filtres pour les développeurs
+
+**Actions**
+
+| Action | Arguments | Quand |
+|---|---|---|
+| `labyrinthe_connect_sms_sent` | `array $result, array $meta` | après chaque tentative de SMS de commande ou de test ; `$result` : `success`, `recipient` (masqué), `message_id`, `status`, `segments`, `encoding`, `error_code`, `error_message`, `retryable`, `test_mode`, `replayed`, `log_id`, `request_id`, `retry_after` ; `$meta` : `context` (`order_status`, `admin_new_order`, `test`), `order_id`… |
+| `labyrinthe_webhook_received` | `array $envelope` | chaque webhook vérifié et nouveau |
+| `labyrinthe_message_status_changed` | `array $envelope, ?array $log_row` | `message.status_changed` (`data` : `message_id`, `status`, `reference`, `error_code`, `error_message`…) |
+| `labyrinthe_otp_verified`, `labyrinthe_otp_failed` | `array $envelope` | `otp.verified` / `otp.failed` (`data` : `otp_id`, `phone`, `status`, `reason`, `verified_at`) |
+| `labyrinthe_campaign_completed`, `labyrinthe_balance_low`, `labyrinthe_webhook_test_ping` | `array $envelope` | les webhooks correspondants |
+
+**Filtres**
+
+| Filtre | Arguments | Usage |
+|---|---|---|
+| `labyrinthe_connect_send_order_sms` | `bool $send, WC_Order $order, string $status` | ne pas envoyer certains SMS de commande |
+| `labyrinthe_connect_order_sms_variables` | `array $vars, WC_Order $order, string $status` | ajouter ou modifier des `{variables}` |
+| `labyrinthe_connect_order_sms_body` | `string $body, WC_Order $order, string $status` | texte final d'un SMS de commande au client |
+| `labyrinthe_connect_sms_body` | `string $body, array $meta` | texte final de tout SMS envoyé par le plugin (hors OTP) |
+| `labyrinthe_connect_order_total` | `string $total, WC_Order $order` | `{order_total}` (`25.00 USD`) |
+| `labyrinthe_connect_tracking_url` | `string $url, WC_Order $order` | `{tracking_url}` |
+| `labyrinthe_connect_otp_login_user` | `?WP_User $user, string $phone` | retrouver vous-même le compte d'un numéro |
+| `labyrinthe_connect_otp_login_allowed` | `bool $allowed, WP_User $user` | autoriser ou refuser la connexion par SMS d'un compte |
+| `labyrinthe_connect_client_ip` | `string $ip` | IP du visiteur pour la limite par IP (seul `REMOTE_ADDR` est fiable par défaut) |
+| `labyrinthe_connect_web_otp_domain` | `string $domain` | domaine Web OTP ; `''` désactive le Web OTP |
+| `labyrinthe_connect_webhook_tolerance` | `int $seconds` | tolérance de l'horodatage signé (300) |
+| `labyrinthe_connect_delivery_order_notes` | `bool $enabled, array $row` | notes de commande sur les accusés de remise |
+| `labyrinthe_connect_base_url` | `?string $url` | URL de l'API (production par défaut ; aussi `LABYRINTHE_CONNECT_BASE_URL`) |
+| `labyrinthe_connect_http_client` | client PSR-18 | remplacer le client HTTP (par défaut : API HTTP de WordPress, donc proxys et `pre_http_request` s'appliquent) |
+
+```php
+// Pas de SMS « en attente » pour les commandes payées à la livraison.
+add_filter( 'labyrinthe_connect_send_order_sms', function ( bool $send, WC_Order $order, string $status ): bool {
+	return ( 'on-hold' === $status && 'cod' === $order->get_payment_method() ) ? false : $send;
+}, 10, 3 );
+```
+
+Une extension « must-use » complète (variable personnalisée, alerte sur échec définitif, courriel de solde bas) est
+dans [`examples/labyrinthe-connect-customizations.php`](examples/labyrinthe-connect-customizations.php).
+
+Le SDK est embarqué sous le préfixe `LabyrintheConnect\Vendor\` et n'est pas destiné aux autres plugins. Pour appeler
+l'API depuis votre code, ajoutez [`labyrinthe/connect-php`](../php) à votre plugin (aucun conflit grâce au préfixe),
+ou appelez directement l'API REST (un SMS : `POST https://api.labyrinthe-rdc.com/api/public/v1/sms` avec
+`Authorization: Bearer lsk_test_…` et `{"recipient": "+243812345678", "body": "…"}` ; voir la
+[spécification OpenAPI](../openapi/openapi.yaml)).
+
+## Dépannage
+
+| Symptôme | Solution |
+|---|---|
+| « Labyrinthe Connect nécessite PHP 8.1 ou plus récent » | demandez à votre hébergeur de passer à PHP 8.1, 8.2 ou 8.3 (panneau de contrôle, « Version PHP »). |
+| « Labyrinthe Connect est incomplet (le dossier vendor-prefixed/ manque) » | installez le plugin depuis son zip, ou lancez `composer install` dans son dossier. |
+| « La clé API enregistrée ne peut plus être lue » | les salts de `wp-config.php` ont changé : saisissez de nouveau la clé (ou utilisez `LABYRINTHE_CONNECT_API_KEY`). |
+| **Tester la connexion** : « La clé API a été refusée » | clé erronée, révoquée ou tronquée : créez-en une nouvelle dans l'espace client. |
+| « L’API Labyrinthe Connect est injoignable » | HTTPS sortant bloqué par l'hébergeur ou un pare-feu, `LABYRINTHE_CONNECT_BASE_URL` erronée, ou extension qui filtre `pre_http_request`. |
+| Aucun SMS de commande | le statut est-il activé dans l'onglet *WooCommerce* ? La commande a-t-elle un numéro (voir ses notes) ? Consultez *WooCommerce > État > Actions planifiées*, groupe `labyrinthe-connect` : les actions restent en attente quand WP-Cron ne tourne pas (mettez en place un vrai cron). |
+| Un SMS coûte 2 crédits | un accent ou un caractère spécial l'a fait passer en Unicode : activez *Accents* et regardez l'aperçu. |
+| Les statuts de remise ne se mettent jamais à jour | l'URL du webhook manque dans l'espace client, ou le secret diffère (`400` signature invalide) ; une extension de sécurité ou un proxy ne doit ni bloquer ni réécrire `POST /wp-json/labyrinthe/v1/webhook`. |
+| Le formulaire OTP indique « Votre session a expiré » | la page vient d'un cache de pages : excluez du cache les pages de connexion, d'inscription, de commande et de compte. |
+| Tous les visiteurs atteignent la limite par IP | le site est derrière un proxy ou un CDN : renvoyez la vraie IP du client avec `labyrinthe_connect_client_ip` (uniquement depuis un en-tête de confiance). |
+| « Ce compte ne peut pas se connecter par SMS » | le compte n'a pas de numéro vérifié, le numéro est partagé, ou c'est un administrateur (voir *Connexion par SMS*). |
+| Les visiteurs voient « momentanément indisponible (maintenance) » | Labyrinthe Connect a coupé le service pour un temps ; les SMS de commande repartiront automatiquement. |
+
+Les libellés exacts dépendent de la langue du site. Communiquez l'**identifiant de requête** de la note de commande ou
+du journal des SMS au support : connect@labyrinthe-rdc.com.
 
 ## Développement
 
 ```bash
-composer install                 # outils + vendor-prefixed/ (PHP-Scoper lancé automatiquement)
+composer install                 # outils de dev + vendor-prefixed/ (PHP-Scoper s'exécute automatiquement)
 php bin/install-wp-tests.php     # WordPress + WooCommerce dans .wp-tests/, base labyrinthe_wp_tests
-composer lint                    # PHPCS (WordPress Coding Standards + PHPCompatibilityWP 8.1+)
-composer analyse                 # PHPStan niveau 8
-composer test                    # PHPUnit + suite de tests WordPress (HPOS ; LABYRINTHE_TEST_HPOS=no pour les articles)
+                                 # (--wp=6.4.5 --wc=8.5.2 --db-user=root --db-pass= --db-host=127.0.0.1)
+composer check                   # PHPCS (WordPress Coding Standards + PHPCompatibilityWP 8.1+), PHPStan niveau 8, tests
 LABYRINTHE_API_KEY=lsk_test_… LABYRINTHE_BASE_URL=http://localhost:8000 composer test:integration
-composer i18n                    # .pot, .po, .mo, .l10n.php, .json
+composer i18n                    # languages/*.pot, .po, .mo, .l10n.php et .json (WP-CLI dans tools/wp-cli)
 composer build                   # dist/labyrinthe-connect.zip + dist/labyrinthe-connect/
+php bin/smoke-test.php           # vérifie le plugin construit
 ```
 
-## Publication
+La construction demande PHP 8.2+ (l'exécution, 8.1+). Elle utilise une liste blanche (`labyrinthe-connect.php`,
+`uninstall.php`, `readme.txt`, `LICENSE`, `includes/`, `assets/`, `blocks/`, `languages/`, `vendor-prefixed/`), des
+horodatages fixes, et vérifie que la version de l'en-tête, `LABYRINTHE_CONNECT_VERSION`, le `Stable tag` du readme et
+`block.json` concordent.
 
-Tag `wordpress-vX.Y.Z` (voir [`CONTRIBUTING.md`](../CONTRIBUTING.md)) : le workflow `wordpress-release.yml` vérifie les
-versions, lance les contrôles, construit le zip, crée la release GitHub et déploie `dist/labyrinthe-connect/` sur le SVN
-de wordpress.org avec 10up/action-wordpress-plugin-deploy (secrets `SVN_USERNAME` / `SVN_PASSWORD`).
+**Choix techniques.** Les dépendances d'exécution (`labyrinthe/connect-php`, Guzzle, interfaces PSR) sont copiées par
+PHP-Scoper dans `vendor-prefixed/` sous `LabyrintheConnect\Vendor\` : un autre plugin qui embarque un autre Guzzle ne
+peut pas entrer en conflit. Le HTTP passe par `wp_remote_request()` (adaptateur PSR-18 dans `includes/http`). L'OTP
+utilise les actions `admin-ajax.php` `labyrinthe_otp_send` / `labyrinthe_otp_verify` (protégées par nonce) et du
+JavaScript natif (sans étape de build).
+
+```
+labyrinthe-connect.php    en-tête du plugin, contrôle de PHP, autoloaders, hooks
+uninstall.php             supprime toutes les données
+includes/                 admin/ (réglages, journal, champ de profil), http/, otp/, webhook/, woocommerce/
+assets/  blocks/          scripts et styles du widget et de l'administration, bloc otp-login
+languages/                .pot, traductions fr_FR
+examples/                 exemples de hooks (non livrés dans le zip)
+bin/  tools/  tests/      scripts de build et de test, outils figés, suite PHPUnit
+```
+
+## Mise à jour, publication, contribution
+
+- Changements : [CHANGELOG.md](CHANGELOG.md) (développeurs, en anglais) et le changelog de [`readme.txt`](readme.txt)
+  (propriétaires de sites). Les mises à jour ne demandent aucun changement de réglage.
+- Publication : tag `wordpress-vX.Y.Z` (voir [CONTRIBUTING.md](../CONTRIBUTING.md)) ; le workflow construit le zip,
+  crée une version GitHub et déploie sur le SVN de wordpress.org.
+- Tickets et pull requests : [Labyrinthe-Team/labyrinthe-connect-sdks](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks).
+
+## Licence
+
+GPL-2.0-or-later — voir [LICENSE](LICENSE). SDK et dépendances embarqués : MIT. Failles de sécurité : écrivez à
+connect@labyrinthe-rdc.com plutôt que d'ouvrir un ticket public.
