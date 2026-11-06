@@ -44,6 +44,8 @@ final class Widget {
 			Otp_Service::CONTEXT_CHECKOUT => __( 'Verify your phone number to place the order', 'labyrinthe-connect' ),
 		);
 		$title  = $args['title'] ?? ( $titles[ $context ] ?? '' );
+		// Forme du code (longueur, chiffres ou lettres) : celle du dernier envoi, mise à jour par le script après l'envoi.
+		$shape = Otp_Service::shape();
 
 		ob_start();
 		?>
@@ -68,7 +70,7 @@ final class Widget {
 				</p>
 				<div class="labyrinthe-otp__step labyrinthe-otp__step--code" hidden>
 					<label for="<?php echo esc_attr( $id ); ?>-code"><?php esc_html_e( 'Code received by SMS', 'labyrinthe-connect' ); ?></label>
-					<input type="text" class="input labyrinthe-otp__code" id="<?php echo esc_attr( $id ); ?>-code" autocomplete="one-time-code" inputmode="numeric" maxlength="20" />
+					<input type="text" class="input labyrinthe-otp__code" id="<?php echo esc_attr( $id ); ?>-code" autocomplete="one-time-code" spellcheck="false" <?php echo self::code_attributes( $shape['code_length'], $shape['code_type'] ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- attributs échappés par code_attributes(). ?> />
 					<?php if ( ! empty( $args['remember'] ) ) : ?>
 						<label class="labyrinthe-otp__remember"><input type="checkbox" class="labyrinthe-otp__remember-input" value="1" /> <?php esc_html_e( 'Remember me', 'labyrinthe-connect' ); ?></label>
 					<?php endif; ?>
@@ -84,6 +86,28 @@ final class Widget {
 		<?php
 
 		return (string) ob_get_clean();
+	}
+
+	/**
+	 * Attributs du champ de code selon sa forme : longueur, clavier numérique ou texte.
+	 *
+	 * Pas d'attribut pattern ni required : le champ est souvent dans le formulaire d'inscription
+	 * ou de commande, dont il bloquerait l'envoi (validation HTML) une fois le numéro vérifié.
+	 *
+	 * @param int    $length Nombre de caractères du code.
+	 * @param string $type   numeric ou alphanumeric.
+	 */
+	public static function code_attributes( int $length, string $type ): string {
+		$numeric = 'alphanumeric' !== $type;
+		$length  = max( 4, min( 8, $length ) );
+
+		return sprintf(
+			'inputmode="%1$s" maxlength="%2$d" size="%2$d" autocapitalize="%3$s" data-code-length="%2$d" data-code-type="%4$s"',
+			$numeric ? 'numeric' : 'text',
+			$length,
+			$numeric ? 'off' : 'characters',
+			$numeric ? 'numeric' : 'alphanumeric'
+		);
 	}
 
 	/**
@@ -109,6 +133,8 @@ final class Widget {
 						/* translators: %s: test code (test mode only, shown to administrators). */
 						'testCode'     => __( 'Test mode (visible to administrators only): the code is %s.', 'labyrinthe-connect' ),
 						'verified'     => __( 'Phone number verified.', 'labyrinthe-connect' ),
+						/* translators: %d: number of characters of the code. */
+						'codeLength'   => __( 'The code has %d characters.', 'labyrinthe-connect' ),
 						'networkError' => __( 'Connection problem. Please try again.', 'labyrinthe-connect' ),
 					),
 				)

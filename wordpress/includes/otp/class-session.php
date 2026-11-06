@@ -29,12 +29,13 @@ final class Session {
 	/**
 	 * Données de la session.
 	 *
-	 * @return array{pending: array<string, array<string, mixed>>, verified: array<string, int>}
+	 * @return array{pending: array<string, array<string, mixed>>, verified: array<string, int>, sends: array<string, int>}
 	 */
 	public function get(): array {
 		$empty = array(
 			'pending'  => array(),
 			'verified' => array(),
+			'sends'    => array(),
 		);
 		$token = $this->token( false );
 		if ( null === $token ) {
@@ -48,6 +49,8 @@ final class Session {
 		$data = array_merge( $empty, $data );
 		// Vérifications expirées.
 		$data['verified'] = array_filter( (array) $data['verified'], static fn( $expires ): bool => (int) $expires > time() );
+		$data['pending']  = (array) $data['pending'];
+		$data['sends']    = array_map( 'intval', (array) $data['sends'] );
 
 		return $data;
 	}
@@ -55,13 +58,23 @@ final class Session {
 	/**
 	 * Enregistre les données (crée le jeton si besoin).
 	 *
-	 * @param array{pending: array<string, array<string, mixed>>, verified: array<string, int>} $data Données.
+	 * @param array{pending: array<string, array<string, mixed>>, verified: array<string, int>, sends: array<string, int>} $data Données.
 	 */
 	public function save( array $data ): void {
 		$token = $this->token( true );
 		if ( null !== $token ) {
 			set_transient( self::key( $token ), $data, self::TTL );
 		}
+	}
+
+	/**
+	 * Empreinte de la session (jamais le jeton lui-même), créée si besoin : sert à dériver
+	 * des clés d'idempotence propres à ce navigateur.
+	 */
+	public function fingerprint(): string {
+		$token = $this->token( true );
+
+		return null === $token ? '' : hash( 'sha256', 'idempotency|' . $token );
 	}
 
 	/**
