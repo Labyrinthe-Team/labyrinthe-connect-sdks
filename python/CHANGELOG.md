@@ -95,8 +95,8 @@ First stable release, built against the API specification 1.1.0.
 - `phone` helpers (normalisation identical to the API, validation, masking); `logging` logger
   `labyrinthe_connect` (no key, code, body or full number); fully typed (`py.typed`); only dependency: `httpx`.
 
-[Unreleased]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/python-v1.2.0...HEAD
-[1.2.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/python-v1.1.1...python-v1.2.0
-[1.1.1]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/python-v1.1.0...python-v1.1.1
-[1.1.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/python-v1.0.0...python-v1.1.0
-[1.0.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/releases/tag/python-v1.0.0
+[Unreleased]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/python-v1.2.0...HEAD
+[1.2.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/python-v1.1.1...python-v1.2.0
+[1.1.1]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/python-v1.1.0...python-v1.1.1
+[1.1.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/python-v1.0.0...python-v1.1.0
+[1.0.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/releases/tag/python-v1.0.0
