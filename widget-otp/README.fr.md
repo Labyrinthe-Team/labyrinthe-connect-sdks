@@ -13,7 +13,12 @@ Express et Next.js.
   chaque erreur expliquée.
 - Accessible (libellés, `role="alert"`, région live, clavier, gestion du focus), responsive, clair / sombre,
   thémable par variables CSS et `::part()`, français (par défaut) et anglais, tous les textes surchargeables.
-- Zéro dépendance, Shadow DOM, **7,6 kB min+gzip** (script autonome).
+- Zéro dépendance, Shadow DOM, **7,8 kB min+gzip** (script autonome).
+
+> **Nouveautés 1.1.0** (API 1.2.0, `@labyrinthe/connect` ≥ 1.1.1) : longueur / alphabet du code et délai de renvoi
+> fournis par l'API (plus de configuration manuelle), tentatives restantes réelles, `webOtpDomain` pour la Web OTP
+> API, envois idempotents (une réponse perdue ne déclenche jamais un second SMS), erreur stable `account_suspended`.
+> Voir le [CHANGELOG](CHANGELOG.md).
 
 ## Intégration en 5 minutes
 
@@ -109,8 +114,18 @@ Exemples complets : [`examples/express`](examples/express) (page statique + serv
 - Chaque envoi est un SMS facturé : utilisez `beforeSend()` pour limiter par IP ou par compte, ajouter un captcha
   ou une liste blanche. L'API limite aussi les envois par numéro et par compte (`resend_too_soon`, `rate_limited`).
 - Les messages de l'API ne sont jamais relayés : le navigateur reçoit des codes stables (`invalid_phone`,
-  `resend_too_soon`, `rate_limited`, `no_pending_verification`, `service_unavailable`…). Une erreur de configuration
-  (clé, crédits, Sender ID) apparaît comme `service_unavailable` et part dans votre `onError()`.
+  `resend_too_soon`, `rate_limited`, `no_pending_verification`, `service_unavailable`, `account_suspended`…). Une
+  erreur de configuration (clé, crédits, Sender ID) apparaît comme `service_unavailable`, un compte Labyrinthe
+  suspendu (`ACCOUNT_SUSPENDED`) comme `account_suspended` (503) ; les deux partent dans votre `onError()`.
+- **Résultat inconnu : `send_failed` (502).** Quand l'API répond `409 IDEMPOTENCY_KEY_UNRESOLVED` (l'envoi d'origine
+  avec cette clé a échoué de façon inattendue de son côté : un code a pu partir), le helper renvoie `send_failed` et
+  appelle `onError()` (journalisez le `requestId` de l'erreur). Rien n'est relancé automatiquement. Le widget indique
+  à l'utilisateur que l'envoi n'a pas pu être confirmé et oublie son `send_id` : si le code n'arrive pas,
+  l'utilisateur en redemande un, envoyé avec une nouvelle clé d'idempotence.
+- **Jamais de double SMS.** Chaque envoi porte un `send_id` aléatoire, gardé par le widget jusqu'à ce que l'envoi
+  aboutisse : après une réponse perdue, le clic suivant le réutilise. Le helper en dérive l'`Idempotency-Key` par
+  HMAC avec `secret` (le navigateur ne choisit jamais la clé envoyée à Labyrinthe) : l'API rejoue le premier envoi
+  au lieu d'envoyer un nouveau SMS. Le SDK relance aussi les erreurs réseau et les 5xx avec la même clé.
 
 ## Options serveur (`createOtpHandlers`)
 
@@ -124,8 +139,10 @@ Exemples complets : [`examples/express`](examples/express) (page statique + serv
 | `cookie` | `labyrinthe_otp`, `/`, `Strict` | `name`, `path`, `domain`, `sameSite`, `secure`. |
 | `defaultCountryCode` | `243` | Ajouté aux numéros locaux. |
 | `template`, `locale` | paramètres du compte | Modèle du SMS (doit contenir `{code}`) et langue (sinon celle du widget). |
-| `resendAfterSeconds` | `60` | Compte à rebours avant « Renvoyer ». À aligner sur le délai anti-renvoi du compte. |
-| `codeLength`, `codeType` | `6`, `numeric` | À aligner sur les paramètres OTP du compte (l'API ne les renvoie pas). |
+| `webOtpDomain` | — | Hôte de votre site (`app.exemple.com`) : le SMS se termine par `@app.exemple.com #CODE` pour la Web OTP API. |
+| `stripAccents` | `false` | Retire les accents du SMS (GSM-7, souvent deux fois moins cher). |
+| `resendAfterSeconds` | fourni par l'API | Surcharge du compte à rebours avant « Renvoyer » (par défaut `resend_after_seconds` de l'API, sinon 60). |
+| `codeLength`, `codeType` | fournis par l'API | Surcharges de la forme du code (par défaut `code_length` / `code_type` de l'API). Utiles seulement avec une API antérieure à 1.2.0. |
 | `exposeTestCode` | `false` | Développement uniquement, clés de test uniquement. |
 | `allowedOrigins` | même hôte | Origines autorisées à appeler les endpoints. |
 | `onError(error, { action })` | — | Erreurs de l'API et erreurs inattendues, pour vos journaux. |
@@ -138,7 +155,7 @@ Exemples complets : [`examples/express`](examples/express) (page statique + serv
 | `locale` | `fr` | `fr` ou `en` (aussi la langue du SMS, sauf si le serveur en impose une). |
 | `country-code` | `243` | Indicatif par défaut, modifiable par l'utilisateur. |
 | `phone` | — | Numéro prérempli. |
-| `code-length`, `code-type` | `6`, `numeric` | Jusqu'à ce que le serveur indique autre chose. |
+| `code-length`, `code-type` | `6`, `numeric` | Jusqu'à ce que le serveur indique autre chose (toujours le cas avec l'API 1.2.0). |
 | `theme` | automatique | `light` ou `dark` ; sinon suit `prefers-color-scheme`. |
 | `heading` | « Vérification du numéro » | `""` masque le titre. |
 | `credentials` | `same-origin` | `include` pour des endpoints sur une autre origine (avec `cookie.sameSite: 'None'`). |
@@ -150,7 +167,7 @@ Propriétés : `texts` (surcharges), `requestHeaders`, `step` (`phone` · `code`
 |---|---|
 | `labyrinthe-otp:sent` | `{ phone, phoneMasked, expiresAt, maxAttempts, resendAfterSeconds, testCode? }` |
 | `labyrinthe-otp:verified` | `{ phone, data }` |
-| `labyrinthe-otp:error` | `{ code, message, status, retryAfterSeconds?, attemptsLeft? }` — `code` : `invalid_phone`, `invalid_code`, `expired`, `already_used`, `max_attempts_reached`, `resend_too_soon`, `rate_limited`, `no_pending_verification`, `network_error`, `incomplete_code`, `service_unavailable`, `forbidden`, `invalid_request`, `server_error` |
+| `labyrinthe-otp:error` | `{ code, message, status, retryAfterSeconds?, attemptsLeft? }` — `code` : `invalid_phone`, `invalid_code`, `expired`, `already_used`, `max_attempts_reached`, `resend_too_soon`, `rate_limited`, `no_pending_verification`, `network_error`, `incomplete_code`, `service_unavailable`, `account_suspended`, `send_failed`, `forbidden`, `invalid_request`, `server_error` |
 
 ## Personnalisation
 
@@ -176,8 +193,11 @@ widget.texts = { send: 'Recevoir mon code', errors: { invalid_code: 'Raté, rée
 ```
 
 **Web OTP API (Chrome Android) :** pour que le navigateur remplisse le code tout seul, la dernière ligne du SMS doit
-être `@votre-domaine.com #CODE`. Utilisez un `template` serveur comme
-`'Votre code : {code}\n\n@maboutique.cd #{code}'`.
+être `@votre-domaine.com #CODE`, où le domaine est exactement l'hôte de la page qui affiche le widget (page de
+premier niveau, HTTPS). Passez l'option serveur `webOtpDomain: 'maboutique.cd'` : l'API ajoute cette ligne elle-même
+(ne la mettez pas dans votre `template`). Le widget appelle alors `navigator.credentials.get({ otp: { transport: ['sms'] } })`
+pendant l'affichage des cases (désactivable avec `no-web-otp`) ; la saisie ou le collage du code restent possibles partout.
+
 
 ## Mode test
 

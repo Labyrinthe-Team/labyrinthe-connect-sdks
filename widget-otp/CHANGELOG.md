@@ -5,6 +5,42 @@ All notable changes to `@labyrinthe/otp-widget` are documented here. This projec
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-06
+
+### Added
+- Stable error code `send_failed` (502) for `409 IDEMPOTENCY_KEY_UNRESOLVED` (the original send failed unexpectedly on
+  the API side and its outcome is unknown: a code may have been sent). Reported to `onError`, never retried; the
+  widget shows a French / English message and forgets its `send_id`, so a new code requested by the user is sent with
+  a new idempotency key.
+
+### Fixed
+- Short foreign numbers (`+2481234567`, Seychelles, 10 digits) are sent to the API with their country code instead of
+  being read as local DRC numbers (`2432481234567`), BACKEND-TODO n° 32. The widget and the server helper already
+  sent `+<digits>`, but `@labyrinthe/connect` 1.1.0 dropped the `+` before calling the API: the peer dependency is now
+  `^1.1.1` (the release that sends E.164 numbers with `+`). Tests check the number handed to the SDK and the body
+  received by a local API.
+
+## [1.1.0] - 2026-11-06
+
+Built against the API specification 1.2.0 and `@labyrinthe/connect` 1.1 (peer dependency now `^1.1.0`).
+
+### Added
+- Server option `webOtpDomain`: the API ends the SMS with `@domain #code`, so the Web OTP API of the widget
+  (`navigator.credentials.get`, Chrome on Android) can really fill the code. Validated at start-up.
+- Server option `stripAccents` (GSM-7 SMS).
+- Idempotent sends: the widget sends a random `send_id` (kept until the send succeeds, reused after a lost
+  response); the helper derives the `Idempotency-Key` from it with an HMAC of `secret`, so a retried click never
+  sends a second SMS. Invalid `send_id`: 400 `invalid_request`.
+- Stable error code `account_suspended` (503) for `ACCOUNT_SUSPENDED`, translated in French and English and reported
+  to `onError`. `IDEMPOTENCY_REQUEST_IN_PROGRESS` maps to `rate_limited` with `retry_after_seconds`.
+
+### Changed
+- `code_length`, `code_type` and `resend_after_seconds` sent to the widget come from the API response; the
+  `codeLength`, `codeType` and `resendAfterSeconds` options remain as overrides (needed only with an older API).
+- `attempts_left` is the API's `attempts_remaining` (estimated locally only with an older SDK).
+- Phone numbers, aligned with the API and the SDK: without "+", 11 digits or more not starting with 0 are already
+  international (`33612345678` is kept).
+
 ## [1.0.0] - 2026-11-06
 
 First stable release, built against the API specification 1.1.0 and `@labyrinthe/connect` 1.0.
