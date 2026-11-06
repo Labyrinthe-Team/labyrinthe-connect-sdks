@@ -5,6 +5,25 @@ project follows [Semantic Versioning](https://semver.org/) and the format of [Ke
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-06
+
+Built against the API specification 1.3.0. Backward compatible with 1.1.x.
+
+### Added
+- `FeatureDisabledException` (503 `FEATURE_DISABLED`, a subclass of `ServiceUnavailableException`): a platform
+  administrator switched off the whole API (`api`) or one function (`api.sms_send`, `api.otp_send`,
+  `api.otp_verify`); nothing was done. Properties `Feature`, `BlockedBy`, `AdminMessage` (`details.message`), `Until`
+  (`details.until`, `null` when unknown or unreadable) and `RetryAfter` (`Retry-After` header). Missing or malformed
+  details are tolerated (`null` properties).
+
+### Changed
+- 503 `OTP_SERVICE_DISABLED` (`Otp.SendAsync`) is now raised as `FeatureDisabledException` (still a
+  `ServiceUnavailableException`), with the same details (`Feature` = `BlockedBy` = `otp`).
+- Retries: `FEATURE_DISABLED` and `OTP_SERVICE_DISABLED` are never retried with the exponential backoff of other
+  5xx. Every method, `Otp.VerifyAsync` included (refused before processing), retries them only after `Retry-After`
+  when it is no longer than `MaxRetryWait` (within `MaxRetries`); otherwise the error is thrown at once. Other 5xx
+  are unchanged.
+
 ## [1.1.1] - 2026-11-06
 
 ### Added

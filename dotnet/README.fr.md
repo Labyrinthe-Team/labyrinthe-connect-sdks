@@ -239,7 +239,9 @@ else
 `Otp.SendAsync` porte toujours un `Idempotency-Key` (`SendOtpRequest.IdempotencyKey`, ou un `Guid` généré et réutilisé
 par ses relances) : il est relancé sans risque après une erreur réseau, une 5xx ou un 409
 `IDEMPOTENCY_REQUEST_IN_PROGRESS`, et un rejeu renvoie le même `OtpId` sans second SMS (`otp.Replayed`). `VerifyAsync`
-n'est relancé que sur 429 `TOO_MANY_REQUESTS` (sinon une tentative a pu être consommée).
+n'est relancé que sur 429 `TOO_MANY_REQUESTS` et sur 503 `FEATURE_DISABLED` après son `Retry-After` (sinon une
+tentative a pu être consommée). Maintenance : `FeatureDisabledException` (voir
+[Erreurs](#maintenance-503-feature_disabled)).
 
 L'issue de chaque vérification est aussi notifiée par les webhooks `otp.verified` et `otp.failed`.
 
@@ -350,7 +352,8 @@ batch.RequestId   // "commande-1042"
 | `IdempotencyKeyUnresolvedException` | 409 — requête d'origine en échec inattendu, résultat inconnu (un SMS a pu partir) ; jamais relancée : vérifier, puis renvoyer avec une nouvelle clé |
 | `RateLimitException` | 429 `TOO_MANY_REQUESTS` — `RetryAfter` |
 | `OtpResendTooSoonException`, `OtpRateLimitedException` | 429 — héritent de `RateLimitException` ; `Scope`, `Limit` |
-| `ServiceUnavailableException` | 5xx, dont 503 `OTP_SERVICE_DISABLED` |
+| `FeatureDisabledException` | 503 `FEATURE_DISABLED` / `OTP_SERVICE_DISABLED` — hérite de `ServiceUnavailableException` ; fonctionnalité coupée par la plateforme (maintenance), rien n'a été fait ; `Feature`, `BlockedBy`, `AdminMessage`, `Until`, `RetryAfter` |
+| `ServiceUnavailableException` | autres 5xx |
 | `ApiException` | tout autre code (liste ouverte : de nouveaux codes peuvent apparaître) |
 | `ApiConnectionException`, `ApiTimeoutException` | erreur réseau (`CONNECTION_ERROR`) ou délai dépassé (`TIMEOUT`) |
 | `UnexpectedResponseException` | réponse illisible pour le SDK |
@@ -358,6 +361,31 @@ batch.RequestId   // "commande-1042"
 
 Une saisie invalide détectée avant tout appel lève `ArgumentException` (les numéros n'apparaissent jamais dans le
 message). Annuler votre `CancellationToken` lève `OperationCanceledException`, jamais `ApiTimeoutException`.
+
+### Maintenance (503 `FEATURE_DISABLED`)
+
+Un administrateur de la plateforme peut couper temporairement toute l'API (`BlockedBy` = `"api"`, toutes les routes,
+avant même l'authentification) ou une fonction : `api.sms_send` (`Sms.SendAsync` / `SendManyAsync`), `api.otp_send`
+(`Otp.SendAsync`), `api.otp_verify` (`Otp.VerifyAsync`). Le service OTP entier coupé renvoie le code historique
+`OTP_SERVICE_DISABLED` sur `Otp.SendAsync`, avec les mêmes détails (`Feature` = `BlockedBy` = `"otp"`). Rien n'est
+envoyé, aucun crédit n'est consommé. Le SDK ne la relance jamais avec un backoff aveugle : seulement après
+`Retry-After` (réactivation automatique programmée) s'il ne dépasse pas `MaxRetryWait`. Ne relancez pas en boucle :
+mettez le travail en file d'attente, prévenez l'utilisateur.
+
+```csharp
+try
+{
+    await client.Sms.SendAsync("0812345678", "Bonjour");
+}
+catch (FeatureDisabledException error)
+{
+    // error.Feature : "api.sms_send" ; error.BlockedBy : "api" quand toute l'API est coupée.
+    var message = error.AdminMessage ?? "L'envoi de SMS est en maintenance.";
+    var retryAt = error.Until ?? DateTimeOffset.UtcNow.AddMinutes(15);   // Until / RetryAfter : null si inconnus
+    await outbox.ScheduleAsync(retryAt);                                  // votre file d'attente
+    logger.LogWarning("Labyrinthe Connect coupé ({BlockedBy}) : {Message}", error.BlockedBy, message);
+}
+```
 
 ## Relances et délais
 
@@ -370,8 +398,11 @@ Le SDK relance automatiquement (par défaut 2 relances, backoff exponentiel 0,5 
 | `SendAsync` / `SendManyAsync` / `Otp.SendAsync` (toujours avec `Idempotency-Key`) | relancée, même clé | relancée, même clé | relancée après `Retry-After` | relancée après `Retry-After`, même clé |
 | `Otp.VerifyAsync` | **jamais** | **jamais** | relancée (refusée avant traitement) | **jamais** |
 
-Les erreurs métier (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`, `IDEMPOTENCY_KEY_UNRESOLVED`) ne sont jamais relancées. Si l'API demande
-d'attendre plus que `MaxRetryWait` (10 s par défaut), le SDK lève `RateLimitException` au lieu d'attendre. Les
+Les erreurs métier (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`, `IDEMPOTENCY_KEY_UNRESOLVED`) ne sont jamais relancées.
+503 `FEATURE_DISABLED` / `OTP_SERVICE_DISABLED` (`FeatureDisabledException`, refusée avant traitement) est relancée par
+toutes les méthodes, `Otp.VerifyAsync` compris, **uniquement** après son `Retry-After` ; sans lui, elle est levée tout
+de suite (aucun backoff). Si l'API demande d'attendre plus que `MaxRetryWait` (10 s par défaut), le SDK lève l'erreur
+(`RateLimitException`, `FeatureDisabledException`…) au lieu d'attendre. Les
 redirections ne sont jamais suivies. `Timeout` s'applique à chaque tentative ; votre `CancellationToken` borne
 l'appel entier (relances comprises).
 

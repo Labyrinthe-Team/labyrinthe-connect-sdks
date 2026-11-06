@@ -237,7 +237,8 @@ else
 `Otp.SendAsync` always carries an `Idempotency-Key` (`SendOtpRequest.IdempotencyKey`, or a generated `Guid` reused by
 its retries): it is retried safely after a network error, a 5xx or a 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS`, and a
 replay returns the same `OtpId` without a second SMS (`otp.Replayed`). `VerifyAsync` is retried only on 429
-`TOO_MANY_REQUESTS` (an attempt may have been consumed otherwise).
+`TOO_MANY_REQUESTS` and on 503 `FEATURE_DISABLED` after its `Retry-After` (an attempt may have been consumed
+otherwise). Maintenance: `FeatureDisabledException` (see [Errors](#maintenance-503-feature_disabled)).
 
 Every verification outcome is also notified by the `otp.verified` and `otp.failed` webhooks.
 
@@ -346,7 +347,8 @@ batch.RequestId   // "order-1042"
 | `IdempotencyKeyUnresolvedException` | 409 — original request failed unexpectedly, outcome unknown (an SMS may have been sent); never retried: check, then resend with a new key |
 | `RateLimitException` | 429 `TOO_MANY_REQUESTS` — `RetryAfter` |
 | `OtpResendTooSoonException`, `OtpRateLimitedException` | 429 — extend `RateLimitException`; `Scope`, `Limit` |
-| `ServiceUnavailableException` | 5xx, including 503 `OTP_SERVICE_DISABLED` |
+| `FeatureDisabledException` | 503 `FEATURE_DISABLED` / `OTP_SERVICE_DISABLED` — extends `ServiceUnavailableException`; feature switched off by the platform (maintenance), nothing was done; `Feature`, `BlockedBy`, `AdminMessage`, `Until`, `RetryAfter` |
+| `ServiceUnavailableException` | other 5xx |
 | `ApiException` | any other code (the list is open: new codes may appear) |
 | `ApiConnectionException`, `ApiTimeoutException` | network error (`CONNECTION_ERROR`) or timeout (`TIMEOUT`) |
 | `UnexpectedResponseException` | a response the SDK cannot read |
@@ -370,6 +372,30 @@ catch (ApiException error)
 }
 ```
 
+### Maintenance (503 `FEATURE_DISABLED`)
+
+A platform administrator can temporarily switch off the whole API (`BlockedBy` = `"api"`, every route, even before
+authentication) or one function: `api.sms_send` (`Sms.SendAsync` / `SendManyAsync`), `api.otp_send`
+(`Otp.SendAsync`), `api.otp_verify` (`Otp.VerifyAsync`). The whole OTP service switched off answers the historical
+`OTP_SERVICE_DISABLED` on `Otp.SendAsync`, with the same details (`Feature` = `BlockedBy` = `"otp"`). Nothing is sent
+and no credit is used. The SDK never retries it with a blind backoff: only after `Retry-After` (automatic re-enable
+scheduled) when it is no longer than `MaxRetryWait`. Do not retry in a loop: queue the work, tell the user.
+
+```csharp
+try
+{
+    await client.Sms.SendAsync("0812345678", "Hello");
+}
+catch (FeatureDisabledException error)
+{
+    // error.Feature: "api.sms_send"; error.BlockedBy: "api" when the whole API is off.
+    var message = error.AdminMessage ?? "SMS sending is under maintenance.";
+    var retryAt = error.Until ?? DateTimeOffset.UtcNow.AddMinutes(15);   // Until / RetryAfter: null when unknown
+    await outbox.ScheduleAsync(retryAt);                                  // your queue
+    logger.LogWarning("Labyrinthe Connect off ({BlockedBy}): {Message}", error.BlockedBy, message);
+}
+```
+
 ## Retries and timeouts
 
 The SDK retries automatically (default: 2 retries, exponential backoff 0.5 s → 1 s → 2 s with jitter) **only when a
@@ -381,8 +407,11 @@ replay cannot cause a side effect twice**:
 | `SendAsync` / `SendManyAsync` / `Otp.SendAsync` (always with an `Idempotency-Key`) | retried, same key | retried, same key | retried after `Retry-After` | retried after `Retry-After`, same key |
 | `Otp.VerifyAsync` | **never** | **never** | retried (refused before processing) | **never** |
 
-Business errors (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`, `IDEMPOTENCY_KEY_UNRESOLVED`) are never retried. When the API asks to wait longer
-than `MaxRetryWait` (default 10 s), the SDK throws `RateLimitException` instead of waiting. Redirects are never
+Business errors (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`, `IDEMPOTENCY_KEY_UNRESOLVED`) are never retried.
+503 `FEATURE_DISABLED` / `OTP_SERVICE_DISABLED` (`FeatureDisabledException`, refused before processing) is retried by
+every method, `Otp.VerifyAsync` included, **only** after its `Retry-After`; without it, it is thrown at once (no
+backoff). When the API asks to wait longer than `MaxRetryWait` (default 10 s), the SDK throws the error
+(`RateLimitException`, `FeatureDisabledException`…) instead of waiting. Redirects are never
 followed. `Timeout` applies to each attempt; your `CancellationToken` bounds the whole call (retries included).
 
 ## Configuration
