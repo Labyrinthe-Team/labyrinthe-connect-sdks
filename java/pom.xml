@@ -17,7 +17,7 @@
 
   <groupId>cd.labyrinthe</groupId>
   <artifactId>labyrinthe-connect-parent</artifactId>
-  <version>1.1.1</version>
+  <version>1.2.0</version>
   <packaging>pom</packaging>
 
   <name>Labyrinthe Connect SDK (parent)</name>
