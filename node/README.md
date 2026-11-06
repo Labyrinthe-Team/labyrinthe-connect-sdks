@@ -14,6 +14,12 @@ phone numbers with one-time codes (OTP), in the DR Congo and Central Africa.
 - Zero runtime dependency. ESM + CommonJS. Node.js 18+, Vercel / Cloudflare Workers, Deno, Bun.
 - Never logs or prints your API key, OTP codes or full phone numbers.
 
+> **New in 1.1.0** (API specification 1.2.0): idempotent `otp.send()` (retried safely, `replayed`), code shape
+> (`codeLength`, `codeType`) and resend delay (`resendAfterSeconds`), `attemptsRemaining` on `otp.verify()`,
+> Web OTP (`webOtpDomain`), `stripAccents`, `requestId` on every error and response (and your own `X-Request-Id`),
+> `AccountSuspendedError`, `IdempotencyRequestInProgressError` (retried automatically), `otp.verified` /
+> `otp.failed` webhooks, foreign numbers without "+" kept as is. See the [CHANGELOG](CHANGELOG.md).
+
 ## Installation
 
 ```bash
@@ -81,7 +87,15 @@ const estimate = await client.sms.estimate({ body: 'Réunion demain à 9h', reci
 estimate.encoding;      // "ucs2"
 estimate.totalCredits;  // 2
 estimate.isAffordable;  // does the balance cover it?
+
+// stripAccents: accents and typographic characters replaced with ASCII → GSM-7, often half the cost
+(await client.sms.estimate({ body: 'Réunion demain à 9h', recipients: '0812345678', stripAccents: true })).encoding; // "gsm7"
+await client.sms.send({ to: '0812345678', body: 'Réunion demain à 9h', stripAccents: true });
 ```
+
+`stripAccents` (default `false`) exists on `send()`, `sendMany()`, `estimate()` and `otp.send()`. The
+transliteration depends on the server (`Café` may become `Cafe` or `Caf'e`): do not use it for an exact text. The
+estimate counts recipients like a send (normalised, duplicates merged, invalid numbers ignored).
 
 ### Several recipients: all or nothing
 
@@ -149,6 +163,9 @@ with a test key) and never logged by the SDK.
 // 1. Send the code. Keep otpId SERVER-SIDE (session, cache, database), never in the browser.
 const otp = await client.otp.send({ phone: '0812345678' });
 req.session.otpId = otp.otpId;
+otp.codeLength;          // 6 — show that many boxes
+otp.codeType;            // "numeric" | "alphanumeric" (case-insensitive)
+otp.resendAfterSeconds;  // 60 — "Resend the code" countdown
 
 // 2. The user types the code received by SMS.
 
@@ -159,23 +176,51 @@ if (result.verified) {
   // log the user in / mark the number as verified
 } else if (result.reason === 'invalid_code') {
   // wrong code: one attempt consumed, let the user try again
+  console.log(`${String(result.attemptsRemaining)} attempt(s) left`);
 } else {
   // 'expired' | 'already_used' | 'max_attempts_reached': ask for a new code
 }
 ```
 
-- A wrong code is **not** an error: `verify()` returns `{ verified: false, reason }`.
-- A new `send()` to the same number invalidates the previous code.
-- Length, validity, attempts, Sender ID and message template come from the account's OTP settings (client area >
-  *OTP verification*). You can override the template (`template: 'Your MyShop code: {code}'`, must contain
-  `{code}`; optional `{app_name}`, `{minutes}`) and the language (`locale: 'fr' | 'en'`).
+- A wrong code is **not** an error: `verify()` returns `{ verified: false, reason, attemptsRemaining }`
+  (`attemptsRemaining`: an integer after `invalid_code`, `0` with `max_attempts_reached`, otherwise `null`).
+- A new `send()` to the same number invalidates the previous code. After a successful verification, a new send is
+  accepted right away (no anti-resend delay).
+- Length, alphabet, validity, attempts, resend delay, Sender ID and message template come from the account's OTP
+  settings (client area > *OTP verification*) and are returned by `send()`. You can override the template
+  (`template: 'Your MyShop code: {code}'`, must contain `{code}`; optional `{app_name}`, `{minutes}`), the language
+  (`locale: 'fr' | 'en'`) and remove accents (`stripAccents: true`).
 - Limits: `OtpResendTooSoonError` (wait `retryAfterMs` before resending to this number) and `OtpRateLimitedError`
-  (hourly cap per number or per account, `scope`, `limit`).
+  (hourly cap per number or per account, `scope`, `limit`, `retryAfterMs`). Both are never retried.
 - **Test mode**: with a `lsk_test_` key no SMS is sent and `otp.testCode` holds the code, so you can test the whole
   flow. It is always `null` with a live key, and hidden from `console.log()` and `JSON.stringify()`.
 
-`otp.send()` is never retried after a network error or a 5xx (the SMS may have left): show an error and let the
-user ask for a new code.
+### Idempotent OTP sends
+
+`otp.send()` always carries an `Idempotency-Key` (generated when you give none), so the SDK retries it safely after
+a network error, a timeout, a 5xx, a 429 `TOO_MANY_REQUESTS` or a 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS`: a replay
+returns the same `otpId` (and the same `testCode` in test mode) without a second SMS or charge. Pass your own key
+to also protect your own retries (double click, job retry) for 24 hours:
+
+```ts
+const otp = await client.otp.send({ phone: '0812345678', idempotencyKey: `login-${loginAttemptId}` });
+otp.replayed;   // true: nothing was sent or billed again
+```
+
+### Web OTP (automatic code fill on Android)
+
+With `webOtpDomain`, the API ends the SMS with the line `@app.example.com #123456`, the format of the
+[Web OTP API](https://developer.mozilla.org/docs/Web/API/WebOTP_API): Chrome on Android then offers to fill the code
+in your page served from **exactly that host**, over HTTPS (top-level page).
+
+```ts
+await client.otp.send({ phone: '0812345678', webOtpDomain: 'app.example.com' }); // host only: no scheme, port or path
+```
+
+```js
+// In the browser (the @labyrinthe/otp-widget does it for you)
+const { code } = await navigator.credentials.get({ otp: { transport: ['sms'] } });
+```
 
 ## Webhooks
 
@@ -188,9 +233,11 @@ Every event has `id` (deduplicate on it: deliveries are retried up to 5 times an
 
 | `event` | `data` |
 |---|---|
-| `message.status_changed` | `messageId`, `recipient`, `status`, `providerMessageId`, `campaignId` |
+| `message.status_changed` | `messageId`, `recipient`, `status`, `providerMessageId`, `campaignId`, `reference`, `errorCode`, `errorMessage` |
 | `campaign.completed` | `campaignId`, `name`, `recipientsCount`, `messagesByStatus`, `creditsCharged`, `completedAt` |
 | `balance.low` | `balance`, `threshold` |
+| `otp.verified` | `otpId`, `phone`, `status` (`verified`), `reason` (`null`), `verifiedAt` — sent once, never the code |
+| `otp.failed` | same fields: `status` `failed` (`reason` `max_attempts_reached`) or `expired` (`reason` `expired`), `verifiedAt` `null` |
 | `test.ping` | `{}` |
 | `unknown` | a type added after this SDK version: its name is in `type`, its content in `data` (as sent). Acknowledge it with a 2xx. |
 
@@ -271,6 +318,7 @@ Every error extends `LabyrintheError` and has `code` (stable, for your code), `m
 |---|---|
 | `AuthenticationError` | 401 — missing, invalid or revoked key |
 | `PermissionError` | 403 — IP not allowed (`FORBIDDEN`), OTP disabled for the account (`OTP_DISABLED_FOR_ACCOUNT`) |
+| `AccountSuspendedError` | 403 `ACCOUNT_SUSPENDED` — extends `PermissionError`; the whole API is closed, contact the support |
 | `NotFoundError` | 404 — unknown message or `otpId` |
 | `ValidationError` | 422 `VALIDATION_ERROR` — `fieldErrors` |
 | `RecipientNotSendableError` | 422 — `rejected`, `reason`; nothing was sent |
@@ -278,8 +326,10 @@ Every error extends `LabyrintheError` and has `code` (stable, for your code), `m
 | `InvalidPhoneError` | 422 `INVALID_PHONE` (OTP) |
 | `InsufficientCreditsError` | 409 — `available`, `required`; nothing was sent |
 | `IdempotencyKeyReusedError` | 409 — same key, different request |
+| `IdempotencyRequestInProgressError` | 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` — already retried; call again with the same key after `retryAfterMs` |
+| `IdempotencyKeyUnresolvedError` | 409 `IDEMPOTENCY_KEY_UNRESOLVED` — outcome unknown, an SMS may have been sent; **never** retried (see below) |
 | `RateLimitError` | 429 `TOO_MANY_REQUESTS` — `retryAfterMs` |
-| `OtpResendTooSoonError`, `OtpRateLimitedError` | 429 — extend `RateLimitError`; `scope`, `limit` |
+| `OtpResendTooSoonError`, `OtpRateLimitedError` | 429 — extend `RateLimitError`; `retryAfterMs`, `scope`, `limit` |
 | `ServiceUnavailableError` | 5xx, including 503 `OTP_SERVICE_DISABLED` |
 | `ApiError` | any other code (the list is open: new codes may appear) |
 | `ConnectionError`, `TimeoutError` | network error (`CONNECTION_ERROR`) or timeout (`TIMEOUT`) |
@@ -294,9 +344,24 @@ try {
   await client.sms.send({ to: '0812345678', body: 'Hello' });
 } catch (error) {
   if (error instanceof InsufficientCreditsError) alertFinance(error.available, error.required);
-  else if (error instanceof ApiError) console.error(error.code, error.status);
+  else if (error instanceof ApiError) console.error(error.code, error.status, error.requestId);
   else throw error;
 }
+```
+
+`error.details` is always an object (`{}` when empty). Messages are in French, for humans: switch on `code`.
+
+### Request id
+
+Every API response carries `X-Request-Id`: `error.requestId` on errors, `requestId` on `sendMany()` batches and
+`otp.send()` results, and `onResponse` for any call. Give it to the support. You can also send your own (1 to 128
+characters among `A-Z a-z 0-9 . _ : -`, reused on every retry of the call):
+
+```ts
+await client.sms.send({ to: '0812345678', body: 'Hello' }, {
+  requestId: `order-1042`,
+  onResponse: ({ requestId, apiVersion, rateLimit, replayed }) => log.debug({ requestId, rateLimit }),
+});
 ```
 
 ## Retries, timeouts and cancellation
@@ -307,13 +372,35 @@ replay cannot cause a side effect twice**:
 | Request | Network error / timeout | 5xx | 429 `TOO_MANY_REQUESTS` |
 |---|---|---|---|
 | `get`, `list`, `balance.get`, `senderIds.list`, `estimate` | retried | retried | retried after `Retry-After` |
-| `send` / `sendMany` (always with an `Idempotency-Key`) | retried, same key | retried, same key | retried after `Retry-After` |
-| `otp.send`, `otp.verify` | **never** | **never** | retried (refused before processing) |
+| `send` / `sendMany` / `otp.send` (always with an `Idempotency-Key`) | retried, same key | retried, same key | retried after `Retry-After` |
+| `otp.verify` | **never** (an attempt may be consumed) | **never** | retried (refused before processing) |
 
-Business errors (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`) are never retried. When the API asks to wait
-longer than `maxRetryWaitMs` (default 10 s), the SDK throws `RateLimitError` instead of waiting.
+`409 IDEMPOTENCY_REQUEST_IN_PROGRESS` (the original request with this key is still running) is retried after
+`Retry-After` with the same key, for `send`, `sendMany` and `otp.send`. Other business errors (4xx,
+`OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`, `ACCOUNT_SUSPENDED`) are never retried. When the API asks to wait longer
+than `maxRetryWaitMs` (default 10 s), the SDK throws the error instead of waiting.
 
-Every method takes a last `options` argument: `{ signal?: AbortSignal, timeoutMs?: number }`.
+`409 IDEMPOTENCY_KEY_UNRESOLVED` (`sms.send`, `sms.sendMany`, `otp.send`) means that the original request with this
+key failed unexpectedly on the API side: its outcome is unknown and an SMS may already have been sent. The SDK
+**never** retries it and throws `IdempotencyKeyUnresolvedError`. Do not retry automatically either: first check
+what happened (`client.sms.list({ reference })` for an SMS sent with a `reference`, or ask the user whether the code
+arrived), then, only if nothing was sent, send again with a **new** idempotency key (the same key keeps returning
+this error).
+
+```ts
+try {
+  await client.sms.send({ to, body, reference, idempotencyKey });
+} catch (error) {
+  if (error instanceof IdempotencyKeyUnresolvedError) {
+    const { data } = await client.sms.list({ reference });
+    if (data.length === 0) await client.sms.send({ to, body, reference, idempotencyKey: crypto.randomUUID() });
+  } else {
+    throw error;
+  }
+}
+```
+
+Every method takes a last `options` argument: `{ signal?, timeoutMs?, requestId?, onResponse? }`.
 
 ```ts
 await client.balance.get({ signal: AbortSignal.timeout(5_000) });
@@ -337,7 +424,11 @@ const client = new Labyrinthe({
 
 `PhoneNumber.normalize('0812345678')` returns `"243812345678"` (or `null`) with the same rules as the API;
 `PhoneNumber.isValid()` and `PhoneNumber.mask()` are also exported. International numbers (`+33…`, `+1…`) are never
-blocked. `JSON.stringify(client)` and `console.log(client)` show `lsk_test_****`, never the key.
+blocked. Without "+", 11 digits or more not starting with 0 are already international (`33612345678` stays
+`33612345678`); for a short foreign number (10 digits or less), always use the "+". The SDK sends every
+number to the API in E.164 with "+" (`+243812345678`, `+2481234567`), so the country code you typed is kept; API
+responses use digits without "+".
+ `JSON.stringify(client)` and `console.log(client)` show `lsk_test_****`, never the key.
 
 ## Runtime compatibility
 

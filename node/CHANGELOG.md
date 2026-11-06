@@ -5,6 +5,55 @@ All notable changes to `@labyrinthe/connect` are documented here. This project f
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-06
+
+### Added
+- `IdempotencyKeyUnresolvedError` (409 `IDEMPOTENCY_KEY_UNRESOLVED`, `sms.send()`, `sms.sendMany()`, `otp.send()`):
+  the original request with this Idempotency-Key failed unexpectedly and its outcome is unknown (an SMS may have been
+  sent). Never retried by the SDK; check (`sms.list({ reference })` or with the user), then send again with a new key.
+
+### Fixed
+- Phone numbers are sent to the API in E.164 with "+" (`recipient`, `recipients[]`, `estimate()` recipients, OTP
+  `phone` and the `recipient` filter of `sms.list()`). Without it, the API read a short foreign number (10 digits or
+  less) as a local DR Congo number: `+2481234567` (Seychelles) was sent as `2481234567` and became `2432481234567`.
+  `PhoneNumber.normalize()` still returns digits without "+", the format of API responses. Requires no code change.
+
+## [1.1.0] - 2026-11-06
+
+Built against the API specification 1.2.0. Backward compatible with 1.0.0, except that `OtpVerifyResult` gains
+`attemptsRemaining` (deep-equality checks on the whole result must include it).
+
+### Added
+- `X-Request-Id`: per-call `requestId` option (sent on every retry of the call, validated locally), `requestId` and
+  `apiVersion` (`X-Api-Version`) on every `ApiError`, `requestId` on `MessageBatch` and `OtpSendResult`, and an
+  `onResponse` option receiving `{ status, requestId, apiVersion, replayed, rateLimit, headers }`. Logged with each
+  response and error.
+- `otp.send()` is idempotent: an `Idempotency-Key` is always sent (generated, or your `idempotencyKey`) and reused by
+  retries; `replayed` and `idempotencyKey` on the result.
+- `otp.send()` returns `codeLength`, `codeType` (`OtpCodeType`: `numeric` | `alphanumeric`) and
+  `resendAfterSeconds`; accepts `webOtpDomain` (Web OTP API, validated against the spec pattern, lower-cased) and
+  `stripAccents`.
+- `otp.verify()` returns `attemptsRemaining` (`number | null`).
+- `stripAccents` on `sms.send()`, `sms.sendMany()` and `sms.estimate()`.
+- `AccountSuspendedError` (403 `ACCOUNT_SUSPENDED`, extends `PermissionError`) and
+  `IdempotencyRequestInProgressError` (409 `IDEMPOTENCY_REQUEST_IN_PROGRESS`, `retryAfterMs`).
+- Webhooks: `message.status_changed` gains `reference`, `errorCode`, `errorMessage`; new `otp.verified` and
+  `otp.failed` events in the `WebhookEvent` union (`OtpVerifiedEvent`, `OtpFailedEvent`, `OtpWebhookData`,
+  `OtpVerificationStatus`); `WebhookEventType.OtpVerified` / `OtpFailed`. The Express and Next.js helpers receive
+  them typed.
+
+### Changed
+- Retries: `otp.send()` is now retried like SMS sends (network error, timeout, 5xx, 429 `TOO_MANY_REQUESTS`), always
+  with the same key; `409 IDEMPOTENCY_REQUEST_IN_PROGRESS` is retried after `Retry-After` with the same key for
+  `sms.send()`, `sms.sendMany()` and `otp.send()`. `otp.verify()` is still retried only on 429
+  `TOO_MANY_REQUESTS`; `OTP_RESEND_TOO_SOON` and `OTP_RATE_LIMITED` are never retried.
+- `retryAfterMs` reads the `Retry-After` header (seconds or HTTP date) now sent with `OTP_RESEND_TOO_SOON` and
+  `OTP_RATE_LIMITED`, then `details.retry_after_seconds`.
+- Phone numbers, aligned with the API: without "+", 11 digits or more not starting with 0 are already international
+  (`33612345678` stays `33612345678` instead of becoming `24333612345678`). DR Congo formats are unchanged.
+- The 1.2.0 response fields are read tolerantly (`null` when an older backend omits them); `error.details` `[]` and
+  `Z` dates are still accepted.
+
 ## [1.0.0] - 2026-11-06
 
 First stable release, built against the API specification 1.1.0.
@@ -27,5 +76,7 @@ First stable release, built against the API specification 1.1.0.
 - `PhoneNumber` helpers (normalisation identical to the API, validation, masking).
 - ESM + CommonJS + types; zero runtime dependency; Node.js 18+, edge runtimes, Deno and Bun.
 
-[Unreleased]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/node-v1.0.0...HEAD
+[Unreleased]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/node-v1.1.1...HEAD
+[1.1.1]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/node-v1.1.0...node-v1.1.1
+[1.1.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/node-v1.0.0...node-v1.1.0
 [1.0.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/releases/tag/node-v1.0.0
