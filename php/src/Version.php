@@ -9,7 +9,7 @@ namespace Labyrinthe\Connect;
  */
 final class Version
 {
-    public const SDK = '1.1.1';
+    public const SDK = '1.2.0';
 
     private function __construct()
     {
