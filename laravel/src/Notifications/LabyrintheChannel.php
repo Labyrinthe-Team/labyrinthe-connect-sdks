@@ -51,8 +51,8 @@ final class LabyrintheChannel
         $key = $message->getIdempotencyKey() ?? self::keyFor($notification);
 
         return \count($to) === 1
-            ? $sms->send($to[0], $message->getContent(), $message->getSender(), $message->getReference(), $key)
-            : $sms->sendMany($to, $message->getContent(), $message->getSender(), $message->getReference(), $key);
+            ? $sms->send($to[0], $message->getContent(), $message->getSender(), $message->getReference(), $key, $message->getStripAccents())
+            : $sms->sendMany($to, $message->getContent(), $message->getSender(), $message->getReference(), $key, $message->getStripAccents());
     }
 
     private function route(mixed $notifiable, Notification $notification): mixed

@@ -21,6 +21,8 @@ final class LabyrintheMessage
 
     private ?string $idempotencyKey = null;
 
+    private bool $stripAccents = false;
+
     public function __construct(private string $content = '')
     {
     }
@@ -67,6 +69,18 @@ final class LabyrintheMessage
     }
 
     /**
+     * Replaces accents and typographic characters by ASCII before sending:
+     * the SMS goes out in GSM-7, often half the cost. The transliteration
+     * depends on the server ("Café" may become "Cafe" or "Caf'e").
+     */
+    public function stripAccents(bool $strip = true): self
+    {
+        $this->stripAccents = $strip;
+
+        return $this;
+    }
+
+    /**
      * Overrides the notifiable's route (one number, or several: all or nothing).
      *
      * @param string|array<array-key, string> $to
@@ -96,6 +110,11 @@ final class LabyrintheMessage
     public function getIdempotencyKey(): ?string
     {
         return $this->idempotencyKey;
+    }
+
+    public function getStripAccents(): bool
+    {
+        return $this->stripAccents;
     }
 
     /**
