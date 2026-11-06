@@ -15,7 +15,7 @@ use Labyrinthe\Connect\Laravel\Testing\LabyrintheFake;
  * @method static \Labyrinthe\Connect\Service\BalanceService                               balance()
  * @method static \Labyrinthe\Connect\Service\SenderIdService                              senderIds()
  * @method static \Labyrinthe\Connect\Laravel\OtpGateway                                   otp()
- * @method static \Labyrinthe\Connect\Model\Message|\Labyrinthe\Connect\Model\MessageBatch send(string|array<array-key, string> $to, string $body, ?string $sender = null, ?string $reference = null, ?string $idempotencyKey = null)
+ * @method static \Labyrinthe\Connect\Model\Message|\Labyrinthe\Connect\Model\MessageBatch send(string|array<array-key, string> $to, string $body, ?string $sender = null, ?string $reference = null, ?string $idempotencyKey = null, bool $stripAccents = false)
  * @method static bool                                                                     isTestMode()
  * @method static void                                                                     assertSmsSent(callable|null $callback = null)
  * @method static void                                                                     assertSmsSentTo(string $phone, callable|null $callback = null)
