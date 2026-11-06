@@ -3,6 +3,7 @@ import {
   AccountSuspendedError,
   ApiError,
   AuthenticationError,
+  FeatureDisabledError,
   IdempotencyKeyReusedError,
   IdempotencyKeyUnresolvedError,
   IdempotencyRequestInProgressError,
@@ -46,7 +47,8 @@ describe('error mapping', () => {
     [429, 'TOO_MANY_REQUESTS', RateLimitError],
     [429, 'OTP_RESEND_TOO_SOON', OtpResendTooSoonError],
     [429, 'OTP_RATE_LIMITED', OtpRateLimitedError],
-    [503, 'OTP_SERVICE_DISABLED', ServiceUnavailableError],
+    [503, 'OTP_SERVICE_DISABLED', FeatureDisabledError],
+    [503, 'FEATURE_DISABLED', FeatureDisabledError],
     [500, 'HTTP_ERROR', ServiceUnavailableError],
     [418, 'SOMETHING_NEW', ApiError],
   ] as const)('%i %s → %s', async (status, code, ErrorClass) => {

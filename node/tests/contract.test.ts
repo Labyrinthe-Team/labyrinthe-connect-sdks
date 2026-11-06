@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_BASE_URL,
   Encoding,
+  FeatureDisabledError,
   MessageStatus,
   OtpCodeType,
   OtpFailureReason,
@@ -74,8 +75,8 @@ const responseSchema = (pathKey: string, method: string, status: string) => [
 const requestSchema = (pathKey: string) => ['paths', pathKey, 'post', 'requestBody', 'content', 'application/json', 'schema'];
 
 describe.skipIf(!available)('OpenAPI contract', () => {
-  it('targets spec 1.2.0', () => {
-    expect(dotted('info.version')).toBe('1.2.0');
+  it('targets spec 1.3.0', () => {
+    expect(dotted('info.version')).toBe('1.3.0');
   });
 
   it('implements every operation of the spec, and only those', () => {
@@ -210,6 +211,14 @@ describe.skipIf(!available)('OpenAPI contract', () => {
       [['components', 'schemas', 'Error'], { error: { code: 'ACCOUNT_SUSPENDED', message: 'x', details: {} } }],
       [['components', 'schemas', 'OtpResendTooSoonError'], { error: { code: 'OTP_RESEND_TOO_SOON', message: 'x', details: { retry_after_seconds: 30 } } }],
       [['components', 'schemas', 'ValidationError'], { error: { code: 'VALIDATION_ERROR', message: 'x', details: { body: ['Le champ body est obligatoire.'] } } }],
+      [
+        ['components', 'schemas', 'FeatureDisabledError'],
+        { error: { code: 'FEATURE_DISABLED', message: 'x', details: { feature: 'api.sms_send', blocked_by: 'api', message: null, until: null } } },
+      ],
+      [
+        ['components', 'schemas', 'FeatureDisabledError'],
+        { error: { code: 'OTP_SERVICE_DISABLED', message: 'x', details: { feature: 'otp', blocked_by: 'otp', message: 'Maintenance', until: '2026-11-06T14:00:00+00:00' } } },
+      ],
     ];
     const listFixture = page([message()], { current_page: 1, last_page: 1, total: 1 });
     for (const [path, value] of fixtures) expectValid(path, value);
@@ -320,6 +329,40 @@ describe.skipIf(!available)('OpenAPI contract', () => {
     }
   });
 
+
+  it('maps the 503 FEATURE_DISABLED / OTP_SERVICE_DISABLED of the spec to FeatureDisabledError', async () => {
+    // Codes de FeatureDisabledError et réponse commune 503 de chaque opération.
+    expect(strings('components.schemas.FeatureDisabledError.allOf.1.properties.error.properties.code.enum')).toEqual([
+      'FEATURE_DISABLED',
+      'OTP_SERVICE_DISABLED',
+    ]);
+    expect(
+      strings('components.schemas.FeatureDisabledError.allOf.1.properties.error.properties.details.required').sort(),
+    ).toEqual(['blocked_by', 'feature', 'message', 'until']);
+    expect(dotted('components.responses.ServiceUnavailable.headers.Retry-After.$ref')).toBe('#/components/headers/Retry-After-Feature');
+    for (const [pathKey, methods] of Object.entries(dotted('paths') as Record<string, Node>)) {
+      for (const [method, operation] of Object.entries(methods) as [string, Node][]) {
+        if (!['get', 'post', 'put', 'patch', 'delete'].includes(method)) continue;
+        expect(((operation['responses'] as Node)['503'] as Node | undefined), `${method} ${pathKey}`).toBeDefined();
+      }
+    }
+
+    const examples = dotted('components.responses.ServiceUnavailable.content') as Node;
+    const values = Object.values((examples['application/json'] as Node)['examples'] as Record<string, { value: unknown }>).map(
+      (e) => e.value,
+    );
+    const { client } = harness(values.map((v) => json(503, v)), { maxRetries: 0 });
+    for (const value of values) {
+      expectValid(['components', 'schemas', 'FeatureDisabledError'], value);
+      const error = (await client.balance.get().catch((e: unknown) => e)) as FeatureDisabledError;
+      const details = (value as { error: { details: Record<string, string | null> } }).error.details;
+      expect(error).toBeInstanceOf(FeatureDisabledError);
+      expect(error.feature).toBe(details['feature']);
+      expect(error.blockedBy).toBe(details['blocked_by']);
+      expect(error.adminMessage).toBe(details['message']);
+      expect(error.until?.toISOString() ?? null).toBe(details['until'] === null ? null : new Date(details['until']!).toISOString());
+    }
+  });
 
   it('maps the error example of the spec', async () => {
     const example = dotted('components.responses.Unauthenticated.content') as Node;
