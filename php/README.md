@@ -80,7 +80,15 @@ $estimate = $client->sms->estimate('Réunion demain à 9h', ['0812345678', '0899
 $estimate->encoding;       // Encoding::Ucs2
 $estimate->totalCredits;   // 2
 $estimate->isAffordable(); // balance covers it?
+
+// stripAccents: accents and typographic characters replaced by ASCII → GSM-7, often half the cost.
+$client->sms->estimate('Réunion demain à 9h', '0812345678', stripAccents: true)->encoding; // Encoding::Gsm7
+$client->sms->send('0812345678', 'Réunion demain à 9h', stripAccents: true);
 ```
+
+Recipients are counted like a send (normalised, duplicates merged). `stripAccents` (also on `sendMany()` and
+`otp->send()`) is never applied unless you ask; the transliteration depends on the server (`Café` may become `Cafe`
+or `Caf'e`), so do not rely on it for an exact text.
 
 ### Several recipients: all or nothing
 
@@ -115,8 +123,16 @@ $batch = $client->sms->sendMany(['0812345678'], 'Your order 1042 is ready.', ide
 $batch->replayed;   // true when this was a replay
 ```
 
-The same key with a different content (recipients, body, sender or reference) is refused with
-`IdempotencyKeyReusedException` (409).
+The same key with a different content (recipients, body, sender, reference or `stripAccents`) is refused with
+`IdempotencyKeyReusedException` (409). Recipients are compared after normalisation: `0812345678` then
+`243812345678` with the same key is a replay. While the original request is still running, the API answers
+`409 IDEMPOTENCY_REQUEST_IN_PROGRESS`: the SDK waits `Retry-After` (5 s) and sends it again with the same key.
+
+**Unknown outcome.** `IdempotencyKeyUnresolvedException` (409 `IDEMPOTENCY_KEY_UNRESOLVED`, `send()`, `sendMany()`
+and `otp->send()`): the original request with this key failed unexpectedly on the API side and its outcome is
+unknown — **an SMS may have been sent**. The SDK never retries it, and neither should you with the same key. Check
+first (`$client->sms->list(reference: …)` for an SMS, or ask the user whether the code arrived), then, if nothing
+was sent, send again with a **new** `idempotencyKey`. Log `getRequestId()` for support.
 
 ### Listing messages
 
@@ -152,6 +168,9 @@ with a test key), never logged by the SDK.
 // 1. Send the code. Keep otp_id SERVER-SIDE (session, cache, database) — never in a hidden form field.
 $otp = $client->otp->send('0812345678');
 $_SESSION['otp_id'] = $otp->otpId;
+$otp->codeLength;          // 6: size of the input
+$otp->codeType;            // OtpCodeType::Numeric (numeric keypad) or OtpCodeType::Alphanumeric
+$otp->resendAfterSeconds;  // countdown before "Resend the code"
 
 // 2. The user types the code received by SMS.
 
@@ -162,7 +181,7 @@ if ($result->isValid()) {
     // log the user in / mark the number as verified
 } else {
     match ($result->reason) {
-        OtpFailureReason::InvalidCode => 'Wrong code, try again.',            // one attempt consumed
+        OtpFailureReason::InvalidCode => "Wrong code, {$result->attemptsRemaining} attempt(s) left.",  // one attempt consumed
         OtpFailureReason::Expired, OtpFailureReason::AlreadyUsed,
         OtpFailureReason::MaxAttemptsReached => 'Please request a new code.',
         default => 'Could not verify the code.',
@@ -175,13 +194,29 @@ if ($result->isValid()) {
 - Length, validity, attempts, Sender ID and message template come from the account's OTP settings (client area >
   *OTP verification*). You can override the template (`template: 'Your MyShop code: {code}'`, must contain
   `{code}`; optional `{app_name}`, `{minutes}`) and the language (`locale: 'fr'|'en'`).
-- Limits: `OtpResendTooSoonException` (wait `getRetryAfter()` seconds before resending to this number) and
-  `OtpRateLimitedException` (hourly cap per number or per account, `getScope()`).
+- `attemptsRemaining`: attempts left after `invalid_code`, `0` with `max_attempts_reached`, `null` otherwise.
+- Limits: `OtpResendTooSoonException` (wait `getRetryAfter()` seconds before resending to this number; a resend is
+  accepted right away once the code was verified) and `OtpRateLimitedException` (hourly cap per number or per
+  account, `getScope()`, `getLimit()`, `getRetryAfter()`). Both read the `Retry-After` header.
+- **Web OTP API** (automatic fill-in on Chrome / Android): `webOtpDomain: 'app.example.com'` adds the last line
+  `@app.example.com #123456` to the SMS; read it in the browser with
+  `navigator.credentials.get({ otp: { transport: ['sms'] } })`. `stripAccents: true` keeps the message in GSM-7.
 - **Test mode**: with a `lsk_test_` key no SMS is sent and `$otp->testCode()` returns the code, so you can test
   the whole flow. It is always `null` with a live key, and hidden from `var_dump()` and `json_encode()`.
 
-`send()` is never retried after a network error or a 5xx (the SMS may have left): show an error and let the user
-ask for a new code.
+**Idempotency.** `otp->send()` always carries an `Idempotency-Key` (a generated UUID v4, or yours), reused by
+every retry: a network error, a 5xx or `IDEMPOTENCY_REQUEST_IN_PROGRESS` is retried without a second SMS, and the
+replay returns the same `otpId` (`$otp->replayed === true`, and the same `testCode()` in test mode). Your own key
+must identify **one** send intent (e.g. `"signup-{$attemptId}"`): reusing it for 24 hours returns the same code,
+never a new one.
+
+```php
+$otp = $client->otp->send($phone, idempotencyKey: "signup-{$attemptId}", webOtpDomain: 'app.example.com');
+$otp->replayed;        // true when the API replayed an earlier send (no new SMS, no new charge)
+```
+
+`otp->verify()` is never retried after a network error or a 5xx (an attempt may have been consumed): show an error
+and let the user type the code again.
 
 ## Webhooks
 
@@ -194,6 +229,8 @@ use Labyrinthe\Connect\Exception\SignatureVerificationException;
 use Labyrinthe\Connect\Webhook\Event\BalanceLow;
 use Labyrinthe\Connect\Webhook\Event\CampaignCompleted;
 use Labyrinthe\Connect\Webhook\Event\MessageStatusChanged;
+use Labyrinthe\Connect\Webhook\Event\OtpFailed;
+use Labyrinthe\Connect\Webhook\Event\OtpVerified;
 use Labyrinthe\Connect\Webhook\Webhook;
 
 $rawBody = file_get_contents('php://input');          // the RAW body: never re-encode a decoded array
@@ -214,6 +251,8 @@ match (true) {
     $event instanceof MessageStatusChanged => update_message($event->messageId, $event->status),
     $event instanceof CampaignCompleted => notify_team($event->name, $event->countFor(MessageStatus::Delivered)),
     $event instanceof BalanceLow => buy_credits($event->balance, $event->threshold),
+    $event instanceof OtpVerified => mark_verified($event->otpId, $event->phone, $event->verifiedAt),
+    $event instanceof OtpFailed => alert_security($event->otpId, $event->status, $event->reason),
     default => null,                                    // TestPing, or UnknownEvent for future types
 };
 
@@ -225,18 +264,23 @@ http_response_code(200);                                // answer 2xx within 10 
 - Failed deliveries are retried up to 5 times (30 s, 2 min, 5 min, 15 min): the same `id` can arrive several
   times and the order is not guaranteed.
 - Event types added later are returned as `UnknownEvent` (verified, never rejected): acknowledge them with a 2xx.
+- `MessageStatusChanged` carries `reference` (given at send time), `errorCode` and `errorMessage` (on failure).
+- `OtpVerified` / `OtpFailed` (`otp.verified`, `otp.failed`) are sent once per verification, never with the code:
+  `otpId`, `phone`, `status` (`OtpWebhookStatus::Verified`, `Failed` or `Expired`), `reason` (`null`,
+  `OtpFailureReason::MaxAttemptsReached` or `Expired`) and `verifiedAt`.
 - `Webhook::sign($body, $secret)` builds a valid header to test your endpoint.
 
 ## Errors
 
 Every exception implements `Labyrinthe\Connect\Exception\LabyrintheException`. API errors extend `ApiException`
 and expose `getErrorCode()` (stable, for your code), `getMessage()` (French, for humans), `getStatusCode()`,
-`getDetails()` and `getRequestId()`.
+`getDetails()`, `getRequestId()` (the `X-Request-Id` header, to give to support) and `getApiVersion()`.
 
 | Exception | When |
 |---|---|
 | `AuthenticationException` | 401 — missing, invalid or revoked key |
 | `PermissionException` | 403 — IP not allowed for the key (`FORBIDDEN`), OTP disabled for the account (`OTP_DISABLED_FOR_ACCOUNT`) |
+| `AccountSuspendedException` | 403 `ACCOUNT_SUSPENDED` — extends `PermissionException`; the whole API is closed until reactivation |
 | `NotFoundException` | 404 — unknown message or `otp_id` |
 | `ValidationException` | 422 `VALIDATION_ERROR` — `getErrors()` / `getFieldErrors('body')` |
 | `RecipientNotSendableException` | 422 — `getRejected()`, `getReason()`; nothing was sent |
@@ -244,6 +288,8 @@ and expose `getErrorCode()` (stable, for your code), `getMessage()` (French, for
 | `InvalidPhoneException` | 422 `INVALID_PHONE` (OTP) |
 | `InsufficientCreditsException` | 409 — `getAvailable()`, `getRequired()`; nothing was sent |
 | `IdempotencyKeyReusedException` | 409 — same key, different request |
+| `IdempotencyRequestInProgressException` | 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` — already retried by the SDK; `getRetryAfter()` |
+| `IdempotencyKeyUnresolvedException` | 409 `IDEMPOTENCY_KEY_UNRESOLVED` — outcome unknown (an SMS may have left); never retried: check, then send with a new key |
 | `RateLimitException` | 429 `TOO_MANY_REQUESTS` — `getRetryAfter()` |
 | `OtpResendTooSoonException` | 429 — extends `RateLimitException` |
 | `OtpRateLimitedException` | 429 — extends `RateLimitException`, `getScope()`, `getLimit()` |
@@ -270,14 +316,30 @@ try {
 The SDK retries automatically (default: 2 retries, exponential backoff 0.5 s → 1 s → 2 s with jitter) **only when a
 replay cannot cause a side effect twice**:
 
-| Request | Network error / timeout | 5xx | 429 `TOO_MANY_REQUESTS` |
-|---|---|---|---|
-| `GET` (get, list, balance, sender IDs), `estimate()` | retried | retried | retried after `Retry-After` |
-| `send()` / `sendMany()` (always with an `Idempotency-Key`) | retried, same key | retried, same key | retried after `Retry-After` |
-| `otp->send()`, `otp->verify()` | **never** | **never** | retried (the request was refused before processing) |
+| Request | Network error / timeout | 5xx | 429 `TOO_MANY_REQUESTS` | 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` |
+|---|---|---|---|---|
+| `GET` (get, list, balance, sender IDs), `estimate()` | retried | retried | retried after `Retry-After` | — |
+| `send()` / `sendMany()` (always with an `Idempotency-Key`) | retried, same key | retried, same key | retried after `Retry-After` | retried after `Retry-After`, same key |
+| `otp->send()` (always with an `Idempotency-Key`, since 1.1.0) | retried, same key | retried, same key | retried after `Retry-After` | retried after `Retry-After`, same key |
+| `otp->verify()` | **never** | **never** | retried (the request was refused before processing) | — |
 
-Business errors (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`) are never retried. When the API asks to wait
-longer than `maxRetryWait` (default 10 s), the SDK throws `RateLimitException` instead of blocking.
+Business errors (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`, `ACCOUNT_SUSPENDED`, `IDEMPOTENCY_KEY_UNRESOLVED`)
+are never retried. When the
+API asks to wait longer than `maxRetryWait` (default 10 s), the SDK throws the exception (`RateLimitException`,
+`IdempotencyRequestInProgressException`) instead of blocking.
+
+**Request id.** Every response carries `X-Request-Id`. Pass your own with `requestId:` on any call (1 to 128
+characters among `A-Z a-z 0-9 . _ : -`, sent on every retry) to correlate your logs with the API's; read it on any
+exception with `getRequestId()`, or on the last response with `$client->lastResponse()?->requestId()`
+(`lastResponse()` also gives the status, `apiVersion()`, `isReplayed()`, `rateLimitRemaining()` and every header).
+
+```php
+try {
+    $client->sms->send('0812345678', 'Hello', requestId: "order-1042");
+} catch (ApiException $e) {
+    log_error($e->getErrorCode(), $e->getRequestId()); // "order-1042"
+}
+```
 
 ## Configuration
 
@@ -302,7 +364,12 @@ $client = Client::fromEnv();       // LABYRINTHE_API_KEY, optional LABYRINTHE_BA
 
 Phone numbers: `Labyrinthe\Connect\PhoneNumber::normalize('0812345678')` returns `"243812345678"` (or `null`) with the
 same rules as the API; `PhoneNumber::isValid()` and `PhoneNumber::mask()` are also available. International numbers
-(`+33…`, `+1…`) are never blocked.
+(`+33…`, `+1…`) are never blocked. Without `+`, 11 digits or more not starting with 0 are already international
+(`33612345678` stays `33612345678`); a foreign number of 10 digits or less needs the `+`. Requests carry the number
+in E.164 with `+` (`PhoneNumber::toE164('0812345678')` → `"+243812345678"`), so `+2481234567` keeps its country code.
+
+Dates are parsed from the API format (`2026-11-06T09:39:11+00:00`; `Z` and microseconds are accepted too) and
+`list()` sends `DateTimeInterface` filters in the same format.
 
 Every response object keeps the decoded JSON in `raw()` for low-level access.
 
