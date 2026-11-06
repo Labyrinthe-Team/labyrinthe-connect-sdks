@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Labyrinthe\Connect\Webhook;
 
 use Labyrinthe\Connect\Enum\MessageStatus;
+use Labyrinthe\Connect\Enum\OtpFailureReason;
+use Labyrinthe\Connect\Enum\OtpWebhookStatus;
 use Labyrinthe\Connect\Enum\WebhookEvent;
 use Labyrinthe\Connect\Exception\InvalidArgumentException;
 use Labyrinthe\Connect\Exception\InvalidWebhookPayloadException;
@@ -14,6 +16,8 @@ use Labyrinthe\Connect\Internal\Data;
 use Labyrinthe\Connect\Webhook\Event\BalanceLow;
 use Labyrinthe\Connect\Webhook\Event\CampaignCompleted;
 use Labyrinthe\Connect\Webhook\Event\MessageStatusChanged;
+use Labyrinthe\Connect\Webhook\Event\OtpFailed;
+use Labyrinthe\Connect\Webhook\Event\OtpVerified;
 use Labyrinthe\Connect\Webhook\Event\TestPing;
 use Labyrinthe\Connect\Webhook\Event\UnknownEvent;
 
@@ -136,6 +140,9 @@ final class Webhook
                 providerMessageId: Data::nullableString($data, 'provider_message_id'),
                 campaignId: Data::nullableString($data, 'campaign_id'),
                 raw: $envelope,
+                reference: Data::nullableString($data, 'reference'),
+                errorCode: Data::nullableString($data, 'error_code'),
+                errorMessage: Data::nullableString($data, 'error_message'),
             ),
             WebhookEvent::CampaignCompleted => new CampaignCompleted(
                 id: $id,
@@ -157,9 +164,41 @@ final class Webhook
                 threshold: Data::int($data, 'threshold'),
                 raw: $envelope,
             ),
+            WebhookEvent::OtpVerified => new OtpVerified(
+                id: $id,
+                type: $type,
+                timestamp: $timestamp,
+                otpId: Data::string($data, 'otp_id'),
+                phone: Data::string($data, 'phone'),
+                status: OtpWebhookStatus::fromApi(Data::string($data, 'status')),
+                reason: self::otpReason($data),
+                verifiedAt: Data::nullableDateTime($data, 'verified_at'),
+                raw: $envelope,
+            ),
+            WebhookEvent::OtpFailed => new OtpFailed(
+                id: $id,
+                type: $type,
+                timestamp: $timestamp,
+                otpId: Data::string($data, 'otp_id'),
+                phone: Data::string($data, 'phone'),
+                status: OtpWebhookStatus::fromApi(Data::string($data, 'status')),
+                reason: self::otpReason($data),
+                verifiedAt: Data::nullableDateTime($data, 'verified_at'),
+                raw: $envelope,
+            ),
             WebhookEvent::TestPing => new TestPing($id, $type, $timestamp, $envelope),
             null => new UnknownEvent($id, $type, $timestamp, $data, $envelope),
         };
+    }
+
+    /**
+     * @param array<mixed> $data
+     */
+    private static function otpReason(array $data): ?OtpFailureReason
+    {
+        $reason = Data::nullableString($data, 'reason');
+
+        return $reason === null ? null : OtpFailureReason::fromApi($reason);
     }
 
     /**

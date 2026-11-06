@@ -28,6 +28,11 @@ final class MessageStatusChanged implements Event
         public readonly ?string $providerMessageId,
         public readonly ?string $campaignId,
         private readonly array $raw = [],
+        /** The `reference` given when sending (POST /sms). */
+        public readonly ?string $reference = null,
+        /** Provider or platform error code, on failure. */
+        public readonly ?string $errorCode = null,
+        public readonly ?string $errorMessage = null,
     ) {
     }
 }
