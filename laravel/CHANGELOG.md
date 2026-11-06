@@ -5,6 +5,41 @@ All notable changes to `labyrinthe/connect-laravel` are documented here. This pr
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-06
+
+### Fixed
+- Requires `labyrinthe/connect-php` ^1.1.1: phone numbers are sent to the API in E.164 with `+`, so a short foreign
+  number (`+2481234567`) is no longer read as a local DRC number.
+
+### Added
+- `IdempotencyKeyUnresolvedException` (from `labyrinthe/connect-php` 1.1.1): 409 `IDEMPOTENCY_KEY_UNRESOLVED` on
+  SMS, notification and OTP sends, never retried (outcome unknown: check, then send again with a new key).
+  Simulate it with `Labyrinthe::fake()->failNextRequest('IDEMPOTENCY_KEY_UNRESOLVED', 409)`.
+
+## [1.1.0] - 2026-11-06
+
+On top of `labyrinthe/connect-php` ^1.1 (API specification 1.2.0). Backward compatible with 1.0.0.
+
+### Added
+- `LabyrintheMessage::stripAccents()` and `Labyrinthe::send(..., stripAccents: true)`.
+- `Labyrinthe::otp()->send()` accepts `webOtpDomain`, `stripAccents` and `idempotencyKey`; defaults from the new
+  config keys `labyrinthe.otp.web_otp_domain` (`LABYRINTHE_OTP_WEB_OTP_DOMAIN`) and `labyrinthe.otp.strip_accents`
+  (`LABYRINTHE_OTP_STRIP_ACCENTS`).
+- Events `OtpVerified` (`otp.verified`) and `OtpFailed` (`otp.failed`), dispatched by the webhook controller.
+- `ValidOtp::withAttemptsRemaining($otpId)` / `new ValidOtp($otpId, showAttemptsRemaining: true)`: the wrong-code
+  message mentions the attempts left (translation key `otp.invalid_code_attempts`, English and French).
+- Fake: OTP results carry `codeLength`, `codeType`, `resendAfterSeconds`; `verify()` returns `attemptsRemaining`;
+  idempotent OTP sends (replay, `IDEMPOTENCY_KEY_REUSED`); `withOtpMaxAttempts()`, `withOtpResendAfter()`;
+  `SentSms::$stripAccents`, `SentOtp::$webOtpDomain`, `$stripAccents`, `$idempotencyKey`.
+
+### Changed
+- Requires `labyrinthe/connect-php` ^1.1: OTP sends are retried safely with an `Idempotency-Key`, typed
+  `AccountSuspendedException` and `IdempotencyRequestInProgressException`, request id on every exception, phone
+  numbers without `+` of 11 digits or more kept as international.
+- Fake aligned with the API 1.2.0: SMS idempotency fingerprint after normalisation, estimates deduplicated,
+  `strip_accents` applied to the encoding, the last wrong OTP attempt answers `max_attempts_reached`, dates
+  formatted `+00:00`.
+
 ## [1.0.0] - 2026-11-06
 
 First stable release, for Laravel 10, 11, 12 and 13, on top of `labyrinthe/connect-php` ^1.0.
@@ -23,5 +58,6 @@ First stable release, for Laravel 10, 11, 12 and 13, on top of `labyrinthe/conne
   `assertSmsSentCount`, `assertNothingSent`, `assertOtpSent`, `assertNoOtpSent`) and helpers (`otpCode`,
   `withBalance`, `withSenderIds`, `withOtpCode`, `failNextRequest`).
 
-[Unreleased]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/laravel-v1.0.0...HEAD
+[Unreleased]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/laravel-v1.1.0...HEAD
+[1.1.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/laravel-v1.0.0...laravel-v1.1.0
 [1.0.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/releases/tag/laravel-v1.0.0

@@ -64,7 +64,8 @@ class OrderShipped extends Notification
     public function toLabyrinthe(object $notifiable): LabyrintheMessage
     {
         return LabyrintheMessage::create("Your order {$this->order->number} has shipped.")
-            ->reference("order-{$this->order->id}");   // optional; ->sender('MYSHOP') too
+            ->reference("order-{$this->order->id}")    // optional; ->sender('MYSHOP') too
+            ->stripAccents();                           // optional: accents → ASCII, GSM-7, often half the cost
     }
 }
 ```
@@ -91,7 +92,10 @@ Notification::route('labyrinthe', '0812345678')->notify(new OrderShipped($order)
 
 **Queued notifications are safe to retry**: the channel uses the notification id as `Idempotency-Key`, so a retried
 job replays the first send instead of sending a second SMS (if the content changed in between, the API answers
-`IDEMPOTENCY_KEY_REUSED`: the first SMS was already sent).
+`IDEMPOTENCY_KEY_REUSED`: the first SMS was already sent). If the API answers `IDEMPOTENCY_KEY_UNRESOLVED`
+(`IdempotencyKeyUnresolvedException`, 409), the first attempt failed unexpectedly and its outcome is unknown: an SMS
+may have been sent. Retrying the job only gets the same answer (never a second SMS); check first
+(`Labyrinthe::sms()->list(reference: …)`), then send a **new** notification (new id, so new key) if nothing left.
 
 ## Sending directly
 
@@ -102,7 +106,8 @@ $message = Labyrinthe::sms()->send(to: '0812345678', body: 'Your code is ready.'
 $batch = Labyrinthe::sms()->sendMany(['0812345678', '0899999999'], 'Meeting tomorrow at 9am.');
 
 Labyrinthe::send('0812345678', 'Hello');                  // shortcut (string → Message, array → MessageBatch)
-Labyrinthe::sms()->estimate('Réunion à 9h', ['0812345678'])->totalCredits;
+Labyrinthe::sms()->estimate('Réunion à 9h', ['0812345678'], stripAccents: true)->encoding;   // Encoding::Gsm7
+Labyrinthe::send('0812345678', 'Réunion à 9h', stripAccents: true);
 Labyrinthe::balance()->get()->balance;
 Labyrinthe::senderIds()->list();
 ```
@@ -126,6 +131,7 @@ class PhoneLoginController
         $request->validate(['phone' => ['required', new PhoneNumber()]]);
 
         try {
+            // Always sent with an Idempotency-Key: network errors and 5xx are retried without a second SMS.
             $otp = Labyrinthe::otp()->send($request->phone);
         } catch (OtpResendTooSoonException $e) {
             return back()->withErrors(['phone' => "Please wait {$e->getRetryAfter()} seconds."]);
@@ -141,7 +147,7 @@ class PhoneLoginController
     public function verify(Request $request)
     {
         $request->validate([
-            'code' => ['bail', 'required', 'string', new ValidOtp($request->session()->get('otp_id'))],
+            'code' => ['bail', 'required', 'string', ValidOtp::withAttemptsRemaining($request->session()->get('otp_id'))],
         ]);
 
         $request->session()->forget('otp_id');
@@ -156,6 +162,22 @@ class PhoneLoginController
 
 - `ValidOtp` calls the API and gives a translated message (English and French included) for each failure:
   wrong code, expired, already used, too many attempts. Each wrong code consumes an attempt: keep it last, with `bail`.
+  `ValidOtp::withAttemptsRemaining($otpId)` (or `new ValidOtp($otpId, showAttemptsRemaining: true)`) adds the
+  attempts left: "The code field is incorrect. 2 attempts remaining."
+- `$otp->codeLength`, `$otp->codeType` (`OtpCodeType::Numeric` → `inputmode="numeric"`) and
+  `$otp->resendAfterSeconds` describe the input and the "Resend the code" countdown; `verify()` returns
+  `attemptsRemaining`.
+- **Idempotency**: every send carries an `Idempotency-Key` (generated, or `idempotencyKey:`), so a network error, a
+  5xx or `IDEMPOTENCY_REQUEST_IN_PROGRESS` is retried safely; a replay returns the same `otpId` (`$otp->replayed`).
+  Your own key must identify one send (it returns the same code for 24 hours). `OTP_RESEND_TOO_SOON` and
+  `OTP_RATE_LIMITED` are never retried; `verify()` is never retried after a network error or a 5xx.
+- **Unknown outcome**: `IdempotencyKeyUnresolvedException` (409 `IDEMPOTENCY_KEY_UNRESOLVED`) means the original send
+  with this key failed unexpectedly and a code may have been sent. It is never retried: ask the user whether the code
+  arrived, then send again with a **new** key (or no key: a new one is generated).
+- **Web OTP API**: `webOtpDomain: 'app.example.com'` (or `LABYRINTHE_OTP_WEB_OTP_DOMAIN`) adds
+  `@app.example.com #123456` to the SMS so Chrome / Android can fill the code in
+  (`navigator.credentials.get({ otp: { transport: ['sms'] } })`). `stripAccents` (or `LABYRINTHE_OTP_STRIP_ACCENTS`)
+  keeps the message in GSM-7.
 - `Labyrinthe::otp()->check($otpId, $code)` returns a plain boolean; `verify()` returns the full result with its reason.
 - `PhoneNumber` validates a number offline with the same rules as the API (international numbers are accepted).
 - With a test key no SMS is sent and `$otp->testCode()` contains the code.
@@ -184,6 +206,8 @@ already processed (cache), dispatches the events below and answers `200` immedia
 use Labyrinthe\Connect\Laravel\Events\BalanceLow;
 use Labyrinthe\Connect\Laravel\Events\CampaignCompleted;
 use Labyrinthe\Connect\Laravel\Events\MessageStatusChanged;
+use Labyrinthe\Connect\Laravel\Events\OtpFailed;
+use Labyrinthe\Connect\Laravel\Events\OtpVerified;
 use Labyrinthe\Connect\Laravel\Events\WebhookReceived;
 
 class UpdateMessageStatus implements ShouldQueue        // queue slow work: the API waits 10 s at most
@@ -197,9 +221,11 @@ class UpdateMessageStatus implements ShouldQueue        // queue slow work: the 
 
 | Laravel event | Webhook | Payload (`$event->event`) |
 |---|---|---|
-| `MessageStatusChanged` | `message.status_changed` | `messageId`, `recipient`, `status` (enum), `providerMessageId`, `campaignId` |
+| `MessageStatusChanged` | `message.status_changed` | `messageId`, `recipient`, `status` (enum), `providerMessageId`, `campaignId`, `reference`, `errorCode`, `errorMessage` |
 | `CampaignCompleted` | `campaign.completed` | `campaignId`, `name`, `recipientsCount`, `countFor(MessageStatus)`, `creditsCharged`, `completedAt` |
 | `BalanceLow` | `balance.low` | `balance`, `threshold` |
+| `OtpVerified` | `otp.verified` | `otpId`, `phone`, `status` (`OtpWebhookStatus::Verified`), `verifiedAt` |
+| `OtpFailed` | `otp.failed` | `otpId`, `phone`, `status` (`Failed` or `Expired`), `reason` (`MaxAttemptsReached` or `Expired`) |
 | `WebhookReceived` | every event, including `test.ping` and future types | `id()`, `type()`, `raw()` |
 
 If a listener throws, the controller answers 5xx and forgets the id, so the next delivery attempt is processed.
@@ -240,11 +266,13 @@ public function test_phone_login(): void
 | `assertOtpSent($phone or callable)`, `assertNoOtpSent()` | OTP |
 | `assertNothingSent()` | no SMS, no OTP |
 | `sent()`, `otps()`, `otpCode(?$phone)` | inspect what was recorded |
-| `withBalance(int)`, `withSenderIds([...])`, `withOtpCode('123456')` | set up the fake |
-| `failNextRequest('INSUFFICIENT_CREDITS', 409, ['available' => 0, 'required' => 1])` | simulate an API error |
+| `withBalance(int)`, `withSenderIds([...])`, `withOtpCode('123456')`, `withOtpMaxAttempts(5)`, `withOtpResendAfter(60)` | set up the fake |
+| `failNextRequest('INSUFFICIENT_CREDITS', 409, ['available' => 0, 'required' => 1])` | simulate an API error (e.g. `failNextRequest('IDEMPOTENCY_KEY_UNRESOLVED', 409)`: never retried) |
 
-The fake behaves like the sandbox: idempotent replays, merged duplicates, OTP single use, attempts cap, a new code
-invalidating the previous one.
+The fake behaves like the sandbox: idempotent replays (SMS and OTP, fingerprint after phone normalisation), merged
+duplicates, OTP single use, attempts cap with `attemptsRemaining`, `codeLength` / `codeType` derived from the code,
+a new code invalidating the previous one. `SentSms` and `SentOtp` record `stripAccents` (and `webOtpDomain`,
+`idempotencyKey` for OTP).
 
 ## Development
 

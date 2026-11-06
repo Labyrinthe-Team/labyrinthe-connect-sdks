@@ -60,7 +60,8 @@ class CommandeExpediee extends Notification
     public function toLabyrinthe(object $notifiable): LabyrintheMessage
     {
         return LabyrintheMessage::create("Votre commande {$this->commande->numero} est partie.")
-            ->reference("commande-{$this->commande->id}");   // facultatif ; ->sender('MABOUTIQUE') aussi
+            ->reference("commande-{$this->commande->id}")    // facultatif ; ->sender('MABOUTIQUE') aussi
+            ->stripAccents();                                 // facultatif : accents → ASCII, GSM-7, souvent deux fois moins cher
     }
 }
 ```
@@ -81,7 +82,11 @@ Notification::route('labyrinthe', '0812345678')->notify(new CommandeExpediee($co
 
 **Les notifications en file peuvent être relancées sans risque** : le canal utilise l'identifiant de la notification
 comme `Idempotency-Key` ; un job relancé rejoue le premier envoi au lieu d'envoyer un second SMS (si le contenu a
-changé entre-temps, l'API répond `IDEMPOTENCY_KEY_REUSED` : le premier SMS est déjà parti).
+changé entre-temps, l'API répond `IDEMPOTENCY_KEY_REUSED` : le premier SMS est déjà parti). Si l'API répond `IDEMPOTENCY_KEY_UNRESOLVED`
+(`IdempotencyKeyUnresolvedException`, 409), la première tentative a échoué de façon inattendue et son résultat est
+inconnu : un SMS a pu partir. Relancer le job renvoie la même réponse (jamais de second SMS) ; vérifiez d'abord
+(`Labyrinthe::sms()->list(reference: …)`), puis envoyez une **nouvelle** notification (nouvel identifiant, donc
+nouvelle clé) si rien n'est parti.
 
 ## Envoi direct
 
@@ -92,7 +97,8 @@ $message = Labyrinthe::sms()->send(to: '0812345678', body: 'Votre commande est p
 $lot = Labyrinthe::sms()->sendMany(['0812345678', '0899999999'], 'Réunion demain à 9h.');
 
 Labyrinthe::send('0812345678', 'Bonjour');              // raccourci (chaîne → Message, tableau → MessageBatch)
-Labyrinthe::sms()->estimate('Réunion à 9h', ['0812345678'])->totalCredits;
+Labyrinthe::sms()->estimate('Réunion à 9h', ['0812345678'], stripAccents: true)->encoding;   // Encoding::Gsm7
+Labyrinthe::send('0812345678', 'Réunion à 9h', stripAccents: true);
 Labyrinthe::balance()->get()->balance;
 Labyrinthe::senderIds()->list();
 ```
@@ -131,7 +137,7 @@ class ConnexionTelephoneController
     public function verifier(Request $request)
     {
         $request->validate([
-            'code' => ['bail', 'required', 'string', new ValidOtp($request->session()->get('otp_id'))],
+            'code' => ['bail', 'required', 'string', ValidOtp::withAttemptsRemaining($request->session()->get('otp_id'))],
         ]);
 
         $request->session()->forget('otp_id');
@@ -146,6 +152,23 @@ class ConnexionTelephoneController
 
 - `ValidOtp` appelle l'API et donne un message traduit (anglais et français inclus) pour chaque échec : code faux,
   expiré, déjà utilisé, trop de tentatives. Chaque code faux consomme une tentative : placez la règle en dernier, avec `bail`.
+  `ValidOtp::withAttemptsRemaining($otpId)` (ou `new ValidOtp($otpId, showAttemptsRemaining: true)`) ajoute les
+  tentatives restantes : « Le champ code est incorrect. Encore 2 tentatives. »
+- `$otp->codeLength`, `$otp->codeType` (`OtpCodeType::Numeric` → `inputmode="numeric"`) et `$otp->resendAfterSeconds`
+  décrivent le champ de saisie et le compte à rebours « Renvoyer le code » ; `verify()` renvoie `attemptsRemaining`.
+- **Idempotence** : chaque envoi porte une `Idempotency-Key` (générée, ou `idempotencyKey:`) ; une erreur réseau, une
+  5xx ou `IDEMPOTENCY_REQUEST_IN_PROGRESS` est relancée sans risque, et le rejeu renvoie le même `otpId`
+  (`$otp->replayed`). Votre propre clé doit désigner un seul envoi (elle renvoie le même code pendant 24 h).
+  `OTP_RESEND_TOO_SOON` et `OTP_RATE_LIMITED` ne sont jamais relancés ; `verify()` n'est jamais relancé après une
+  erreur réseau ou une 5xx.
+- **Résultat inconnu** : `IdempotencyKeyUnresolvedException` (409 `IDEMPOTENCY_KEY_UNRESOLVED`) signifie que l'envoi
+  d'origine avec cette clé a échoué de façon inattendue et qu'un code a pu partir. Elle n'est jamais relancée :
+  demandez à l'utilisateur s'il a reçu le code, puis renvoyez avec une **nouvelle** clé (ou sans clé : une nouvelle
+  est générée).
+- **Web OTP API** : `webOtpDomain: 'app.exemple.com'` (ou `LABYRINTHE_OTP_WEB_OTP_DOMAIN`) ajoute
+  `@app.exemple.com #123456` au SMS pour que Chrome / Android remplisse le code
+  (`navigator.credentials.get({ otp: { transport: ['sms'] } })`). `stripAccents` (ou `LABYRINTHE_OTP_STRIP_ACCENTS`)
+  garde le message en GSM-7.
 - `Labyrinthe::otp()->check($otpId, $code)` renvoie un booléen ; `verify()` renvoie le résultat complet avec son motif.
 - `PhoneNumber` valide un numéro hors ligne, avec les règles de l'API (les numéros internationaux sont acceptés).
 - Avec une clé de test, aucun SMS ne part et `$otp->testCode()` contient le code.
@@ -181,9 +204,11 @@ class MajStatutMessage implements ShouldQueue        // traitements longs en fil
 
 | Événement Laravel | Webhook | Contenu (`$event->event`) |
 |---|---|---|
-| `MessageStatusChanged` | `message.status_changed` | `messageId`, `recipient`, `status` (enum), `providerMessageId`, `campaignId` |
+| `MessageStatusChanged` | `message.status_changed` | `messageId`, `recipient`, `status` (enum), `providerMessageId`, `campaignId`, `reference`, `errorCode`, `errorMessage` |
 | `CampaignCompleted` | `campaign.completed` | `campaignId`, `name`, `recipientsCount`, `countFor(MessageStatus)`, `creditsCharged`, `completedAt` |
 | `BalanceLow` | `balance.low` | `balance`, `threshold` |
+| `OtpVerified` | `otp.verified` | `otpId`, `phone`, `status` (`OtpWebhookStatus::Verified`), `verifiedAt` |
+| `OtpFailed` | `otp.failed` | `otpId`, `phone`, `status` (`Failed` ou `Expired`), `reason` (`MaxAttemptsReached` ou `Expired`) |
 | `WebhookReceived` | tous, y compris `test.ping` et les types futurs | `id()`, `type()`, `raw()` |
 
 Si un listener lève une exception, le contrôleur répond 5xx et oublie l'identifiant : la tentative suivante sera traitée.
@@ -220,11 +245,13 @@ public function test_connexion_par_telephone(): void
 | `assertOtpSent($tel ou callable)`, `assertNoOtpSent()` | OTP |
 | `assertNothingSent()` | ni SMS ni OTP |
 | `sent()`, `otps()`, `otpCode(?$tel)` | inspecter ce qui a été enregistré |
-| `withBalance(int)`, `withSenderIds([...])`, `withOtpCode('123456')` | préparer le fake |
-| `failNextRequest('INSUFFICIENT_CREDITS', 409, ['available' => 0, 'required' => 1])` | simuler une erreur de l'API |
+| `withBalance(int)`, `withSenderIds([...])`, `withOtpCode('123456')`, `withOtpMaxAttempts(5)`, `withOtpResendAfter(60)` | préparer le fake |
+| `failNextRequest('INSUFFICIENT_CREDITS', 409, ['available' => 0, 'required' => 1])` | simuler une erreur de l'API (par ex. `failNextRequest('IDEMPOTENCY_KEY_UNRESOLVED', 409)` : jamais relancée) |
 
-Le fake se comporte comme le bac à sable : rejeu idempotent, doublons fusionnés, OTP à usage unique, plafond de
-tentatives, nouveau code qui invalide le précédent.
+Le fake se comporte comme le bac à sable : rejeu idempotent (SMS et OTP, empreinte après normalisation des numéros),
+doublons fusionnés, OTP à usage unique, plafond de tentatives avec `attemptsRemaining`, `codeLength` / `codeType`
+déduits du code, nouveau code qui invalide le précédent. `SentSms` et `SentOtp` enregistrent `stripAccents` (et
+`webOtpDomain`, `idempotencyKey` pour l'OTP).
 
 ## Développement
 
