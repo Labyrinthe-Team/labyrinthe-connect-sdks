@@ -16,7 +16,7 @@
 
   <name>Labyrinthe Connect SDK</name>
   <description>Official Java client for the Labyrinthe Connect API: SMS, OTP verification and signed webhooks. Java 11+, no runtime dependency.</description>
-  <url>https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/tree/main/java</url>
+  <url>https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/tree/main/java</url>
 
   <dependencies>
     <dependency>

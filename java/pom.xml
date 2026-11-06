@@ -22,7 +22,7 @@
 
   <name>Labyrinthe Connect SDK (parent)</name>
   <description>Official Java SDK for Labyrinthe Connect: send SMS and verify phone numbers with one-time codes (OTP).</description>
-  <url>https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/tree/main/java</url>
+  <url>https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/tree/main/java</url>
   <inceptionYear>2026</inceptionYear>
 
   <organization>
@@ -49,15 +49,15 @@
   </developers>
 
   <scm>
-    <connection>scm:git:https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks.git</connection>
-    <developerConnection>scm:git:ssh://git@github.com/labyrinthe-rdc/labyrinthe-connect-sdks.git</developerConnection>
-    <url>https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/tree/main/java</url>
+    <connection>scm:git:https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/Labyrinthe-Team/labyrinthe-connect-sdks.git</developerConnection>
+    <url>https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/tree/main/java</url>
     <tag>HEAD</tag>
   </scm>
 
   <issueManagement>
     <system>GitHub</system>
-    <url>https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/issues</url>
+    <url>https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/issues</url>
   </issueManagement>
 
   <modules>
