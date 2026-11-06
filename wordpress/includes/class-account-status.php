@@ -9,12 +9,14 @@ namespace LabyrintheConnect;
 
 use LabyrintheConnect\Vendor\Labyrinthe\Connect\Exception\AccountSuspendedException;
 use LabyrintheConnect\Vendor\Labyrinthe\Connect\Exception\ApiException;
+use LabyrintheConnect\Vendor\Labyrinthe\Connect\Exception\FeatureDisabledException;
 
 defined( 'ABSPATH' ) || exit;
 
 /**
  * Mémorise un refus 403 ACCOUNT_SUSPENDED (toute l'API est fermée jusqu'à la réactivation
  * du compte) pour afficher un avis clair dans l'administration ; effacé au premier appel réussi.
+ * Rédige aussi le message d'une maintenance de la plateforme (503 FEATURE_DISABLED).
  */
 final class Account_Status {
 
@@ -72,6 +74,33 @@ final class Account_Status {
 	 */
 	public static function is_suspension( \Throwable $e ): bool {
 		return $e instanceof AccountSuspendedException || ( $e instanceof ApiException && 'ACCOUNT_SUSPENDED' === $e->getErrorCode() );
+	}
+
+	/**
+	 * Message d'une fonctionnalité coupée par la plateforme (503 FEATURE_DISABLED ou
+	 * OTP_SERVICE_DISABLED) : celui de l'administrateur de la plateforme s'il en a saisi un
+	 * (texte brut : balises retirées), sinon le message générique traduit, suivi de l'heure de
+	 * retour quand une réactivation automatique est programmée.
+	 *
+	 * @param FeatureDisabledException $e       Erreur.
+	 * @param string                   $generic Message générique (traduit).
+	 */
+	public static function maintenance_message( FeatureDisabledException $e, string $generic ): string {
+		$admin   = $e->getAdminMessage();
+		$admin   = null !== $admin ? sanitize_text_field( $admin ) : '';
+		$message = '' !== $admin ? $admin : $generic;
+
+		$until = $e->getUntil();
+		if ( null !== $until && $until->getTimestamp() > time() ) {
+			$format = trim( get_option( 'date_format', 'Y-m-d' ) . ' ' . get_option( 'time_format', 'H:i' ) );
+			$back   = wp_date( '' !== $format ? $format : 'Y-m-d H:i', $until->getTimestamp() );
+			if ( false !== $back ) {
+				/* translators: %s: date and time when the service should be available again. */
+				$message .= ' ' . sprintf( __( 'Expected back: %s.', 'labyrinthe-connect' ), $back );
+			}
+		}
+
+		return $message;
 	}
 
 	/**

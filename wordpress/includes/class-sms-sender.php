@@ -9,6 +9,7 @@ namespace LabyrintheConnect;
 
 use LabyrintheConnect\Vendor\Labyrinthe\Connect\Exception\ApiException;
 use LabyrintheConnect\Vendor\Labyrinthe\Connect\Exception\ConnectionException;
+use LabyrintheConnect\Vendor\Labyrinthe\Connect\Exception\FeatureDisabledException;
 use LabyrintheConnect\Vendor\Labyrinthe\Connect\Exception\IdempotencyKeyUnresolvedException;
 use LabyrintheConnect\Vendor\Labyrinthe\Connect\Exception\LabyrintheException;
 
@@ -169,6 +170,12 @@ final class Sms_Sender {
 				0,
 				$request_id
 			);
+		} catch ( FeatureDisabledException $e ) {
+			// Maintenance de la plateforme (503 FEATURE_DISABLED) : rien n'est parti. Nouvel essai
+			// possible, après Retry-After quand une réactivation automatique est programmée.
+			$message = Account_Status::maintenance_message( $e, __( 'Sending SMS through Labyrinthe Connect is temporarily unavailable (platform maintenance). Nothing was sent.', 'labyrinthe-connect' ) );
+
+			return new Send_Result( false, $masked, '', Message_Log::STATUS_ERROR, 0, $encoding, $e->getErrorCode(), $message, true, $test_mode, false, 0, Account_Status::request_id( $e, $request_id ), (int) $e->getRetryAfter() );
 		} catch ( ApiException $e ) {
 			Account_Status::record_error( $e );
 			// IDEMPOTENCY_KEY_UNRESOLVED : résultat inconnu (un SMS a pu partir), jamais relancé.

@@ -30,6 +30,7 @@ final class Send_Result {
 	 * @param bool   $replayed      Vrai si l'API a rejoué un envoi précédent (même Idempotency-Key).
 	 * @param int    $log_id        Ligne du journal.
 	 * @param string $request_id    Identifiant de la requête (X-Request-Id), à communiquer au support.
+	 * @param int    $retry_after   Secondes à attendre avant un nouvel essai (Retry-After), 0 si inconnu.
 	 */
 	public function __construct(
 		public readonly bool $success,
@@ -45,6 +46,7 @@ final class Send_Result {
 		public readonly bool $replayed = false,
 		public readonly int $log_id = 0,
 		public readonly string $request_id = '',
+		public readonly int $retry_after = 0,
 	) {
 	}
 
@@ -54,7 +56,7 @@ final class Send_Result {
 	 * @param int $log_id Ligne du journal.
 	 */
 	public function with_log_id( int $log_id ): self {
-		return new self( $this->success, $this->recipient, $this->message_id, $this->status, $this->segments, $this->encoding, $this->error_code, $this->error_message, $this->retryable, $this->test_mode, $this->replayed, $log_id, $this->request_id );
+		return new self( $this->success, $this->recipient, $this->message_id, $this->status, $this->segments, $this->encoding, $this->error_code, $this->error_message, $this->retryable, $this->test_mode, $this->replayed, $log_id, $this->request_id, $this->retry_after );
 	}
 
 	/**
@@ -77,6 +79,7 @@ final class Send_Result {
 			'replayed'      => $this->replayed,
 			'log_id'        => $this->log_id,
 			'request_id'    => $this->request_id,
+			'retry_after'   => $this->retry_after,
 		);
 	}
 }
