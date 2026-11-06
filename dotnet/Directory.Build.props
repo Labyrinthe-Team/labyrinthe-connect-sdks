@@ -17,12 +17,12 @@
     <Authors>Labyrinthe Connect</Authors>
     <Company>Labyrinthe RDC</Company>
     <Copyright>Copyright (c) 2026 Labyrinthe Connect</Copyright>
-    <PackageProjectUrl>https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/tree/main/dotnet</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/tree/main/dotnet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
-    <PackageReleaseNotes>https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/blob/main/dotnet/CHANGELOG.md</PackageReleaseNotes>
+    <PackageReleaseNotes>https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/blob/main/dotnet/CHANGELOG.md</PackageReleaseNotes>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
