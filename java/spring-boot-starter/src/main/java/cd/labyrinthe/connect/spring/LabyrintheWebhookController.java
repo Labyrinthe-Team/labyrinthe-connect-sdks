@@ -27,6 +27,11 @@ import org.springframework.web.bind.annotation.RestController;
  * void onStatus(MessageStatusChanged event) {
  *   orders.updateSmsStatus(event.data().messageId(), event.data().status());
  * }
+ *
+ * @EventListener
+ * void onOtpVerified(OtpVerified event) {  // also OtpFailed, BalanceLow, CampaignCompleted…
+ *   audit.otpVerified(event.data().otpId());
+ * }
  * }</pre>
  *
  * <p>Answers {@code 200 {"received":true}}, or {@code 400} for a wrong signature, an expired
