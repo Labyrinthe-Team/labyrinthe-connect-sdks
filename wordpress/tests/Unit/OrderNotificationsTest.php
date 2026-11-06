@@ -254,6 +254,65 @@ final class OrderNotificationsTest extends TestCase {
 		$this->assertNotSame( '', wc_get_order( $order->get_id() )->get_meta( Order_Notifications::SENT_META ) );
 	}
 
+	public function test_maintenance_with_a_return_time_is_rescheduled_at_that_time(): void {
+		$order = $this->create_order();
+		$this->http->push_error(
+			503,
+			'FEATURE_DISABLED',
+			array(
+				'feature'    => 'api.sms_send',
+				'blocked_by' => 'api',
+				'message'    => 'Maintenance jusqu’à 10 h.',
+				'until'      => gmdate( 'c', time() + 7200 ),
+			),
+			array(
+				'retry-after'  => '7200',
+				'x-request-id' => 'req-maint',
+			)
+		);
+
+		$before = time();
+		$this->notifications->send_customer_sms( $order->get_id(), 'processing', 1 );
+
+		$this->assertCount( 1, $this->http->requests, 'Retry-After above the SDK limit: not retried by the SDK.' );
+		$next = as_next_scheduled_action( Order_Notifications::HOOK_CUSTOMER, array( $order->get_id(), 'processing', 2 ), Order_Notifications::GROUP );
+		$this->assertIsInt( $next );
+		$this->assertGreaterThanOrEqual( $before + 7200, $next, 'Rescheduled at the announced return time.' );
+		$this->assertLessThanOrEqual( time() + 7200, $next );
+		$note = $this->notes( $order )[0];
+		$this->assertStringContainsString( 'FEATURE_DISABLED', $note );
+		$this->assertStringContainsString( 'New attempt in 120 minutes', $note );
+		$this->assertStringContainsString( 'Request ID: req-maint', $note );
+		$row = $this->log_rows()[0];
+		$this->assertSame( 'FEATURE_DISABLED', $row['error_code'] );
+		$this->assertStringStartsWith( 'Maintenance jusqu’à 10 h.', $row['error_message'] );
+		$this->assertStringContainsString( 'Expected back:', $row['error_message'] );
+	}
+
+	public function test_maintenance_without_a_return_time_uses_the_usual_delay(): void {
+		$order = $this->create_order();
+		$this->http->push_error(
+			503,
+			'FEATURE_DISABLED',
+			array(
+				'feature'    => 'api',
+				'blocked_by' => 'api',
+				'message'    => null,
+				'until'      => null,
+			)
+		);
+
+		$before = time();
+		$this->notifications->send_customer_sms( $order->get_id(), 'processing', 1 );
+
+		$this->assertCount( 1, $this->http->requests, 'Never retried by the SDK without Retry-After.' );
+		$next = as_next_scheduled_action( Order_Notifications::HOOK_CUSTOMER, array( $order->get_id(), 'processing', 2 ), Order_Notifications::GROUP );
+		$this->assertIsInt( $next );
+		$this->assertGreaterThanOrEqual( $before + 5 * MINUTE_IN_SECONDS, $next );
+		$this->assertLessThanOrEqual( time() + 5 * MINUTE_IN_SECONDS, $next );
+		$this->assertStringContainsString( 'temporarily unavailable', $this->log_rows()[0]['error_message'] );
+	}
+
 	public function test_last_attempt_is_not_rescheduled(): void {
 		$order = $this->create_order();
 		$this->http->push_error( 503, 'SERVICE_UNAVAILABLE' )->push_error( 503, 'SERVICE_UNAVAILABLE' );

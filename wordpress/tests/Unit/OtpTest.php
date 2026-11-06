@@ -175,7 +175,7 @@ final class OtpTest extends TestCase {
 		$this->assertSame( 'RECIPIENT_NOT_SENDABLE', $this->otp->send( Otp_Service::CONTEXT_REGISTER, '0812345678' )['code'] );
 
 		// 5xx et erreur réseau : une relance automatique, sans risque grâce à l'Idempotency-Key.
-		$this->http->push_error( 503, 'OTP_SERVICE_DISABLED' )->push_error( 503, 'OTP_SERVICE_DISABLED' );
+		$this->http->push_error( 503, 'HTTP_ERROR' )->push_error( 503, 'HTTP_ERROR' );
 		$result = $this->otp->send( Otp_Service::CONTEXT_REGISTER, '0812345678' );
 		$this->assertSame( 'SERVICE_UNAVAILABLE', $result['code'] );
 
@@ -183,6 +183,77 @@ final class OtpTest extends TestCase {
 		$this->assertSame( 'SERVICE_UNAVAILABLE', $this->otp->send( Otp_Service::CONTEXT_REGISTER, '0812345678' )['code'] );
 		$this->assertCount( 6, $this->http->requests );
 		$this->assertCount( 1, array_unique( $this->idempotency_keys() ), 'No send succeeded: every attempt replays the same key.' );
+	}
+
+	public function test_a_platform_maintenance_shows_the_announced_message_and_is_not_retried(): void {
+		$until = time() + 2 * HOUR_IN_SECONDS;
+		$this->http->push_error(
+			503,
+			'OTP_SERVICE_DISABLED',
+			array(
+				'feature'    => 'otp',
+				'blocked_by' => 'otp',
+				'message'    => '<b>Maintenance</b> du service OTP',
+				'until'      => gmdate( 'c', $until ),
+			),
+			array(
+				'retry-after'  => '7200',
+				'x-request-id' => 'req-maint',
+			)
+		);
+
+		$result = $this->otp->send( Otp_Service::CONTEXT_REGISTER, '0812345678' );
+
+		$this->assertFalse( $result['ok'] );
+		$this->assertSame( 'FEATURE_DISABLED', $result['code'] );
+		$this->assertStringStartsWith( 'Maintenance du service OTP', $result['message'], 'Tags of the administrator message are removed.' );
+		$this->assertStringContainsString( 'Expected back: ' . wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $until ), $result['message'] );
+		$this->assertSame( 7200, $result['retry_after'] );
+		$this->assertCount( 1, $this->http->requests, 'Retry-After above the SDK limit: not retried.' );
+		$this->assertSame( 'OTP_SERVICE_DISABLED', $this->log_rows()[0]['error_code'] );
+		$this->assertSame( 'req-maint', $this->log_rows()[0]['request_id'] );
+
+		// Sans message ni retour programmé : message générique, pas de compte à rebours.
+		$this->http->push_error(
+			503,
+			'FEATURE_DISABLED',
+			array(
+				'feature'    => 'api.otp_send',
+				'blocked_by' => 'api',
+				'message'    => null,
+				'until'      => null,
+			)
+		);
+		$result = $this->otp->send( Otp_Service::CONTEXT_REGISTER, '0812345678' );
+		$this->assertSame( 'FEATURE_DISABLED', $result['code'] );
+		$this->assertSame( 'Sending codes by SMS is temporarily unavailable (maintenance). Please try again later.', $result['message'] );
+		$this->assertArrayNotHasKey( 'retry_after', $result );
+		$this->assertCount( 2, $this->http->requests, 'Never retried without Retry-After.' );
+	}
+
+	public function test_a_maintenance_during_verification_keeps_the_pending_code(): void {
+		$this->push_sent();
+		$this->otp->send( Otp_Service::CONTEXT_REGISTER, '0812345678' );
+		$this->http->push_error(
+			503,
+			'FEATURE_DISABLED',
+			array(
+				'feature'    => 'api.otp_verify',
+				'blocked_by' => 'api.otp_verify',
+				'message'    => null,
+				'until'      => null,
+			)
+		);
+
+		$result = $this->otp->verify( Otp_Service::CONTEXT_REGISTER, '482913' );
+
+		$this->assertSame( 'FEATURE_DISABLED', $result['code'] );
+		$this->assertSame( 'Codes cannot be checked at the moment (maintenance). Please try again later.', $result['message'] );
+		$this->assertCount( 2, $this->http->requests );
+
+		// Le code en attente reste utilisable après la maintenance.
+		$this->push_verified( true );
+		$this->assertTrue( $this->otp->verify( Otp_Service::CONTEXT_REGISTER, '482913' )['ok'] );
 	}
 
 	public function test_send_uses_web_otp_strip_accents_and_a_request_id(): void {
