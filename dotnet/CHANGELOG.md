@@ -104,7 +104,7 @@ First stable release, built against the API specification 1.1.0.
   `IHttpClientFactory`, `ILogger<LabyrintheClient>`), `AddLabyrintheWebhookHandler<T>()` and
   `app.MapLabyrintheWebhooks()` (raw body, signature and timestamp checked; 400 / 413 / 500).
 
-[Unreleased]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/dotnet-v1.1.1...HEAD
-[1.1.1]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/dotnet-v1.1.0...dotnet-v1.1.1
-[1.1.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/dotnet-v1.0.0...dotnet-v1.1.0
-[1.0.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/releases/tag/dotnet-v1.0.0
+[Unreleased]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/dotnet-v1.1.1...HEAD
+[1.1.1]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/dotnet-v1.1.0...dotnet-v1.1.1
+[1.1.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/dotnet-v1.0.0...dotnet-v1.1.0
+[1.0.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/releases/tag/dotnet-v1.0.0
