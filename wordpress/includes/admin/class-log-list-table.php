@@ -211,7 +211,14 @@ final class Log_List_Table extends \WP_List_Table {
 
 				return $segments > 0 ? esc_html( number_format_i18n( $segments ) . ( 'ucs2' === $item['encoding'] ? ' (Unicode)' : '' ) ) : '—';
 			case 'error':
-				return '' === $item['error_code'] ? '—' : '<code>' . esc_html( $item['error_code'] ) . '</code> ' . esc_html( $item['error_message'] );
+				if ( '' === $item['error_code'] ) {
+					return '—';
+				}
+				$request_id = (string) ( $item['request_id'] ?? '' );
+
+				return '<code>' . esc_html( $item['error_code'] ) . '</code> ' . esc_html( $item['error_message'] )
+					/* translators: %s: request ID (X-Request-Id), to give to the support. */
+					. ( '' !== $request_id ? '<br /><small class="labyrinthe-muted">' . esc_html( sprintf( __( 'Request ID: %s', 'labyrinthe-connect' ), $request_id ) ) . '</small>' : '' );
 		}
 
 		return '';

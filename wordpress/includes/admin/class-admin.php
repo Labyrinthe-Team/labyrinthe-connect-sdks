@@ -7,6 +7,7 @@
 
 namespace LabyrintheConnect\Admin;
 
+use LabyrintheConnect\Account_Status;
 use LabyrintheConnect\Client_Factory;
 use LabyrintheConnect\Configuration_Exception;
 use LabyrintheConnect\Sender_Ids;
@@ -96,6 +97,7 @@ final class Admin {
 		add_action( 'wp_ajax_labyrinthe_connect_test_connection', array( $this, 'ajax_test_connection' ) );
 		add_action( 'wp_ajax_labyrinthe_connect_send_test_sms', array( $this, 'ajax_send_test_sms' ) );
 		add_action( 'wp_ajax_labyrinthe_connect_refresh_senders', array( $this, 'ajax_refresh_senders' ) );
+		add_action( 'wp_ajax_labyrinthe_connect_estimate', array( $this, 'ajax_estimate' ) );
 
 		( new User_Profile( $this->settings ) )->register();
 	}
@@ -166,17 +168,21 @@ final class Admin {
 				'ajaxUrl'      => admin_url( 'admin-ajax.php' ),
 				'nonce'        => wp_create_nonce( self::NONCE ),
 				'stripAccents' => $this->settings->strip_accents(),
+				'canEstimate'  => $this->settings->has_api_key(),
 				'samples'      => Templates::sample_values(),
 				'i18n'         => array(
-					'working'  => __( 'Please wait…', 'labyrinthe-connect' ),
-					'error'    => __( 'Error', 'labyrinthe-connect' ),
-					'copied'   => __( 'Copied', 'labyrinthe-connect' ),
+					'working'         => __( 'Please wait…', 'labyrinthe-connect' ),
+					'error'           => __( 'Error', 'labyrinthe-connect' ),
+					'copied'          => __( 'Copied', 'labyrinthe-connect' ),
 					/* translators: 1: number of characters, 2: number of segments. */
-					'gsm'      => __( '%1$d characters, GSM-7, %2$d SMS segment(s).', 'labyrinthe-connect' ),
+					'gsm'             => __( '%1$d characters, GSM-7, %2$d SMS segment(s).', 'labyrinthe-connect' ),
 					/* translators: 1: number of characters, 2: number of segments, 3: list of characters. */
-					'unicode'  => __( '%1$d characters, Unicode (UCS-2), %2$d SMS segment(s): these characters make each SMS hold 70 characters instead of 160, often doubling the cost: %3$s', 'labyrinthe-connect' ),
-					'stripped' => __( 'With "Remove accents" enabled, the SMS will be sent without accents.', 'labyrinthe-connect' ),
-					'estimate' => __( 'Estimate with sample values; the API makes the final count.', 'labyrinthe-connect' ),
+					'unicode'         => __( '%1$d characters, Unicode (UCS-2), %2$d SMS segment(s): these characters make each SMS hold 70 characters instead of 160, often doubling the cost: %3$s', 'labyrinthe-connect' ),
+					'stripped'        => __( 'With "Remove accents" enabled, the SMS will be sent without accents.', 'labyrinthe-connect' ),
+					'estimate'        => __( 'Estimate with sample values; the API makes the final count.', 'labyrinthe-connect' ),
+					/* translators: 1: number of characters, 2: number of segments. */
+					'unicodeStripped' => __( '%1$d characters, Unicode (UCS-2), %2$d SMS segment(s), even without accents: emoji or non-Latin characters make each SMS hold 70 characters instead of 160.', 'labyrinthe-connect' ),
+					'counted'         => __( 'Counted by Labyrinthe Connect with sample values.', 'labyrinthe-connect' ),
 				),
 			)
 		);
@@ -205,6 +211,20 @@ final class Admin {
 		$screen     = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
 		$on_plugins = null !== $screen && ( 'plugins' === $screen->id || false !== strpos( (string) $screen->id, self::SLUG ) );
 		$settings   = admin_url( 'admin.php?page=' . self::SLUG );
+
+		$suspended = Account_Status::suspended();
+		if ( null !== $suspended ) {
+			printf(
+				'<div class="notice notice-error"><p><strong>%s</strong> %s</p></div>',
+				esc_html__( 'Labyrinthe Connect: your account is suspended.', 'labyrinthe-connect' ),
+				esc_html(
+					'' !== $suspended['request_id']
+						/* translators: %s: request ID (X-Request-Id), to give to the support. */
+						? sprintf( __( 'The platform has closed the API for this account: no SMS and no OTP code can be sent until it is reactivated. Contact the Labyrinthe Connect support (connect@labyrinthe-rdc.com) and give the request ID %s.', 'labyrinthe-connect' ), $suspended['request_id'] )
+						: __( 'The platform has closed the API for this account: no SMS and no OTP code can be sent until it is reactivated. Contact the Labyrinthe Connect support (connect@labyrinthe-rdc.com).', 'labyrinthe-connect' )
+				)
+			);
+		}
 
 		if ( $this->settings->api_key_unreadable() ) {
 			printf(
@@ -260,10 +280,11 @@ final class Admin {
 		$this->authorize();
 
 		try {
-			$balance = $this->clients->make( 15.0, 1 )->balance->get();
+			$balance = $this->clients->make( 15.0, 1 )->balance->get( requestId: Account_Status::new_request_id() );
 		} catch ( \Throwable $e ) {
 			$this->fail( $e );
 		}
+		Account_Status::record_success();
 
 		wp_send_json_success(
 			array(
@@ -302,7 +323,7 @@ final class Admin {
 				array(
 					'code'    => $result->error_code,
 					/* translators: 1: error code, 2: error message. */
-					'message' => sprintf( __( 'Not sent (%1$s): %2$s', 'labyrinthe-connect' ), $result->error_code, $result->error_message ),
+					'message' => sprintf( __( 'Not sent (%1$s): %2$s', 'labyrinthe-connect' ), $result->error_code, $result->error_message ) . self::request_id_suffix( $result->request_id ),
 				)
 			);
 		}
@@ -338,6 +359,54 @@ final class Admin {
 	}
 
 	/**
+	 * AJAX : nombre de caractères et de segments d'un modèle, compté par l'API (POST /sms/estimate,
+	 * avec le retrait des accents du réglage) ; rien n'est envoyé ni débité.
+	 */
+	public function ajax_estimate(): void {
+		$this->authorize();
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce vérifié par authorize().
+		$body = isset( $_POST['message'] ) ? trim( sanitize_textarea_field( wp_unslash( $_POST['message'] ) ) ) : '';
+		if ( '' === $body ) {
+			wp_send_json_success(
+				array(
+					'encoding'   => 'gsm7',
+					'characters' => 0,
+					'segments'   => 0,
+				)
+			);
+		}
+
+		try {
+			$estimate = $this->clients->make( 8.0, 0 )->sms->estimate(
+				body: mb_substr( $body, 0, Settings::MAX_TEMPLATE_LENGTH ),
+				recipients: '+' . Templates::SAMPLE_PHONE,
+				stripAccents: $this->settings->strip_accents()
+			);
+		} catch ( \Throwable $e ) {
+			$this->fail( $e );
+		}
+
+		wp_send_json_success(
+			array(
+				'encoding'   => $estimate->encoding->value,
+				'characters' => $estimate->characters,
+				'segments'   => $estimate->segmentsPerMessage, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- propriété du SDK.
+			)
+		);
+	}
+
+	/**
+	 * « (identifiant de requête : …) » pour les messages d'erreur.
+	 *
+	 * @param string $request_id Identifiant de requête.
+	 */
+	private static function request_id_suffix( string $request_id ): string {
+		/* translators: %s: request ID (X-Request-Id), to give to the support. */
+		return '' !== $request_id ? ' ' . sprintf( __( 'Request ID: %s', 'labyrinthe-connect' ), $request_id ) : '';
+	}
+
+	/**
 	 * Capacité et nonce de toute action AJAX d'administration.
 	 */
 	private function authorize(): void {
@@ -356,9 +425,16 @@ final class Admin {
 	 * @return never
 	 */
 	private function fail( \Throwable $e ): void {
-		if ( $e instanceof ApiException ) {
-			$code    = $e->getErrorCode();
-			$message = 'UNAUTHENTICATED' === $code ? __( 'The API key was refused (invalid or revoked).', 'labyrinthe-connect' ) : $e->getMessage();
+		Account_Status::record_error( $e );
+		$request_id = '';
+		if ( Account_Status::is_suspension( $e ) && $e instanceof ApiException ) {
+			$code       = $e->getErrorCode();
+			$message    = __( 'Your Labyrinthe Connect account is suspended: no SMS can be sent until it is reactivated. Contact support.', 'labyrinthe-connect' );
+			$request_id = Account_Status::request_id( $e );
+		} elseif ( $e instanceof ApiException ) {
+			$code       = $e->getErrorCode();
+			$message    = 'UNAUTHENTICATED' === $code ? __( 'The API key was refused (invalid or revoked).', 'labyrinthe-connect' ) : $e->getMessage();
+			$request_id = Account_Status::request_id( $e );
 		} elseif ( $e instanceof Configuration_Exception ) {
 			$code    = 'NOT_CONFIGURED';
 			$message = __( 'Save an API key first.', 'labyrinthe-connect' );
@@ -374,7 +450,7 @@ final class Admin {
 			array(
 				'code'    => $code,
 				/* translators: 1: error code, 2: error message. */
-				'message' => sprintf( __( 'Failed (%1$s): %2$s', 'labyrinthe-connect' ), $code, $message ),
+				'message' => sprintf( __( 'Failed (%1$s): %2$s', 'labyrinthe-connect' ), $code, $message ) . self::request_id_suffix( $request_id ),
 			)
 		);
 	}

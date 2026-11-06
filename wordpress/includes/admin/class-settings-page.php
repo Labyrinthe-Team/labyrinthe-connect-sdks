@@ -167,7 +167,7 @@ final class Settings_Page {
 				<th scope="row"><?php esc_html_e( 'Accents', 'labyrinthe-connect' ); ?></th>
 				<td>
 					<label><input type="checkbox" name="<?php echo esc_attr( $this->name( 'strip_accents' ) ); ?>" value="1"<?php checked( ! empty( $all['strip_accents'] ) ); ?> /> <?php esc_html_e( 'Remove accents and typographic quotes before sending (é → e, « → ")', 'labyrinthe-connect' ); ?></label>
-					<p class="description"><?php esc_html_e( 'A single accent switches the SMS to Unicode: 70 characters per SMS instead of 160, so the cost is often doubled. Without accents, the SMS stays in GSM-7.', 'labyrinthe-connect' ); ?></p>
+					<p class="description"><?php esc_html_e( 'A single accent switches the SMS to Unicode: 70 characters per SMS instead of 160, so the cost is often doubled. Without accents, the SMS stays in GSM-7.', 'labyrinthe-connect' ); ?> <?php esc_html_e( 'The accents are removed by Labyrinthe Connect when sending, for order SMS, test SMS and OTP codes alike.', 'labyrinthe-connect' ); ?></p>
 				</td>
 			</tr>
 			<tr>
@@ -411,6 +411,17 @@ final class Settings_Page {
 					<textarea class="large-text labyrinthe-sms-template" rows="2" id="labyrinthe-otp-template" name="<?php echo esc_attr( $this->name( 'otp_template' ) ); ?>" data-counter="labyrinthe-otp-counter" placeholder="<?php echo esc_attr__( 'Your code is {code}. Valid {minutes} min.', 'labyrinthe-connect' ); ?>"><?php echo esc_textarea( (string) $all['otp_template'] ); ?></textarea>
 					<p class="description labyrinthe-counter" id="labyrinthe-otp-counter"></p>
 					<p class="description"><?php esc_html_e( 'Optional: must contain {code}; {app_name} and {minutes} are also available. Empty: the message of your account OTP settings.', 'labyrinthe-connect' ); ?></p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><?php esc_html_e( 'Automatic code filling', 'labyrinthe-connect' ); ?></th>
+				<td>
+					<label><input type="checkbox" name="<?php echo esc_attr( $this->name( 'otp_web_otp' ) ); ?>" value="1"<?php checked( ! empty( $all['otp_web_otp'] ) ); ?> /> <?php esc_html_e( 'Let the browser fill in the code from the SMS (Web OTP, Chrome on Android)', 'labyrinthe-connect' ); ?></label>
+					<p>
+						<label for="labyrinthe-otp-web-otp-domain"><?php esc_html_e( 'Domain', 'labyrinthe-connect' ); ?></label>
+						<input type="text" class="regular-text code" id="labyrinthe-otp-web-otp-domain" name="<?php echo esc_attr( $this->name( 'otp_web_otp_domain' ) ); ?>" value="<?php echo esc_attr( (string) $all['otp_web_otp_domain'] ); ?>" placeholder="<?php echo esc_attr( (string) wp_parse_url( home_url(), PHP_URL_HOST ) ); ?>" spellcheck="false" />
+					</p>
+					<p class="description"><?php esc_html_e( 'Adds a last line "@domain #code" to the SMS. Empty: the domain of this site. It must be the domain of the page where the code is typed; a local address (localhost, IP address) turns it off.', 'labyrinthe-connect' ); ?></p>
 				</td>
 			</tr>
 			<tr>

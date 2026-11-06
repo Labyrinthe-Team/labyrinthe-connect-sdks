@@ -31,7 +31,7 @@ final class Log_Page {
 			<form method="get">
 				<input type="hidden" name="page" value="<?php echo esc_attr( Admin::LOG_SLUG ); ?>" />
 				<?php
-				$table->search_box( __( 'Search (order, message ID, error code)', 'labyrinthe-connect' ), 'labyrinthe-sms' );
+				$table->search_box( __( 'Search (order, message ID, error code, request ID)', 'labyrinthe-connect' ), 'labyrinthe-sms' );
 				$table->display();
 				?>
 			</form>
