@@ -27,6 +27,9 @@ public final class Limits {
   /** Maximum length of an OTP template: {@value}. */
   public static final int MAX_OTP_TEMPLATE_LENGTH = 1600;
 
+  /** Maximum length of the Web OTP API domain of an OTP send: {@value}. */
+  public static final int MAX_WEB_OTP_DOMAIN_LENGTH = 253;
+
   /** Maximum length of an OTP code: {@value}. */
   public static final int MAX_OTP_CODE_LENGTH = 20;
 

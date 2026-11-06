@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /** Result of {@code sms().sendMany()}: one message per distinct recipient. Immutable. */
 public final class MessageBatch implements Iterable<Message> {
@@ -11,11 +12,13 @@ public final class MessageBatch implements Iterable<Message> {
   private final List<Message> messages;
   private final String idempotencyKey;
   private final boolean replayed;
+  private final String requestId;
 
-  MessageBatch(List<Message> messages, String idempotencyKey, boolean replayed) {
+  MessageBatch(List<Message> messages, String idempotencyKey, boolean replayed, String requestId) {
     this.messages = Collections.unmodifiableList(List.copyOf(messages));
     this.idempotencyKey = Objects.requireNonNull(idempotencyKey, "idempotencyKey");
     this.replayed = replayed;
+    this.requestId = requestId;
   }
 
   /**
@@ -43,6 +46,16 @@ public final class MessageBatch implements Iterable<Message> {
    */
   public boolean replayed() {
     return replayed;
+  }
+
+  /**
+   * Request identifier of the response ({@code X-Request-Id}), for the support. Not part of {@link
+   * #equals(Object)}.
+   *
+   * @return the identifier, if the API sent one
+   */
+  public Optional<String> requestId() {
+    return Optional.ofNullable(requestId);
   }
 
   /**

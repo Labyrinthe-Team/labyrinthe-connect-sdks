@@ -99,7 +99,7 @@ public final class Message {
   }
 
   /**
-   * Encoding of the text (may be missing for old messages: see BACKEND-TODO n° 9).
+   * Encoding of the text (always sent since API 1.2.0; may be missing with an older API).
    *
    * @return the encoding, if known
    */

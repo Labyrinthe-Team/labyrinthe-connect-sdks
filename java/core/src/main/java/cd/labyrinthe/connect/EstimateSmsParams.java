@@ -6,11 +6,15 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
-/** Parameters of {@code sms().estimate()}. Invalid numbers are ignored by the API, not refused. */
+/**
+ * Parameters of {@code sms().estimate()}. Recipients are counted like a send: normalised,
+ * duplicates merged; invalid numbers are ignored by the API, not refused.
+ */
 public final class EstimateSmsParams {
 
   private final String body;
   private final List<String> recipients;
+  private final boolean stripAccents;
 
   private EstimateSmsParams(Builder builder) {
     this.body = Checks.body(builder.body);
@@ -18,6 +22,7 @@ public final class EstimateSmsParams {
       throw new InvalidArgumentException("At least one recipient is required.");
     }
     this.recipients = Collections.unmodifiableList(new ArrayList<>(builder.recipients));
+    this.stripAccents = builder.stripAccents;
   }
 
   /**
@@ -47,6 +52,15 @@ public final class EstimateSmsParams {
     return recipients;
   }
 
+  /**
+   * Whether accents and typographic characters are replaced by ASCII before counting.
+   *
+   * @return true when requested
+   */
+  public boolean stripAccents() {
+    return stripAccents;
+  }
+
   @Override
   public String toString() {
     return "EstimateSmsParams(recipients="
@@ -60,6 +74,7 @@ public final class EstimateSmsParams {
   public static final class Builder {
     private String body;
     private final List<String> recipients = new ArrayList<>();
+    private boolean stripAccents;
 
     private Builder() {}
 
@@ -94,6 +109,20 @@ public final class EstimateSmsParams {
      */
     public Builder addRecipient(String recipient) {
       this.recipients.add(recipient);
+      return this;
+    }
+
+    /**
+     * Replaces accents and typographic characters (quotes, long dashes…) by their ASCII equivalent
+     * before counting, as {@code send()} would with the same option. Never applied without this
+     * option; the transliteration depends on the server ({@code Café} may become {@code Cafe} or
+     * {@code Caf'e}): do not rely on it for an exact text.
+     *
+     * @param stripAccents true to strip (default false)
+     * @return this builder
+     */
+    public Builder stripAccents(boolean stripAccents) {
+      this.stripAccents = stripAccents;
       return this;
     }
 

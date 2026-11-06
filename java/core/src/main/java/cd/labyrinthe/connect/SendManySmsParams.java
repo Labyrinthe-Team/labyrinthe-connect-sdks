@@ -18,6 +18,7 @@ public final class SendManySmsParams {
   private final String sender;
   private final String reference;
   private final String idempotencyKey;
+  private final boolean stripAccents;
 
   private SendManySmsParams(Builder builder) {
     if (builder.recipients.isEmpty()) {
@@ -32,6 +33,7 @@ public final class SendManySmsParams {
     this.sender = Checks.sender(builder.sender);
     this.reference = Checks.reference(builder.reference);
     this.idempotencyKey = Checks.idempotencyKey(builder.idempotencyKey);
+    this.stripAccents = builder.stripAccents;
   }
 
   /**
@@ -80,6 +82,15 @@ public final class SendManySmsParams {
   }
 
   /**
+   * Whether accents and typographic characters are replaced by ASCII before sending.
+   *
+   * @return true when requested
+   */
+  public boolean stripAccents() {
+    return stripAccents;
+  }
+
+  /**
    * Your idempotency key.
    *
    * @return the key, if set
@@ -105,6 +116,7 @@ public final class SendManySmsParams {
     private String sender;
     private String reference;
     private String idempotencyKey;
+    private boolean stripAccents;
 
     private Builder() {}
 
@@ -172,6 +184,20 @@ public final class SendManySmsParams {
      */
     public Builder idempotencyKey(String idempotencyKey) {
       this.idempotencyKey = idempotencyKey;
+      return this;
+    }
+
+    /**
+     * Replaces accents and typographic characters (quotes, long dashes…) by their ASCII equivalent
+     * before sending: the message becomes GSM-7, often half the price. Never applied without this
+     * option; the transliteration depends on the server ({@code Café} may become {@code Cafe} or
+     * {@code Caf'e}): do not rely on it for an exact text.
+     *
+     * @param stripAccents true to strip (default false)
+     * @return this builder
+     */
+    public Builder stripAccents(boolean stripAccents) {
+      this.stripAccents = stripAccents;
       return this;
     }
 

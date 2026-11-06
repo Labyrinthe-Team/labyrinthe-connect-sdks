@@ -44,17 +44,20 @@ public final class OtpService {
   /**
    * Generates a code and sends it by SMS (billed like any SMS).
    *
-   * <p>A new send to the same number invalidates the previous code. Never retried automatically,
-   * except on 429 {@code TOO_MANY_REQUESTS} (refused before processing): a second success would
-   * send a second, billed SMS. With a test key, nothing is sent and {@link
-   * OtpSendResult#testCode()} holds the code.
+   * <p>A new send to the same number invalidates the previous code. An {@code Idempotency-Key} is
+   * always sent (a random UUID when you give none), so network errors, 5xx, 429 {@code
+   * TOO_MANY_REQUESTS} and 409 {@code IDEMPOTENCY_REQUEST_IN_PROGRESS} are retried safely: a retry
+   * returns the same OTP ({@link OtpSendResult#replayed()}), never a second SMS. The business
+   * limits {@code OTP_RESEND_TOO_SOON} and {@code OTP_RATE_LIMITED} are never retried. With a test
+   * key, nothing is sent and {@link OtpSendResult#testCode()} holds the code.
    *
    * @param params phone, template and locale
    * @param options per-request options
    * @return the OTP id and expiry
    */
   public OtpSendResult send(SendOtpParams params, RequestOptions options) {
-    return ApiMapper.otpSend(transport.send(mapper.otpSend(params, options)));
+    ApiMapper.Dispatch dispatch = mapper.otpSend(params, options);
+    return ApiMapper.otpSend(transport.send(dispatch.request), dispatch.idempotencyKey);
   }
 
   /**
@@ -70,7 +73,9 @@ public final class OtpService {
 
   /**
    * Checks a code. A wrong code is <b>not</b> an exception: {@link OtpVerifyResult#isVerified()} is
-   * false with a {@link OtpVerifyResult#reason()}. One attempt is consumed per wrong code. Free.
+   * false with a {@link OtpVerifyResult#reason()} and {@link OtpVerifyResult#attemptsRemaining()}.
+   * One attempt is consumed per wrong code. Free. Retried automatically only on 429 {@code
+   * TOO_MANY_REQUESTS} (refused before processing).
    *
    * @param otpId the id returned by {@link #send(String)}
    * @param code the code typed by the user (never logged)

@@ -51,7 +51,10 @@ public final class AsyncOtpService {
    */
   public CompletableFuture<OtpSendResult> send(SendOtpParams params, RequestOptions options) {
     try {
-      return transport.sendAsync(mapper.otpSend(params, options)).thenApply(ApiMapper::otpSend);
+      ApiMapper.Dispatch dispatch = mapper.otpSend(params, options);
+      return transport
+          .sendAsync(dispatch.request)
+          .thenApply(response -> ApiMapper.otpSend(response, dispatch.idempotencyKey));
     } catch (LabyrintheException e) {
       return CompletableFuture.failedFuture(e);
     }

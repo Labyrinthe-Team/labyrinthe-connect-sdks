@@ -7,7 +7,7 @@ import java.util.Properties;
 /** Version of the SDK. */
 public final class Version {
 
-  /** Version of this SDK, e.g. {@code "1.0.0"} (from the Maven build). */
+  /** Version of this SDK, e.g. {@code "1.1.1"} (from the Maven build). */
   public static final String VERSION = load();
 
   private Version() {}
@@ -15,7 +15,7 @@ public final class Version {
   /**
    * The {@code User-Agent} sent with every request.
    *
-   * @return e.g. {@code "labyrinthe-java/1.0.0 Java/21.0.4"}
+   * @return e.g. {@code "labyrinthe-java/1.1.1 Java/21.0.4"}
    */
   public static String userAgent() {
     return "labyrinthe-java/" + VERSION + " Java/" + System.getProperty("java.version", "unknown");
