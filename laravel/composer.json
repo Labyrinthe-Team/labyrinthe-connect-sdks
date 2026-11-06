@@ -17,7 +17,7 @@
         "congo",
         "rdc"
     ],
-    "homepage": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/tree/main/laravel",
+    "homepage": "https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/tree/main/laravel",
     "authors": [
         {
             "name": "Labyrinthe Connect",
@@ -27,9 +27,9 @@
     ],
     "support": {
         "email": "connect@labyrinthe-rdc.com",
-        "issues": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/issues",
-        "source": "https://github.com/labyrinthe-rdc/labyrinthe-connect-laravel",
-        "docs": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/blob/main/laravel/README.md"
+        "issues": "https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/issues",
+        "source": "https://github.com/Labyrinthe-Team/labyrinthe-connect-laravel",
+        "docs": "https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/blob/main/laravel/README.md"
     },
     "require": {
         "php": "^8.1",
