@@ -23,12 +23,14 @@ final class BalanceService
     }
 
     /**
+     * @param string|null $requestId your X-Request-Id (1 to 128 characters among A-Z a-z 0-9 . _ : -)
+     *
      * @throws ApiException
      * @throws ConnectionException
      */
-    public function get(): Balance
+    public function get(?string $requestId = null): Balance
     {
-        return Balance::fromArray($this->transport->request('GET', '/balance', RetryMode::Safe)->data());
+        return Balance::fromArray($this->transport->request('GET', '/balance', RetryMode::Safe, requestId: $requestId)->data());
     }
 
     /**

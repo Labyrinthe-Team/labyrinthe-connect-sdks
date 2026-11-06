@@ -54,6 +54,9 @@ final class SmsService
      * @param string|null $sender         approved Sender ID (defaults to the client's default sender, then the platform's)
      * @param string|null $reference      your own reference (order number…), max 64 characters
      * @param string|null $idempotencyKey max 255 characters
+     * @param bool        $stripAccents   replace accents and typographic characters by ASCII before sending
+     *                                    (GSM-7, often half the cost; the transliteration depends on the server)
+     * @param string|null $requestId      your X-Request-Id (1 to 128 characters among A-Z a-z 0-9 . _ : -)
      *
      * @throws InvalidArgumentException before any call when the input is invalid
      * @throws ApiException             RecipientNotSendableException, InsufficientCreditsException, SenderIdNotApprovedException…
@@ -65,13 +68,17 @@ final class SmsService
         ?string $sender = null,
         ?string $reference = null,
         ?string $idempotencyKey = null,
+        bool $stripAccents = false,
+        ?string $requestId = null,
     ): Message {
         $batch = $this->dispatch(
-            ['recipient' => PhoneNumber::normalizeOrFail($to, $this->defaultCountryCode, 'to')],
+            ['recipient' => PhoneNumber::toE164OrFail($to, $this->defaultCountryCode, 'to')],
             $body,
             $sender,
             $reference,
             $idempotencyKey,
+            $stripAccents,
+            $requestId,
         );
 
         $message = $batch->first();
@@ -100,6 +107,8 @@ final class SmsService
         ?string $sender = null,
         ?string $reference = null,
         ?string $idempotencyKey = null,
+        bool $stripAccents = false,
+        ?string $requestId = null,
     ): MessageBatch {
         if ($recipients === []) {
             throw new InvalidArgumentException('At least one recipient is required.');
@@ -111,7 +120,7 @@ final class SmsService
         $normalized = [];
         $invalid = [];
         foreach (array_values($recipients) as $index => $recipient) {
-            $number = PhoneNumber::normalize($recipient, $this->defaultCountryCode);
+            $number = PhoneNumber::toE164($recipient, $this->defaultCountryCode);
             if ($number === null) {
                 $invalid[] = $index;
             } else {
@@ -122,20 +131,27 @@ final class SmsService
             throw new InvalidArgumentException(\sprintf('Invalid phone number(s) at recipients index %s. Nothing was sent.', implode(', ', \array_slice($invalid, 0, 20)).(\count($invalid) > 20 ? '…' : '')));
         }
 
-        return $this->dispatch(['recipients' => $normalized], $body, $sender, $reference, $idempotencyKey);
+        return $this->dispatch(['recipients' => $normalized], $body, $sender, $reference, $idempotencyKey, $stripAccents, $requestId);
     }
 
     /**
      * Computes encoding, segments and credits without sending anything.
-     * Invalid numbers are not counted (no error).
+     * Recipients are counted like a send: normalised, duplicates merged,
+     * invalid numbers ignored (no error).
      *
      * @param array<array-key, string>|string $recipients
+     * @param bool                            $stripAccents estimate the text with accents replaced by ASCII
+     * @param string|null                     $requestId    your X-Request-Id
      *
      * @throws ApiException
      * @throws ConnectionException
      */
-    public function estimate(#[\SensitiveParameter] string $body, array|string $recipients): Estimate
-    {
+    public function estimate(
+        #[\SensitiveParameter] string $body,
+        array|string $recipients,
+        bool $stripAccents = false,
+        ?string $requestId = null,
+    ): Estimate {
         self::assertBody($body);
         $recipients = \is_string($recipients) ? [$recipients] : array_values($recipients);
         if ($recipients === []) {
@@ -143,32 +159,36 @@ final class SmsService
         }
 
         $numbers = array_map(
-            fn (string $r): string => PhoneNumber::normalize($r, $this->defaultCountryCode) ?? $r,
+            fn (string $r): string => PhoneNumber::toE164($r, $this->defaultCountryCode) ?? $r,
             $recipients,
         );
 
-        $response = $this->transport->request('POST', '/sms/estimate', RetryMode::Safe, body: [
-            'body' => $body,
-            'recipients' => $numbers,
-        ]);
+        $payload = ['body' => $body, 'recipients' => $numbers];
+        if ($stripAccents) {
+            $payload['strip_accents'] = true;
+        }
+
+        $response = $this->transport->request('POST', '/sms/estimate', RetryMode::Safe, body: $payload, requestId: $requestId);
 
         return Estimate::fromArray($response->data());
     }
 
     /**
-     * One message of the account, by id.
+     * One message of the account, by id (any key or channel that sent it).
+     *
+     * @param string|null $requestId your X-Request-Id
      *
      * @throws \Labyrinthe\Connect\Exception\NotFoundException
      * @throws ApiException
      * @throws ConnectionException
      */
-    public function get(string $id): Message
+    public function get(string $id, ?string $requestId = null): Message
     {
         if (trim($id) === '') {
             throw new InvalidArgumentException('The message id cannot be empty.');
         }
 
-        $response = $this->transport->request('GET', '/sms/'.rawurlencode($id), RetryMode::Safe);
+        $response = $this->transport->request('GET', '/sms/'.rawurlencode($id), RetryMode::Safe, requestId: $requestId);
 
         return Message::fromArray($response->data());
     }
@@ -180,6 +200,7 @@ final class SmsService
      * @param string|null                    $reference exact match
      * @param \DateTimeInterface|string|null $from      inclusive (a date "2026-11-01" or a date-time)
      * @param \DateTimeInterface|string|null $to        inclusive (a date covers the whole day)
+     * @param string|null                    $requestId your X-Request-Id (sent with this page only)
      *
      * @return Page<Message>
      *
@@ -194,6 +215,7 @@ final class SmsService
         \DateTimeInterface|string|null $to = null,
         int $page = 1,
         int $perPage = 15,
+        ?string $requestId = null,
     ): Page {
         if ($page < 1) {
             throw new InvalidArgumentException('page must be >= 1.');
@@ -204,14 +226,14 @@ final class SmsService
 
         $query = [
             'status' => $status instanceof MessageStatus ? $status->value : $status,
-            'recipient' => $recipient === null ? null : (PhoneNumber::normalize($recipient, $this->defaultCountryCode) ?? $recipient),
+            'recipient' => $recipient === null ? null : (PhoneNumber::toE164($recipient, $this->defaultCountryCode) ?? $recipient),
             'reference' => $reference,
             'from' => self::formatDate($from),
             'to' => self::formatDate($to),
             'per_page' => $perPage,
         ];
 
-        return $this->fetchPage($query, $page);
+        return $this->fetchPage($query, $page, $requestId);
     }
 
     /**
@@ -219,9 +241,9 @@ final class SmsService
      *
      * @return Page<Message>
      */
-    private function fetchPage(array $query, int $page): Page
+    private function fetchPage(array $query, int $page, ?string $requestId = null): Page
     {
-        $response = $this->transport->request('GET', '/sms', RetryMode::Safe, query: $query + ['page' => $page]);
+        $response = $this->transport->request('GET', '/sms', RetryMode::Safe, query: $query + ['page' => $page], requestId: $requestId);
         $meta = Data::optionalArray($response->body, 'meta');
         $messages = array_map(static fn (array $m): Message => Message::fromArray($m), $response->dataList());
 
@@ -238,8 +260,15 @@ final class SmsService
     /**
      * @param array{recipient: string}|array{recipients: list<string>} $target
      */
-    private function dispatch(array $target, #[\SensitiveParameter] string $body, ?string $sender, ?string $reference, ?string $idempotencyKey): MessageBatch
-    {
+    private function dispatch(
+        array $target,
+        #[\SensitiveParameter] string $body,
+        ?string $sender,
+        ?string $reference,
+        ?string $idempotencyKey,
+        bool $stripAccents,
+        ?string $requestId,
+    ): MessageBatch {
         self::assertBody($body);
         $sender ??= $this->defaultSender;
         if ($sender !== null && ($sender === '' || mb_strlen($sender) > self::MAX_SENDER_LENGTH)) {
@@ -262,10 +291,13 @@ final class SmsService
         if ($reference !== null && $reference !== '') {
             $payload['reference'] = $reference;
         }
+        if ($stripAccents) {
+            $payload['strip_accents'] = true;
+        }
 
         $response = $this->transport->request('POST', '/sms', RetryMode::Safe, body: $payload, headers: [
             'Idempotency-Key' => $idempotencyKey,
-        ]);
+        ], requestId: $requestId);
 
         return new MessageBatch(
             array_map(static fn (array $m): Message => Message::fromArray($m), $response->dataList()),
@@ -287,7 +319,8 @@ final class SmsService
     private static function formatDate(\DateTimeInterface|string|null $date): ?string
     {
         if ($date instanceof \DateTimeInterface) {
-            return \DateTimeImmutable::createFromInterface($date)->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z');
+            // Same format as the API dates: 2026-11-06T09:39:11+00:00.
+            return \DateTimeImmutable::createFromInterface($date)->setTimezone(new \DateTimeZone('UTC'))->format(\DATE_ATOM);
         }
 
         return $date;

@@ -25,14 +25,16 @@ final class SenderIdService
     /**
      * Sender IDs with the `approved` status, usable as `sender`.
      *
+     * @param string|null $requestId your X-Request-Id
+     *
      * @return list<SenderId>
      *
      * @throws ApiException
      * @throws ConnectionException
      */
-    public function list(): array
+    public function list(?string $requestId = null): array
     {
-        $response = $this->transport->request('GET', '/sender-ids', RetryMode::Safe);
+        $response = $this->transport->request('GET', '/sender-ids', RetryMode::Safe, requestId: $requestId);
 
         return array_map(static fn (array $s): SenderId => SenderId::fromArray($s), $response->dataList());
     }
