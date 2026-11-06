@@ -25,16 +25,16 @@ Maven :
 <dependency>
   <groupId>cd.labyrinthe</groupId>
   <artifactId>labyrinthe-connect</artifactId>
-  <version>1.1.1</version>
+  <version>1.2.0</version>
 </dependency>
 ```
 
 Gradle :
 
 ```kotlin
-implementation("cd.labyrinthe:labyrinthe-connect:1.1.1")
+implementation("cd.labyrinthe:labyrinthe-connect:1.2.0")
 // Spring Boot 3 (Java 17+) :
-implementation("cd.labyrinthe:labyrinthe-connect-spring-boot-starter:1.1.1")
+implementation("cd.labyrinthe:labyrinthe-connect-spring-boot-starter:1.2.0")
 ```
 
 ## Démarrage rapide
@@ -252,7 +252,8 @@ if (result.isVerified()) {
 relancé sans risque après une erreur réseau, un délai dépassé, une 5xx, un 429 `TOO_MANY_REQUESTS` ou un 409
 `IDEMPOTENCY_REQUEST_IN_PROGRESS` ; une relance renvoie le même OTP (`otp.replayed()`), jamais un second SMS.
 `OTP_RESEND_TOO_SOON` et `OTP_RATE_LIMITED` ne sont jamais relancés. `otp().verify()` n'est relancé que sur 429
-`TOO_MANY_REQUESTS` (sinon une tentative pourrait être consommée deux fois).
+`TOO_MANY_REQUESTS` (sinon une tentative pourrait être consommée deux fois) et sur 503 `FEATURE_DISABLED` après
+`Retry-After` (tous deux refusés avant traitement).
 
 ## Webhooks
 
@@ -298,7 +299,7 @@ en-tête valide pour vos tests. Récepteur complet avec le serveur HTTP du JDK :
 <dependency>
   <groupId>cd.labyrinthe</groupId>
   <artifactId>labyrinthe-connect-spring-boot-starter</artifactId>
-  <version>1.1.1</version>
+  <version>1.2.0</version>
 </dependency>
 ```
 
@@ -353,27 +354,49 @@ d'`ApiException` et exposent aussi `headers()`, `requestId()` (`X-Request-Id`, p
 | `IdempotencyKeyUnresolvedException` | 409 `IDEMPOTENCY_KEY_UNRESOLVED` — la requête d'origine a échoué, résultat inconnu (un SMS a pu partir) ; jamais relancée : vérifier, puis renvoyer avec une **nouvelle** clé |
 | `RateLimitException` | 429 `TOO_MANY_REQUESTS` — `retryAfter()` |
 | `OtpResendTooSoonException`, `OtpRateLimitedException` | 429 — héritent de `RateLimitException` (`retryAfter()`) ; `scope()`, `limit()` |
-| `ServiceUnavailableException` | 5xx, dont 503 `OTP_SERVICE_DISABLED` |
+| `ServiceUnavailableException` | 5xx |
+| `FeatureDisabledException` | 503 `FEATURE_DISABLED` (ou `OTP_SERVICE_DISABLED` sur `otp().send`) — hérite de `ServiceUnavailableException` ; coupé par la plateforme, rien n'a été fait ; `feature()`, `blockedBy()`, `adminMessage()`, `until()`, `retryAfter()` |
 | `ApiException` | tout autre code (liste ouverte : de nouveaux codes peuvent apparaître) |
 | `ApiConnectionException`, `ApiTimeoutException` | erreur réseau (`CONNECTION_ERROR`) ou délai dépassé (`TIMEOUT`) |
 | `InvalidArgumentException` | donnée invalide détectée par le SDK, avant tout appel (`INVALID_ARGUMENT`) |
 | `UnexpectedResponseException` | réponse illisible pour le SDK |
 | `SignatureVerificationException`, `InvalidWebhookPayloadException` | vérification de webhook (répondre 400) |
 
+### Maintenance (503 `FEATURE_DISABLED`)
+
+Un administrateur de la plateforme peut couper temporairement toute l'API (`blockedBy()` = `api`, toutes les routes,
+avant même la vérification de la clé) ou une fonction (`api.sms_send`, `api.otp_send`, `api.otp_verify`). Rien n'est
+fait (aucun SMS, aucun débit). Le SDK ne relance que si une réactivation est programmée dans la limite de
+`maxRetryWait` (`Retry-After`), après exactement ce délai ; sinon il lève l'exception aussitôt. Ne relancez pas en
+boucle : mettez l'appel en file d'attente et prévenez l'utilisateur.
+
+```java
+try {
+  client.sms().send("0812345678", "Bonjour");
+} catch (FeatureDisabledException e) {
+  // e.feature() = "api.sms_send", e.blockedBy() = "api" quand toute l'API est coupée
+  String texte = e.adminMessage().orElse("L'envoi de SMS est momentanément indisponible.");
+  Duration attente = e.retryAfter().orElse(Duration.ofMinutes(15)); // until() donne la date, si connue
+  fileAttente.relancerPlusTard(commande, attente, texte);
+}
+```
+
 ## Relances et délais
 
 Le SDK relance automatiquement (par défaut 2 relances, backoff exponentiel 0,5 s → 1 s → 2 s avec jitter)
 **seulement quand un rejeu ne peut pas produire deux fois un effet** :
 
-| Requête | Erreur réseau / délai | 5xx | 429 `TOO_MANY_REQUESTS` | 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` |
-|---|---|---|---|---|
-| `get`, `list`, `balance().get`, `senderIds().list`, `estimate` | relancée | relancée | relancée après `Retry-After` | — |
-| `send` / `sendMany` / `otp().send` (toujours avec `Idempotency-Key`) | relancée, même clé | relancée, même clé | relancée après `Retry-After` | relancée après `Retry-After`, même clé |
-| `otp().verify` | **jamais** | **jamais** | relancée (refusée avant traitement) | — |
+| Requête | Erreur réseau / délai | 5xx | 429 `TOO_MANY_REQUESTS` | 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` | 503 `FEATURE_DISABLED` |
+|---|---|---|---|---|---|
+| `get`, `list`, `balance().get`, `senderIds().list`, `estimate` | relancée | relancée | relancée après `Retry-After` | — | seulement après `Retry-After` |
+| `send` / `sendMany` / `otp().send` (toujours avec `Idempotency-Key`) | relancée, même clé | relancée, même clé | relancée après `Retry-After` | relancée après `Retry-After`, même clé | seulement après `Retry-After`, même clé |
+| `otp().verify` | **jamais** | **jamais** | relancée (refusée avant traitement) | — | seulement après `Retry-After` (refusée avant traitement) |
 
 Les erreurs métier (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`, 409 `IDEMPOTENCY_KEY_UNRESOLVED`) ne sont
-jamais relancées. Si l'API demande
-d'attendre plus que `maxRetryWait` (10 s par défaut), le SDK lève `RateLimitException` au lieu d'attendre. Les
+jamais relancées. Les 503 `FEATURE_DISABLED` et `OTP_SERVICE_DISABLED` ne sont jamais relancées avec un backoff à
+l'aveugle : seulement après `Retry-After` (envoyé quand une réactivation est programmée). Si l'API demande
+d'attendre plus que `maxRetryWait` (10 s par défaut), le SDK lève l'exception (`RateLimitException`,
+`FeatureDisabledException`…) au lieu d'attendre. Les
 redirections ne sont jamais suivies (un `HttpClient` personnalisé qui les suit est refusé).
 
 Chaque méthode accepte un `RequestOptions` : un délai pour un appel, votre propre `X-Request-Id` (envoyé à chaque

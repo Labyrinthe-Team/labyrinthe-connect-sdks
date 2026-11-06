@@ -6,6 +6,28 @@ are documented here. This project follows [Semantic Versioning](https://semver.o
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-06
+
+Built against the API specification 1.3.0. Backward compatible with 1.1.1, except the retry change listed under
+"Changed".
+
+### Added
+- `FeatureDisabledException` (503 `FEATURE_DISABLED`, a subclass of `ServiceUnavailableException`): a platform
+  administrator temporarily shut down the whole API (`blockedBy()` = `api`, every route, refused before the key and
+  the rate limits are checked) or one function (`api.sms_send`, `api.otp_send`, `api.otp_verify`). Nothing was done
+  (no SMS, no debit). Accessors: `feature()`, `blockedBy()`, `adminMessage()` (`details.message`), `until()`
+  (`Optional<Instant>`, scheduled re-enable) and `retryAfter()` (`Retry-After` header). Missing or malformed details
+  give empty `Optional`s.
+- README: "Maintenance (503 `FEATURE_DISABLED`)" section with a handling example.
+
+### Changed
+- The legacy 503 `OTP_SERVICE_DISABLED` of `otp().send()` is now a `FeatureDisabledException` too (still a
+  `ServiceUnavailableException`), with the same details (`feature` = `blocked_by` = `otp`).
+- Retries: 503 `FEATURE_DISABLED` and `OTP_SERVICE_DISABLED` are never retried with the exponential backoff (before,
+  `OTP_SERVICE_DISABLED` was retried like any 5xx). They are retried, for every request including `otp().verify()`
+  (refused before processing), only when `Retry-After` is present and does not exceed `maxRetryWait`, after exactly
+  that delay; otherwise the exception is thrown at once. Other 5xx are unchanged.
+
 ## [1.1.1] - 2026-11-06
 
 ### Added

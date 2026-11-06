@@ -25,16 +25,16 @@ Maven:
 <dependency>
   <groupId>cd.labyrinthe</groupId>
   <artifactId>labyrinthe-connect</artifactId>
-  <version>1.1.1</version>
+  <version>1.2.0</version>
 </dependency>
 ```
 
 Gradle:
 
 ```kotlin
-implementation("cd.labyrinthe:labyrinthe-connect:1.1.1")
+implementation("cd.labyrinthe:labyrinthe-connect:1.2.0")
 // Spring Boot 3 (Java 17+):
-implementation("cd.labyrinthe:labyrinthe-connect-spring-boot-starter:1.1.1")
+implementation("cd.labyrinthe:labyrinthe-connect-spring-boot-starter:1.2.0")
 ```
 
 ## Quick start
@@ -252,7 +252,8 @@ if (result.isVerified()) {
 retried safely after a network error, a timeout, a 5xx, 429 `TOO_MANY_REQUESTS` or 409
 `IDEMPOTENCY_REQUEST_IN_PROGRESS`: a retry returns the same OTP (`otp.replayed()`), never a second SMS.
 `OTP_RESEND_TOO_SOON` and `OTP_RATE_LIMITED` are never retried. `otp().verify()` is retried only on 429
-`TOO_MANY_REQUESTS` (an attempt could otherwise be consumed twice).
+`TOO_MANY_REQUESTS` (an attempt could otherwise be consumed twice) and on 503 `FEATURE_DISABLED` after `Retry-After`
+(both refused before processing).
 
 ## Webhooks
 
@@ -298,7 +299,7 @@ JDK HTTP server: [`WebhookServer.java`](examples/src/main/java/cd/labyrinthe/con
 <dependency>
   <groupId>cd.labyrinthe</groupId>
   <artifactId>labyrinthe-connect-spring-boot-starter</artifactId>
-  <version>1.1.1</version>
+  <version>1.2.0</version>
 </dependency>
 ```
 
@@ -352,7 +353,8 @@ Every exception is unchecked and extends `LabyrintheException`, with `code()` (s
 | `IdempotencyKeyUnresolvedException` | 409 `IDEMPOTENCY_KEY_UNRESOLVED` — the original request failed, outcome unknown (an SMS may have left); never retried: check, then send with a **new** key |
 | `RateLimitException` | 429 `TOO_MANY_REQUESTS` — `retryAfter()` |
 | `OtpResendTooSoonException`, `OtpRateLimitedException` | 429 — extend `RateLimitException` (`retryAfter()`); `scope()`, `limit()` |
-| `ServiceUnavailableException` | 5xx, including 503 `OTP_SERVICE_DISABLED` |
+| `ServiceUnavailableException` | 5xx |
+| `FeatureDisabledException` | 503 `FEATURE_DISABLED` (or `OTP_SERVICE_DISABLED` on `otp().send`) — extends `ServiceUnavailableException`; shut down by the platform, nothing was done; `feature()`, `blockedBy()`, `adminMessage()`, `until()`, `retryAfter()` |
 | `ApiException` | any other code (the list is open: new codes may appear) |
 | `ApiConnectionException`, `ApiTimeoutException` | network error (`CONNECTION_ERROR`) or timeout (`TIMEOUT`) |
 | `InvalidArgumentException` | invalid input detected by the SDK, before any call (`INVALID_ARGUMENT`) |
@@ -369,20 +371,40 @@ try {
 }
 ```
 
+### Maintenance (503 `FEATURE_DISABLED`)
+
+A platform administrator can temporarily shut down the whole API (`blockedBy()` = `api`, every route, even before
+the key is checked) or one function (`api.sms_send`, `api.otp_send`, `api.otp_verify`). Nothing is done (no SMS, no
+debit). The SDK retries only when a re-enable is scheduled within `maxRetryWait` (`Retry-After`), waiting exactly that
+delay; otherwise it throws at once. Do not retry in a loop: queue the call and tell the user.
+
+```java
+try {
+  client.sms().send("0812345678", "Hello");
+} catch (FeatureDisabledException e) {
+  // e.feature() = "api.sms_send", e.blockedBy() = "api" when the whole API is shut down
+  String text = e.adminMessage().orElse("SMS sending is temporarily unavailable.");
+  Duration wait = e.retryAfter().orElse(Duration.ofMinutes(15)); // until() gives the date, if known
+  outbox.retryLater(order, wait, text);
+}
+```
+
 ## Retries and timeouts
 
 The SDK retries automatically (default: 2 retries, exponential backoff 0.5 s → 1 s → 2 s with jitter) **only when a
 replay cannot cause a side effect twice**:
 
-| Request | Network error / timeout | 5xx | 429 `TOO_MANY_REQUESTS` | 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` |
-|---|---|---|---|---|
-| `get`, `list`, `balance().get`, `senderIds().list`, `estimate` | retried | retried | retried after `Retry-After` | — |
-| `send` / `sendMany` / `otp().send` (always with an `Idempotency-Key`) | retried, same key | retried, same key | retried after `Retry-After` | retried after `Retry-After`, same key |
-| `otp().verify` | **never** | **never** | retried (refused before processing) | — |
+| Request | Network error / timeout | 5xx | 429 `TOO_MANY_REQUESTS` | 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` | 503 `FEATURE_DISABLED` |
+|---|---|---|---|---|---|
+| `get`, `list`, `balance().get`, `senderIds().list`, `estimate` | retried | retried | retried after `Retry-After` | — | only after `Retry-After` |
+| `send` / `sendMany` / `otp().send` (always with an `Idempotency-Key`) | retried, same key | retried, same key | retried after `Retry-After` | retried after `Retry-After`, same key | only after `Retry-After`, same key |
+| `otp().verify` | **never** | **never** | retried (refused before processing) | — | only after `Retry-After` (refused before processing) |
 
 Business errors (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`, 409 `IDEMPOTENCY_KEY_UNRESOLVED`) are never
-retried. When the API asks to wait longer
-than `maxRetryWait` (default 10 s), the SDK throws `RateLimitException` instead of waiting. Redirects are never
+retried. 503 `FEATURE_DISABLED` and `OTP_SERVICE_DISABLED` are never retried with a blind backoff: only after
+`Retry-After` (sent when a re-enable is scheduled). When the API asks to wait longer
+than `maxRetryWait` (default 10 s), the SDK throws (`RateLimitException`, `FeatureDisabledException`…) instead of
+waiting. Redirects are never
 followed (a custom `HttpClient` that follows redirects is refused).
 
 Every method accepts a `RequestOptions`: a timeout for one call, your own `X-Request-Id` (sent on every retry,
