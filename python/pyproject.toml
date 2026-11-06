@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "labyrinthe-connect"
-version = "1.0.0"
+version = "1.1.1"
 description = "Official Python SDK for Labyrinthe Connect: send SMS and verify phone numbers (OTP) in the DR Congo and Central Africa."
 readme = "README.md"
 requires-python = ">=3.9"
