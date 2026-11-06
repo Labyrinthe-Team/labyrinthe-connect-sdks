@@ -31,6 +31,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
@@ -51,16 +52,18 @@ public final class Transport {
   private static final System.Logger LOG = System.getLogger("cd.labyrinthe.connect");
   private static final Duration BASE_DELAY = Duration.ofMillis(500);
   private static final Duration MAX_BACKOFF = Duration.ofSeconds(8);
+  private static final String IN_PROGRESS = "IDEMPOTENCY_REQUEST_IN_PROGRESS";
 
   /**
    * Quand une requête peut être renvoyée automatiquement.
    *
    * <ul>
    *   <li>{@code SAFE} : le rejeu ne peut pas produire deux fois un effet (GET, estimate, POST /sms
-   *       avec Idempotency-Key). Relancée sur erreur réseau, 5xx et 429 TOO_MANY_REQUESTS.
-   *   <li>{@code THROTTLED_ONLY} : POST /otp/send et /otp/verify. Relancée seulement sur 429
-   *       TOO_MANY_REQUESTS (refusée avant traitement), jamais sur erreur réseau ni 5xx (risque
-   *       d'un second SMS ou d'une tentative consommée).
+   *       et POST /otp/send avec Idempotency-Key). Relancée sur erreur réseau, 5xx, 429
+   *       TOO_MANY_REQUESTS et 409 IDEMPOTENCY_REQUEST_IN_PROGRESS.
+   *   <li>{@code THROTTLED_ONLY} : POST /otp/verify. Relancée seulement sur 429 TOO_MANY_REQUESTS
+   *       (refusée avant traitement), jamais sur erreur réseau ni 5xx (risque d'une tentative
+   *       consommée).
    * </ul>
    */
   public enum RetryMode {
@@ -121,6 +124,7 @@ public final class Transport {
     final Map<String, Object> body;
     final Map<String, String> headers;
     final Duration timeout;
+    final Consumer<Response> onResponse;
 
     /**
      * @param method méthode HTTP
@@ -139,6 +143,28 @@ public final class Transport {
         Map<String, Object> body,
         Map<String, String> headers,
         Duration timeout) {
+      this(method, path, mode, query, body, headers, timeout, null);
+    }
+
+    /**
+     * @param method méthode HTTP
+     * @param path chemin sous la racine de l'API, par ex. {@code /sms}
+     * @param mode politique de relance
+     * @param query paramètres (valeurs nulles ignorées), ou {@code null}
+     * @param body corps JSON, ou {@code null}
+     * @param headers en-têtes supplémentaires, ou {@code null}
+     * @param timeout délai de cette requête, ou {@code null} pour celui du client
+     * @param onResponse appelé avec la réponse 2xx avant son décodage, ou {@code null}
+     */
+    public Request(
+        String method,
+        String path,
+        RetryMode mode,
+        Map<String, ?> query,
+        Map<String, Object> body,
+        Map<String, String> headers,
+        Duration timeout,
+        Consumer<Response> onResponse) {
       this.method = method;
       this.path = path;
       this.mode = mode;
@@ -155,6 +181,7 @@ public final class Transport {
       this.body = body;
       this.headers = headers == null ? Collections.emptyMap() : headers;
       this.timeout = timeout;
+      this.onResponse = onResponse;
     }
   }
 
@@ -191,6 +218,13 @@ public final class Transport {
     public String header(String name) {
       return headers.get(name);
     }
+
+    /**
+     * @return tous les en-têtes (noms en minuscules)
+     */
+    public Map<String, String> headers() {
+      return headers;
+    }
   }
 
   /** Une requête préparée : mêmes octets pour chaque tentative. */
@@ -200,13 +234,21 @@ public final class Transport {
     final String logPath;
     final RetryMode mode;
     final Duration timeout;
+    final Consumer<Response> onResponse;
 
-    Call(HttpRequest request, String method, String logPath, RetryMode mode, Duration timeout) {
+    Call(
+        HttpRequest request,
+        String method,
+        String logPath,
+        RetryMode mode,
+        Duration timeout,
+        Consumer<Response> onResponse) {
       this.request = request;
       this.method = method;
       this.logPath = logPath;
       this.mode = mode;
       this.timeout = timeout;
+      this.onResponse = onResponse;
     }
   }
 
@@ -430,7 +472,8 @@ public final class Transport {
         request.method,
         Redact.path(request.path, request.query),
         request.mode,
-        callTimeout);
+        callTimeout,
+        request.onResponse);
   }
 
   // -- décisions ----------------------------------------------------------------------------------
@@ -505,7 +548,11 @@ public final class Transport {
                 TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started),
                 "true".equals(headers.get("idempotent-replayed")) ? " (idempotent replay)" : ""));
     if (status >= 200 && status < 300) {
-      return new Outcome(new Response(status, decode(text, status), headers), null);
+      Response success = new Response(status, decode(text, status), headers);
+      if (call.onResponse != null) {
+        call.onResponse.accept(success);
+      }
+      return new Outcome(success, null);
     }
     ApiException error = ErrorMapper.fromResponse(status, text, headers);
     if (attempt < maxRetries && isRetryable(call.mode, error)) {
@@ -546,12 +593,16 @@ public final class Transport {
     if (error.statusCode() == 429) {
       return "TOO_MANY_REQUESTS".equals(error.code());
     }
+    // La requête d'origine (même Idempotency-Key) est encore en cours : la relance est un rejeu.
+    if (IN_PROGRESS.equals(error.code())) {
+      return mode == RetryMode.SAFE;
+    }
     return mode == RetryMode.SAFE && error.statusCode() >= 500;
   }
 
   /** Délai avant la prochaine tentative ; vide pour abandonner (attente demandée trop longue). */
   private Optional<Duration> retryDelay(ApiException error, int attempt) {
-    if (error.statusCode() == 429) {
+    if (error.statusCode() == 429 || IN_PROGRESS.equals(error.code())) {
       Optional<Duration> retryAfter = RetryAfter.of(error.headers(), error.details());
       if (retryAfter.isPresent()) {
         return retryAfter.get().compareTo(maxRetryWait) <= 0 ? retryAfter : Optional.empty();

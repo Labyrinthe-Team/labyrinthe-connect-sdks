@@ -1,8 +1,11 @@
 package cd.labyrinthe.connect.internal;
 
+import cd.labyrinthe.connect.exception.AccountSuspendedException;
 import cd.labyrinthe.connect.exception.ApiException;
 import cd.labyrinthe.connect.exception.AuthenticationException;
 import cd.labyrinthe.connect.exception.IdempotencyKeyReusedException;
+import cd.labyrinthe.connect.exception.IdempotencyKeyUnresolvedException;
+import cd.labyrinthe.connect.exception.IdempotencyRequestInProgressException;
 import cd.labyrinthe.connect.exception.InsufficientCreditsException;
 import cd.labyrinthe.connect.exception.InvalidPhoneException;
 import cd.labyrinthe.connect.exception.NotFoundException;
@@ -58,6 +61,12 @@ public final class ErrorMapper {
     register(
         factories,
         classes,
+        "ACCOUNT_SUSPENDED",
+        AccountSuspendedException.class,
+        AccountSuspendedException::new);
+    register(
+        factories,
+        classes,
         "OTP_DISABLED_FOR_ACCOUNT",
         PermissionException.class,
         PermissionException::new);
@@ -98,6 +107,18 @@ public final class ErrorMapper {
         "IDEMPOTENCY_KEY_REUSED",
         IdempotencyKeyReusedException.class,
         IdempotencyKeyReusedException::new);
+    register(
+        factories,
+        classes,
+        "IDEMPOTENCY_KEY_UNRESOLVED",
+        IdempotencyKeyUnresolvedException.class,
+        IdempotencyKeyUnresolvedException::new);
+    register(
+        factories,
+        classes,
+        "IDEMPOTENCY_REQUEST_IN_PROGRESS",
+        IdempotencyRequestInProgressException.class,
+        IdempotencyRequestInProgressException::new);
     register(
         factories, classes, "TOO_MANY_REQUESTS", RateLimitException.class, RateLimitException::new);
     register(
@@ -159,7 +180,7 @@ public final class ErrorMapper {
       Map<?, ?> error = (Map<?, ?>) ((Map<?, ?>) decoded).get("error");
       code = error.get("code") instanceof String ? (String) error.get("code") : null;
       message = error.get("message") instanceof String ? (String) error.get("message") : null;
-      // L'API renvoie parfois [] au lieu de {} (BACKEND-TODO n° 4) : les deux donnent {}.
+      // Toujours un objet depuis l'API 1.2.0 ; un [] (API plus ancienne) donne aussi {}.
       if (error.get("details") instanceof Map) {
         @SuppressWarnings("unchecked")
         Map<String, Object> map = (Map<String, Object>) error.get("details");
