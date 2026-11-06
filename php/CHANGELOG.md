@@ -5,6 +5,23 @@ All notable changes to `labyrinthe/connect-php` are documented here. This projec
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-06
+
+Built against the API specification 1.3.0. Backward compatible with 1.1.x.
+
+### Added
+- `FeatureDisabledException` (503 `FEATURE_DISABLED`, and the older 503 `OTP_SERVICE_DISABLED` of `POST /otp/send`):
+  a platform administrator temporarily shut down the whole API or one feature (maintenance); nothing was done (no
+  SMS sent, no credit debited). Extends `ServiceUnavailableException` (now non-final), so existing `catch` blocks keep
+  working. `getFeature()`, `getBlockedBy()`, `getAdminMessage()`, `getUntil()` (`DateTimeImmutable`, null when no
+  re-enable is scheduled) and `getRetryAfter()`. Missing or malformed `details` give `null`, never an error.
+
+### Changed
+- `FEATURE_DISABLED` and `OTP_SERVICE_DISABLED` are no longer retried with exponential backoff. They are retried, on
+  every operation including `otp->verify()` (the request was refused before processing), only when the API sends a
+  `Retry-After` no longer than `maxRetryWait`, after exactly that delay; otherwise thrown at once. Other 5xx are
+  unchanged.
+
 ## [1.1.1] - 2026-11-06
 
 ### Fixed

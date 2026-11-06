@@ -289,10 +289,31 @@ humains), `getStatusCode()`, `getDetails()`, `getRequestId()` (l'en-tête `X-Req
 | `RateLimitException` | 429 `TOO_MANY_REQUESTS` — `getRetryAfter()` |
 | `OtpResendTooSoonException` | 429 — hérite de `RateLimitException` |
 | `OtpRateLimitedException` | 429 — hérite de `RateLimitException`, `getScope()`, `getLimit()` |
-| `ServiceUnavailableException` | 5xx, dont 503 `OTP_SERVICE_DISABLED` |
+| `ServiceUnavailableException` | 5xx — erreur serveur ou service momentanément indisponible |
+| `FeatureDisabledException` | 503 `FEATURE_DISABLED` / `OTP_SERVICE_DISABLED` — maintenance, rien n'a été fait ; étend `ServiceUnavailableException` ; `getFeature()`, `getBlockedBy()`, `getAdminMessage()`, `getUntil()`, `getRetryAfter()` |
 | `ApiException` | tout autre code (liste ouverte : de nouveaux codes peuvent apparaître) |
 | `ConnectionException` | erreur réseau ou délai dépassé (`isTimeout()`) |
 | `InvalidArgumentException` | saisie invalide détectée par le SDK, avant tout appel |
+
+### Maintenance (503 `FEATURE_DISABLED`)
+
+Un administrateur de la plateforme peut couper temporairement toute l'API (`api`) ou une fonction (`api.sms_send`,
+`api.otp_send`, `api.otp_verify` ; `otp` pour tout le service OTP, code `OTP_SERVICE_DISABLED`). Rien n'a été fait :
+aucun SMS envoyé, aucun crédit débité. Le SDK ne relance que si une réactivation automatique est programmée dans la
+limite de `maxRetryWait` (`Retry-After`) ; sinon, ne relancez pas en boucle : mettez le travail en file d'attente ou
+prévenez l'utilisateur.
+
+```php
+use Labyrinthe\Connect\Exception\FeatureDisabledException;
+
+try {
+    $client->sms->send('0812345678', 'Votre commande est expédiée');
+} catch (FeatureDisabledException $e) {
+    // $e->getAdminMessage() : texte de l'administrateur ou null ; $e->getUntil() : DateTimeImmutable ou null
+    $delai = $e->getRetryAfter() ?? 900; // retour inconnu : nouvel essai dans 15 minutes
+    $file->plusTard($delai, new EnvoyerSms('0812345678', 'Votre commande est expédiée'));
+}
+```
 
 ## Nouvelles tentatives et délais
 
@@ -307,9 +328,11 @@ quand un rejeu ne peut pas provoquer deux fois le même effet** :
 | `otp->verify()` | **jamais** | **jamais** | relancée (requête refusée avant traitement) | — |
 
 Les erreurs métier (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`, `ACCOUNT_SUSPENDED`, `IDEMPOTENCY_KEY_UNRESOLVED`)
-ne sont jamais relancées.
+ne sont jamais relancées. Les 503 `FEATURE_DISABLED` / `OTP_SERVICE_DISABLED` (maintenance) ne suivent pas la
+colonne 5xx : sur toute requête, `otp->verify()` compris, elles ne sont relancées que si l'API envoie un `Retry-After`,
+après exactement ce délai, et levées immédiatement sinon (depuis la 1.2.0).
 Si l'API demande d'attendre plus que `maxRetryWait` (10 s par défaut), le SDK lève l'exception (`RateLimitException`,
-`IdempotencyRequestInProgressException`) au lieu de bloquer.
+`IdempotencyRequestInProgressException`, `FeatureDisabledException`) au lieu de bloquer.
 
 **Identifiant de requête.** Chaque réponse porte `X-Request-Id`. Passez le vôtre avec `requestId:` sur n'importe quel
 appel (1 à 128 caractères parmi `A-Z a-z 0-9 . _ : -`, renvoyé à chaque relance) pour relier vos journaux à ceux de
