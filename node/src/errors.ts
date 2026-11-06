@@ -20,6 +20,7 @@ export type ApiErrorCode =
   | 'OTP_RATE_LIMITED'
   | 'OTP_DISABLED_FOR_ACCOUNT'
   | 'OTP_SERVICE_DISABLED'
+  | 'FEATURE_DISABLED'
   | 'HTTP_ERROR';
 
 /** Codes of the errors raised by the SDK itself (no API response). */
@@ -244,8 +245,63 @@ export class OtpRateLimitedError extends RateLimitError {
   }
 }
 
-/** 5xx, including 503 OTP_SERVICE_DISABLED. */
+/** 5xx, including 503 FEATURE_DISABLED and OTP_SERVICE_DISABLED (see `FeatureDisabledError`). */
 export class ServiceUnavailableError extends ApiError {}
+
+/**
+ * 503 FEATURE_DISABLED: a platform administrator temporarily shut down the
+ * whole API (`blockedBy` = "api") or one function ("api.sms_send",
+ * "api.otp_send", "api.otp_verify"). Also 503 OTP_SERVICE_DISABLED (whole OTP
+ * service off, `feature` = `blockedBy` = "otp"). Nothing was done: no SMS
+ * sent, no credit used.
+ *
+ * Never retried with blind backoff: the SDK retries only when the API gives a
+ * `Retry-After` no longer than `maxRetryWaitMs` (automatic re-enable
+ * scheduled), waiting exactly that long. Otherwise, treat the call as a
+ * temporary failure (queue it, tell the user, show `adminMessage`).
+ */
+export class FeatureDisabledError extends ServiceUnavailableError {
+  /** Feature requested by the call ("api", "api.sms_send", "api.otp_send", "api.otp_verify", "otp"… open list). */
+  get feature(): string | null {
+    return this.detailString('feature');
+  }
+
+  /** Feature actually shut down: `feature` itself or a parent (e.g. "api" when the whole API is off). */
+  get blockedBy(): string | null {
+    return this.detailString('blocked_by');
+  }
+
+  /** Message written by the administrator (`details.message`), null when there is none. */
+  get adminMessage(): string | null {
+    return this.detailString('message');
+  }
+
+  /** Scheduled automatic re-enable (`details.until`), null when unknown or invalid. */
+  get until(): Date | null {
+    const value = this.details['until'];
+    if (typeof value !== 'string' || value === '') {
+      return null;
+    }
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  /** Seconds until the scheduled re-enable (`Retry-After` header), null when the API does not say. */
+  get retryAfter(): number | null {
+    const ms = this.retryAfterMs;
+    return ms === null ? null : Math.ceil(ms / 1000);
+  }
+
+  /** Same as `retryAfter`, in milliseconds (`Retry-After` header only), null when absent. */
+  get retryAfterMs(): number | null {
+    return retryAfterMsOf(this.headers, {});
+  }
+
+  private detailString(key: string): string | null {
+    const value = this.details[key];
+    return typeof value === 'string' && value !== '' ? value : null;
+  }
+}
 
 /**
  * The API could not be reached (DNS, TLS, connection refused…).
@@ -330,7 +386,8 @@ export const ERROR_CLASSES_BY_CODE: Readonly<Record<string, ApiErrorClass>> = {
   TOO_MANY_REQUESTS: RateLimitError,
   OTP_RESEND_TOO_SOON: OtpResendTooSoonError,
   OTP_RATE_LIMITED: OtpRateLimitedError,
-  OTP_SERVICE_DISABLED: ServiceUnavailableError,
+  OTP_SERVICE_DISABLED: FeatureDisabledError,
+  FEATURE_DISABLED: FeatureDisabledError,
 };
 
 /**

@@ -31,6 +31,7 @@ export {
   ApiError,
   AuthenticationError,
   ConnectionError,
+  FeatureDisabledError,
   IdempotencyKeyReusedError,
   IdempotencyKeyUnresolvedError,
   IdempotencyRequestInProgressError,
