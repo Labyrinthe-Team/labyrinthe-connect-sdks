@@ -5,6 +5,25 @@ All notable changes to `@labyrinthe/connect` are documented here. This project f
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-06
+
+Built against the API specification 1.3.0. Backward compatible with 1.1.x.
+
+### Added
+- `FeatureDisabledError` (503 `FEATURE_DISABLED`, extends `ServiceUnavailableError`): a platform administrator
+  temporarily shut down the whole API (`blockedBy` = `"api"`) or one function (`"api.sms_send"`, `"api.otp_send"`,
+  `"api.otp_verify"`). Nothing was done. Read-only `feature`, `blockedBy`, `adminMessage` (`details.message`), `until`
+  (`Date`, `null` when unknown or invalid), `retryAfter` (seconds, from `Retry-After`) and `retryAfterMs`. Missing or
+  malformed `details` are tolerated (`null`). `FEATURE_DISABLED` added to `ApiErrorCode`.
+
+### Changed
+- 503 `OTP_SERVICE_DISABLED` (whole OTP service off) is now thrown as `FeatureDisabledError` too (still an
+  `instanceof ServiceUnavailableError`), with the same details (`feature` = `blockedBy` = `"otp"`).
+- `FEATURE_DISABLED` and `OTP_SERVICE_DISABLED` are never retried with exponential backoff: they are retried, for
+  every call including `otp.verify()` (refused before processing), only when the API sends `Retry-After` (automatic
+  re-enable scheduled) no longer than `maxRetryWaitMs`, after exactly that delay; otherwise thrown at once. Other
+  5xx keep the previous behaviour.
+
 ## [1.1.1] - 2026-11-06
 
 ### Added

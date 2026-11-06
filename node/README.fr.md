@@ -14,6 +14,10 @@ vérifiez des numéros de téléphone par code à usage unique (OTP), en RD Cong
 - Aucune dépendance d'exécution. ESM + CommonJS. Node.js 18+, Vercel / Cloudflare Workers, Deno, Bun.
 - N'écrit jamais votre clé API, les codes OTP ni les numéros complets dans les logs.
 
+> **Nouveautés 1.2.0** (spécification de l'API 1.3.0) : `FeatureDisabledError` pour le 503 `FEATURE_DISABLED` (API
+> ou fonction coupée temporairement par la plateforme, voir [Maintenance](#maintenance-503-feature_disabled)),
+> utilisée aussi pour `OTP_SERVICE_DISABLED` ; relancée seulement après un `Retry-After` court.
+>
 > **Nouveautés 1.1.0** (spécification de l'API 1.2.0) : `otp.send()` idempotent (relancé sans risque, `replayed`),
 > forme du code (`codeLength`, `codeType`) et délai de renvoi (`resendAfterSeconds`), `attemptsRemaining` sur
 > `otp.verify()`, Web OTP (`webOtpDomain`), `stripAccents`, `requestId` sur toutes les erreurs et réponses (et votre
@@ -333,7 +337,8 @@ Toutes les erreurs héritent de `LabyrintheError` et ont `code` (stable, pour vo
 | `IdempotencyKeyUnresolvedError` | 409 `IDEMPOTENCY_KEY_UNRESOLVED` — résultat inconnu, un SMS a pu partir ; **jamais** relancée (voir plus bas) |
 | `RateLimitError` | 429 `TOO_MANY_REQUESTS` — `retryAfterMs` |
 | `OtpResendTooSoonError`, `OtpRateLimitedError` | 429 — héritent de `RateLimitError` ; `retryAfterMs`, `scope`, `limit` |
-| `ServiceUnavailableError` | 5xx, dont 503 `OTP_SERVICE_DISABLED` |
+| `FeatureDisabledError` | 503 `FEATURE_DISABLED` / `OTP_SERVICE_DISABLED` — hérite de `ServiceUnavailableError` ; `feature`, `blockedBy`, `adminMessage`, `until`, `retryAfter` (voir [Maintenance](#maintenance-503-feature_disabled)) |
+| `ServiceUnavailableError` | autres 5xx |
 | `ApiError` | tout autre code (liste ouverte : de nouveaux codes peuvent apparaître) |
 | `ConnectionError`, `TimeoutError` | erreur réseau (`CONNECTION_ERROR`) ou délai dépassé (`TIMEOUT`) |
 | `RequestAbortedError` | appel annulé par son `signal` |
@@ -354,6 +359,34 @@ try {
 
 `error.details` est toujours un objet (`{}` s'il est vide). Les messages sont en français, pour les humains : testez
 `code`.
+
+### Maintenance (503 `FEATURE_DISABLED`)
+
+Un administrateur de la plateforme peut couper temporairement toute l'API (`blockedBy === 'api'`, tous les appels,
+avant même la vérification de la clé) ou une fonction (`'api.sms_send'`, `'api.otp_send'`, `'api.otp_verify'`).
+L'appel lève `FeatureDisabledError` et **rien n'est fait** (aucun SMS, aucun crédit consommé). Le service OTP entier
+coupé lève la même classe avec le code historique `OTP_SERVICE_DISABLED` (`feature === blockedBy === 'otp'`).
+
+- `feature` : fonction demandée ; `blockedBy` : celle qui est réellement coupée (elle-même ou une parente) ;
+- `adminMessage` : message de l'administrateur, ou `null` ; `until` : réactivation programmée (`Date`), ou `null` ;
+- `retryAfter` : secondes restantes (en-tête `Retry-After`), ou `null` si inconnu.
+
+Le SDK ne la relance jamais avec backoff : seulement si `Retry-After` est présent et ne dépasse pas
+`maxRetryWaitMs`, après exactement ce délai. Sinon, traitez-la comme un échec temporaire :
+
+```ts
+import { FeatureDisabledError } from '@labyrinthe/connect';
+
+try {
+  await client.sms.send({ to, body, idempotencyKey: `commande-${orderId}` });
+} catch (error) {
+  if (error instanceof FeatureDisabledError) {
+    // Même clé d'idempotence plus tard : rien ne peut partir deux fois.
+    await queue.retryLater({ orderId }, { at: error.until ?? new Date(Date.now() + 15 * 60_000) });
+    log.warn('Maintenance Labyrinthe', { blockedBy: error.blockedBy, message: error.adminMessage });
+  } else throw error;
+}
+```
 
 ### Identifiant de requête
 
@@ -378,6 +411,10 @@ Le SDK relance automatiquement (par défaut 2 relances, backoff exponentiel 0,5 
 | `get`, `list`, `balance.get`, `senderIds.list`, `estimate` | relancée | relancée | relancée après `Retry-After` |
 | `send` / `sendMany` / `otp.send` (toujours avec `Idempotency-Key`) | relancée, même clé | relancée, même clé | relancée après `Retry-After` |
 | `otp.verify` | **jamais** (une tentative peut avoir été consommée) | **jamais** | relancée (refusée avant traitement) |
+
+`503 FEATURE_DISABLED` et `OTP_SERVICE_DISABLED` (refusées avant traitement) font exception à la colonne 5xx, pour
+tous les appels, `otp.verify` compris : relancées seulement si `Retry-After` est présent et ne dépasse pas
+`maxRetryWaitMs`, après exactement ce délai, jamais avec backoff exponentiel.
 
 `409 IDEMPOTENCY_REQUEST_IN_PROGRESS` (la requête d'origine avec cette clé est encore en cours) est relancée après
 `Retry-After` avec la même clé, pour `send`, `sendMany` et `otp.send`. Les autres erreurs métier (4xx,
