@@ -111,7 +111,7 @@ First stable release, built against the API specification 1.1.0.
   `LabyrintheClientBuilderCustomizer`, signed webhook endpoint (`labyrinthe.webhook.*`) publishing events as
   Spring application events; configuration metadata for IDE completion.
 
-[Unreleased]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/java-v1.1.1...HEAD
-[1.1.1]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/java-v1.1.0...java-v1.1.1
-[1.1.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/java-v1.0.0...java-v1.1.0
-[1.0.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/releases/tag/java-v1.0.0
+[Unreleased]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/java-v1.1.1...HEAD
+[1.1.1]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/java-v1.1.0...java-v1.1.1
+[1.1.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/java-v1.0.0...java-v1.1.0
+[1.0.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/releases/tag/java-v1.0.0
