@@ -6,7 +6,9 @@ namespace Labyrinthe\Connect\Internal;
 
 use Labyrinthe\Connect\Exception\ApiException;
 use Labyrinthe\Connect\Exception\ConnectionException;
+use Labyrinthe\Connect\Exception\InvalidArgumentException;
 use Labyrinthe\Connect\Exception\UnexpectedValueException;
+use Labyrinthe\Connect\Http\ResponseInfo;
 use Labyrinthe\Connect\Http\Sleeper;
 use Psr\Http\Client\ClientExceptionInterface;
 use Psr\Http\Client\ClientInterface;
@@ -22,8 +24,13 @@ use Psr\Log\LoggerInterface;
  */
 final class Transport
 {
+    /** Valid X-Request-Id values (the API replaces any other value by a UUID). */
+    public const REQUEST_ID_PATTERN = '/^[A-Za-z0-9._:-]{1,128}$/';
+
     private const BASE_DELAY = 0.5;
     private const MAX_BACKOFF = 8.0;
+
+    private ?ResponseInfo $lastResponse = null;
 
     public function __construct(
         #[\SensitiveParameter]
@@ -42,8 +49,9 @@ final class Transport
 
     /**
      * @param array<string, scalar|null> $query
-     * @param array<string, mixed>|null  $body    JSON body
+     * @param array<string, mixed>|null  $body      JSON body
      * @param array<string, string>      $headers
+     * @param string|null                $requestId sent as X-Request-Id on every attempt
      *
      * @throws ApiException
      * @throws ConnectionException
@@ -56,7 +64,14 @@ final class Transport
         #[\SensitiveParameter]
         ?array $body = null,
         array $headers = [],
+        ?string $requestId = null,
     ): Response {
+        if ($requestId !== null) {
+            self::assertRequestId($requestId);
+            $headers['X-Request-Id'] = $requestId;
+        }
+        $idempotent = isset($headers['Idempotency-Key']);
+
         $query = array_filter($query, static fn (mixed $v): bool => $v !== null);
         $queryString = $query === [] ? '' : http_build_query($query, '', '&', \PHP_QUERY_RFC3986);
         $url = $this->baseUrl.$path.($queryString === '' ? '' : '?'.$queryString);
@@ -102,12 +117,14 @@ final class Transport
             $status = $response->getStatusCode();
             $responseHeaders = self::headers($response);
             $rawBody = (string) $response->getBody();
+            $this->lastResponse = new ResponseInfo($status, $responseHeaders);
             $this->logger->debug('Labyrinthe Connect response', [
                 'method' => $method,
                 'path' => $logPath,
                 'status' => $status,
                 'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
                 'replayed' => ($responseHeaders['idempotent-replayed'] ?? null) === 'true',
+                'request_id' => $responseHeaders['x-request-id'] ?? null,
             ]);
 
             if ($status >= 200 && $status < 300) {
@@ -116,12 +133,12 @@ final class Transport
 
             $error = ErrorFactory::fromResponse($status, $rawBody, $responseHeaders);
 
-            if ($attempt < $this->maxRetries && self::isRetryable($mode, $error)) {
+            if ($attempt < $this->maxRetries && self::isRetryable($mode, $error, $idempotent)) {
                 $delay = $this->retryDelay($error, $attempt);
                 if ($delay !== null) {
                     $this->logger->warning('Labyrinthe Connect request failed, retrying', [
                         'method' => $method, 'path' => $logPath, 'status' => $status, 'code' => $error->getErrorCode(),
-                        'attempt' => $attempt + 1, 'delay' => round($delay, 3),
+                        'attempt' => $attempt + 1, 'delay' => round($delay, 3), 'request_id' => $error->getRequestId(),
                     ]);
                     $this->sleeper->sleep($delay);
 
@@ -131,17 +148,39 @@ final class Transport
 
             $this->logger->info('Labyrinthe Connect API error', [
                 'method' => $method, 'path' => $logPath, 'status' => $status, 'code' => $error->getErrorCode(),
+                'request_id' => $error->getRequestId(),
             ]);
 
             throw $error;
         }
     }
 
-    private static function isRetryable(RetryMode $mode, ApiException $error): bool
+    /** Metadata of the last response received (success or error), null before the first one. */
+    public function lastResponse(): ?ResponseInfo
+    {
+        return $this->lastResponse;
+    }
+
+    /**
+     * @throws InvalidArgumentException
+     */
+    public static function assertRequestId(string $requestId): void
+    {
+        if (preg_match(self::REQUEST_ID_PATTERN, $requestId) !== 1) {
+            throw new InvalidArgumentException('requestId must be 1 to 128 characters among A-Z a-z 0-9 . _ : -');
+        }
+    }
+
+    private static function isRetryable(RetryMode $mode, ApiException $error, bool $idempotent): bool
     {
         // Only the generic throttle: OTP_RESEND_TOO_SOON / OTP_RATE_LIMITED are business limits.
         if ($error->getStatusCode() === 429) {
             return $error->getErrorCode() === 'TOO_MANY_REQUESTS';
+        }
+
+        // The original request with this key is still running: replaying the same key is safe.
+        if ($error->getErrorCode() === 'IDEMPOTENCY_REQUEST_IN_PROGRESS') {
+            return $idempotent;
         }
 
         return $mode === RetryMode::Safe && $error->getStatusCode() >= 500;
@@ -153,7 +192,7 @@ final class Transport
      */
     private function retryDelay(ApiException $error, int $attempt): ?float
     {
-        if ($error->getStatusCode() === 429) {
+        if ($error->getStatusCode() === 429 || $error->getErrorCode() === 'IDEMPOTENCY_REQUEST_IN_PROGRESS') {
             $retryAfter = self::retryAfter($error);
             if ($retryAfter !== null) {
                 return $retryAfter <= $this->maxRetryWait ? $retryAfter : null;

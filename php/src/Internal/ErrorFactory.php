@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Labyrinthe\Connect\Internal;
 
+use Labyrinthe\Connect\Exception\AccountSuspendedException;
 use Labyrinthe\Connect\Exception\ApiException;
 use Labyrinthe\Connect\Exception\AuthenticationException;
 use Labyrinthe\Connect\Exception\IdempotencyKeyReusedException;
+use Labyrinthe\Connect\Exception\IdempotencyKeyUnresolvedException;
+use Labyrinthe\Connect\Exception\IdempotencyRequestInProgressException;
 use Labyrinthe\Connect\Exception\InsufficientCreditsException;
 use Labyrinthe\Connect\Exception\InvalidPhoneException;
 use Labyrinthe\Connect\Exception\NotFoundException;
@@ -31,6 +34,7 @@ final class ErrorFactory
     private const BY_CODE = [
         'UNAUTHENTICATED' => AuthenticationException::class,
         'FORBIDDEN' => PermissionException::class,
+        'ACCOUNT_SUSPENDED' => AccountSuspendedException::class,
         'OTP_DISABLED_FOR_ACCOUNT' => PermissionException::class,
         'NOT_FOUND' => NotFoundException::class,
         'VALIDATION_ERROR' => ValidationException::class,
@@ -39,6 +43,8 @@ final class ErrorFactory
         'INVALID_PHONE' => InvalidPhoneException::class,
         'INSUFFICIENT_CREDITS' => InsufficientCreditsException::class,
         'IDEMPOTENCY_KEY_REUSED' => IdempotencyKeyReusedException::class,
+        'IDEMPOTENCY_KEY_UNRESOLVED' => IdempotencyKeyUnresolvedException::class,
+        'IDEMPOTENCY_REQUEST_IN_PROGRESS' => IdempotencyRequestInProgressException::class,
         'TOO_MANY_REQUESTS' => RateLimitException::class,
         'OTP_RESEND_TOO_SOON' => OtpResendTooSoonException::class,
         'OTP_RATE_LIMITED' => OtpRateLimitedException::class,
@@ -68,7 +74,7 @@ final class ErrorFactory
             $error = $decoded['error'];
             $code = isset($error['code']) && \is_string($error['code']) ? $error['code'] : null;
             $message = isset($error['message']) && \is_string($error['message']) ? $error['message'] : null;
-            // The API sometimes sends `[]` instead of `{}`: both become an empty array.
+            // Always an object since API 1.2.0; an older `[]` (or any non-object) still becomes an empty array.
             $details = isset($error['details']) && \is_array($error['details']) ? $error['details'] : [];
         }
 
