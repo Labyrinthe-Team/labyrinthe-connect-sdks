@@ -49,7 +49,16 @@ public final class OtpLogin {
       return;
     }
     // In a web application: session.setAttribute("otpId", otp.otpId());
-    System.out.println("Code sent, valid until " + otp.expiresAt() + ".");
+    System.out.println(
+        "A "
+            + otp.codeLength()
+            + "-character "
+            + otp.codeType()
+            + " code was sent, valid until "
+            + otp.expiresAt()
+            + "; a new one can be requested in "
+            + otp.resendAfterSeconds()
+            + " s.");
     // Test mode only: never print or log the code in production.
     otp.testCode().ifPresent(code -> System.out.println("(test mode) the code is " + code));
 
@@ -71,7 +80,11 @@ public final class OtpLogin {
         System.out.println("Cannot verify (" + reason + "): ask for a new code.");
         return;
       }
-      System.out.println("Wrong code, try again.");
+      System.out.println(
+          "Wrong code, "
+              + (result.attemptsRemaining().isPresent()
+                  ? result.attemptsRemaining().getAsInt() + " attempt(s) left."
+                  : "try again."));
     }
   }
 }
