@@ -36,7 +36,7 @@ $commands = array(
 		'--slug=labyrinthe-connect',
 		'--domain=labyrinthe-connect',
 		'--exclude=vendor,vendor-prefixed,tools,tests,.wp-tests,dist,bin,build',
-		'--headers={"Report-Msgid-Bugs-To":"https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/issues"}',
+		'--headers={"Report-Msgid-Bugs-To":"https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/issues"}',
 		'--file-comment=Copyright (C) 2026 Labyrinthe Connect. This file is distributed under the GPL-2.0-or-later license.',
 	),
 	array( 'i18n', 'update-po', $languages . '/labyrinthe-connect.pot', $languages ),
