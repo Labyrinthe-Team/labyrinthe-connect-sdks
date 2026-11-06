@@ -7,13 +7,16 @@
 import {
   ApiError,
   ConnectionError,
+  InvalidArgumentError,
   RequestAbortedError,
   TimeoutError,
   UnexpectedResponseError,
   errorFromResponse,
   isRecord,
+  retryAfterMsOf,
   toInt,
 } from '../errors.js';
+import type { ResponseInfo } from '../types.js';
 import type { Json } from './data.js';
 import { redactApiKey, redactPath, stripQueryStrings } from './redact.js';
 import { clientIdentifier, isBrowser } from './runtime.js';
@@ -22,10 +25,13 @@ import { clientIdentifier, isBrowser } from './runtime.js';
  * Quand une requête peut être renvoyée automatiquement.
  *
  * - `safe` : le rejeu ne peut pas produire deux fois un effet (GET, estimate,
- *   POST /sms avec Idempotency-Key). Relancée sur erreur réseau, 5xx et 429 TOO_MANY_REQUESTS.
- * - `throttled-only` : POST /otp/send et /otp/verify. Relancée seulement sur
- *   429 TOO_MANY_REQUESTS (refusée avant traitement). Jamais sur erreur réseau ni 5xx
- *   (risque d'un second SMS ou d'une tentative consommée).
+ *   POST /sms et POST /otp/send avec Idempotency-Key). Relancée sur erreur réseau,
+ *   5xx, 429 TOO_MANY_REQUESTS et 409 IDEMPOTENCY_REQUEST_IN_PROGRESS (même clé).
+ * - `throttled-only` : POST /otp/verify. Relancée seulement sur 429 TOO_MANY_REQUESTS
+ *   (refusée avant traitement). Jamais sur erreur réseau ni 5xx (risque d'une
+ *   tentative consommée).
+ *
+ * Les limites métier OTP (OTP_RESEND_TOO_SOON, OTP_RATE_LIMITED) ne sont jamais relancées.
  */
 export type RetryMode = 'safe' | 'throttled-only';
 
@@ -75,7 +81,12 @@ export interface RequestParams {
   headers?: Record<string, string>;
   signal?: AbortSignal | undefined;
   timeoutMs?: number | undefined;
+  requestId?: string | undefined;
+  onResponse?: ((response: ResponseInfo) => void) | undefined;
 }
+
+/** Valeurs de X-Request-Id réutilisées par l'API (components.parameters.RequestId). */
+export const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 export interface ApiResponse {
   status: number;
@@ -134,6 +145,11 @@ export class Transport {
     const payload = params.body === undefined ? undefined : JSON.stringify(params.body);
     const timeoutMs = params.timeoutMs ?? this.#config.timeoutMs;
     const signal = params.signal;
+    // Valeur non typée : l'appelant peut venir de JavaScript.
+    const requestId: unknown = params.requestId;
+    if (requestId !== undefined && (typeof requestId !== 'string' || !REQUEST_ID_PATTERN.test(requestId))) {
+      throw new InvalidArgumentError('requestId must be 1 to 128 characters among A-Z a-z 0-9 . _ : -');
+    }
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.#apiKey}`,
@@ -144,6 +160,10 @@ export class Transport {
     if (payload !== undefined) {
       headers['Content-Type'] = 'application/json';
     }
+    if (requestId !== undefined) {
+      headers['X-Request-Id'] = requestId;
+    }
+    const idempotent = headers['Idempotency-Key'] !== undefined;
 
     for (let attempt = 0; ; attempt++) {
       if (signal?.aborted === true) {
@@ -170,7 +190,11 @@ export class Transport {
         }
         log(logger, 'error', 'Labyrinthe Connect network error', { method, path: logPath, timeout });
         const suffix =
-          mode === 'throttled-only' ? ' The request may have been processed; it was not retried automatically.' : '';
+          mode === 'throttled-only'
+            ? ' The request may have been processed; it was not retried automatically.'
+            : idempotent
+              ? ' Calling again with the same idempotencyKey is safe (nothing is sent twice).'
+              : '';
         if (result.kind === 'timeout') {
           throw new TimeoutError(
             `The Labyrinthe Connect API did not answer within ${String(timeoutMs)} ms (${method} ${path}).${suffix}`,
@@ -188,10 +212,24 @@ export class Transport {
         status,
         durationMs: Date.now() - startedAt,
         replayed: responseHeaders['idempotent-replayed'] === 'true',
+        requestId: responseHeaders['x-request-id'] ?? null,
       });
 
       if (status >= 200 && status < 300) {
-        return { status, body: decode(text, status), headers: responseHeaders };
+        const body = decode(text, status);
+        if (params.onResponse !== undefined) {
+          try {
+            params.onResponse(responseInfo(status, responseHeaders));
+          } catch (error) {
+            // Le SMS est peut-être déjà parti : une erreur du rappel ne doit pas masquer le résultat.
+            log(logger, 'warn', 'Labyrinthe Connect onResponse callback threw', {
+              method,
+              path: logPath,
+              error: error instanceof Error ? error.name : typeof error,
+            });
+          }
+        }
+        return { status, body, headers: responseHeaders };
       }
 
       const error = errorFromResponse(status, text, responseHeaders);
@@ -203,6 +241,7 @@ export class Transport {
             path: logPath,
             status,
             code: error.code,
+            requestId: error.requestId,
             attempt: attempt + 1,
             delayMs: Math.round(delay),
           });
@@ -211,7 +250,13 @@ export class Transport {
         }
       }
 
-      log(logger, 'info', 'Labyrinthe Connect API error', { method, path: logPath, status, code: error.code });
+      log(logger, 'info', 'Labyrinthe Connect API error', {
+        method,
+        path: logPath,
+        status,
+        code: error.code,
+        requestId: error.requestId,
+      });
       throw error;
     }
   }
@@ -264,8 +309,8 @@ export class Transport {
 
   /** Délai avant la prochaine tentative, ou null pour abandonner (l'API demande d'attendre plus que le maximum). */
   #retryDelay(error: ApiError, attempt: number): number | null {
-    if (error.status === 429) {
-      const retryAfter = retryAfterMs(error);
+    if (error.status === 429 || error.code === IN_PROGRESS) {
+      const retryAfter = retryAfterMsOf(error.headers, error.details);
       if (retryAfter !== null) {
         return retryAfter <= this.#config.maxRetryWaitMs ? retryAfter : null;
       }
@@ -289,28 +334,31 @@ export class Transport {
   }
 }
 
+const IN_PROGRESS = 'IDEMPOTENCY_REQUEST_IN_PROGRESS';
+
 function isRetryable(mode: RetryMode, error: ApiError): boolean {
   // Seulement la limite générique : OTP_RESEND_TOO_SOON / OTP_RATE_LIMITED sont des limites métier.
   if (error.status === 429) {
     return error.code === 'TOO_MANY_REQUESTS';
   }
-  return mode === 'safe' && error.status >= 500;
+  if (mode !== 'safe') {
+    return false;
+  }
+  // La requête d'origine (même Idempotency-Key) est encore en cours : relancer avec la même clé est sans risque.
+  return error.code === IN_PROGRESS || error.status >= 500;
 }
 
-function retryAfterMs(error: ApiError): number | null {
-  const header = error.headers['retry-after']?.trim();
-  if (header !== undefined && header !== '') {
-    if (/^\d+(\.\d+)?$/.test(header)) {
-      return Number(header) * 1000;
-    }
-    const date = Date.parse(header);
-    if (!Number.isNaN(date)) {
-      return Math.max(0, date - Date.now());
-    }
-  }
-  const seconds = toInt(error.details['retry_after_seconds']);
-  return seconds === null ? null : seconds * 1000;
+function responseInfo(status: number, headers: Record<string, string>): ResponseInfo {
+  return {
+    status,
+    requestId: headers['x-request-id'] ?? null,
+    apiVersion: headers['x-api-version'] ?? null,
+    replayed: headers['idempotent-replayed'] === 'true',
+    rateLimit: { limit: toInt(headers['x-ratelimit-limit']), remaining: toInt(headers['x-ratelimit-remaining']) },
+    headers,
+  };
 }
+
 
 function decode(text: string, status: number): Json {
   if (text.trim() === '') {

@@ -126,7 +126,7 @@ export function toMessage(data: Json): Message {
     reference: api.nullableString(data, 'reference'),
     recipient: api.string(data, 'recipient'),
     sender: api.nullableString(data, 'sender'),
-    // Nullable dans le backend malgré la spec (BACKEND-TODO n° 9).
+    // Jamais null depuis la spec 1.2.0 (BACKEND-TODO n° 9) ; null toléré pour un backend plus ancien.
     encoding: encoding(api.nullableString(data, 'encoding')),
     status: messageStatus(api.string(data, 'status')),
     segments: api.nullableInt(data, 'segments') ?? 0,
@@ -173,13 +173,17 @@ export function toSenderId(data: Json): SenderId {
 
 export function toOtpVerifyResult(data: Json): OtpVerifyResult {
   if (api.bool(data, 'verified')) {
-    return { verified: true, reason: null };
+    return { verified: true, reason: null, attemptsRemaining: null };
   }
   const reason = api.nullableString(data, 'reason') ?? 'unknown';
+  // `attempts_remaining` depuis la spec 1.2.0 : absent (backend plus ancien) → null.
+  const remaining = api.nullableInt(data, 'attempts_remaining');
   return {
     verified: false,
     reason: (OTP_FAILURE_REASONS.includes(reason) ? reason : 'unknown') as OtpFailureReason,
+    attemptsRemaining: remaining === null ? null : Math.max(0, remaining),
   };
 }
+
 
 export { api as apiReader };
