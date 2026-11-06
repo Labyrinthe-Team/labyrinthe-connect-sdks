@@ -114,6 +114,44 @@ class LabyrintheFake extends LabyrintheManager
         return $this;
     }
 
+    /**
+     * The next API call fails with 503 FEATURE_DISABLED (maintenance), like
+     * the API: `details` = { feature, blocked_by, message, until } and, when
+     * $until is given, a Retry-After header. Thrown as FeatureDisabledException
+     * (the fake never retries). Use $feature 'otp' to get the older
+     * OTP_SERVICE_DISABLED code of POST /otp/send.
+     *
+     * @param string      $feature   "api", "api.sms_send", "api.otp_send", "api.otp_verify" or "otp"
+     * @param string|null $message   administrator message (also used as error.message)
+     * @param string|null $blockedBy feature actually shut down (default: $feature)
+     */
+    public function failNextRequestWithFeatureDisabled(
+        string $feature = 'api',
+        ?string $message = null,
+        ?\DateTimeInterface $until = null,
+        ?string $blockedBy = null,
+    ): static {
+        $headers = [];
+        if ($until !== null) {
+            $headers['Retry-After'] = (string) max(1, $until->getTimestamp() - time());
+        }
+
+        $this->api->failures[] = [
+            'status' => 503,
+            'code' => $feature === 'otp' ? 'OTP_SERVICE_DISABLED' : 'FEATURE_DISABLED',
+            'message' => $message ?? 'Fonctionnalité momentanément indisponible (maintenance). Merci de réessayer plus tard.',
+            'details' => [
+                'feature' => $feature,
+                'blocked_by' => $blockedBy ?? $feature,
+                'message' => $message,
+                'until' => $until?->format(\DateTimeInterface::ATOM),
+            ],
+            'headers' => $headers,
+        ];
+
+        return $this;
+    }
+
     // ------------------------------------------------------------- inspect
 
     /**

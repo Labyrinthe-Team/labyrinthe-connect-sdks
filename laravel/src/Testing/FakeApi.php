@@ -37,7 +37,7 @@ final class FakeApi implements ClientInterface
     /** Returned as resend_after_seconds (informative: the fake does not enforce OTP_RESEND_TOO_SOON). */
     public int $otpResendAfterSeconds = 60;
 
-    /** @var list<array{status: int, code: string, message: string, details: array<mixed>}> */
+    /** @var list<array{status: int, code: string, message: string, details: array<mixed>, headers?: array<string, string>}> */
     public array $failures = [];
 
     /** @var array<string, array<string, mixed>> */
@@ -61,7 +61,7 @@ final class FakeApi implements ClientInterface
         if ($this->failures !== []) {
             $failure = array_shift($this->failures);
 
-            return self::error($failure['status'], $failure['code'], $failure['message'], $failure['details']);
+            return self::error($failure['status'], $failure['code'], $failure['message'], $failure['details'], $failure['headers'] ?? []);
         }
 
         $path = (string) preg_replace('#^.*/api/public/v1#', '', $request->getUri()->getPath());
@@ -363,10 +363,11 @@ final class FakeApi implements ClientInterface
     }
 
     /**
-     * @param array<mixed> $details
+     * @param array<mixed>          $details
+     * @param array<string, string> $headers
      */
-    private static function error(int $status, string $code, string $message, array $details = []): ResponseInterface
+    private static function error(int $status, string $code, string $message, array $details = [], array $headers = []): ResponseInterface
     {
-        return self::json($status, ['error' => ['code' => $code, 'message' => $message, 'details' => (object) $details]]);
+        return self::json($status, ['error' => ['code' => $code, 'message' => $message, 'details' => (object) $details]], $headers);
     }
 }
