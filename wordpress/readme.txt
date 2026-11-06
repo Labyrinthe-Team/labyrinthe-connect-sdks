@@ -4,7 +4,7 @@ Tags: sms, otp, woocommerce, notifications, congo
 Requires at least: 6.4
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 1.0.0
+Stable tag: 1.1.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -47,7 +47,7 @@ Order SMS notifications, phone verification and login with a code received by SM
 This plugin connects to the **Labyrinthe Connect API** (`https://api.labyrinthe-rdc.com`), operated by Labyrinthe Connect, to send SMS and one-time codes. It is required for the plugin to work.
 
 * **When**: only when an SMS is sent (order status change, new order, test SMS from the settings), when a visitor asks for or types a verification code, and on the plugin settings page (balance, approved Sender IDs). Public pages never call the API on load.
-* **What is sent**: your API key, the recipient phone number, the message text (order SMS) or the verification request (OTP: phone number, optional message template and language), and a reference (order number).
+* **What is sent**: your API key, the recipient phone number, the message text (order SMS) or the verification request (OTP: phone number, optional message template and language, the domain of your site for Web OTP), a reference (order ID), a request identifier and whether accents must be removed.
 * **What is received**: delivery statuses, by the webhook `/wp-json/labyrinthe/v1/webhook` if you configure it (signed with your webhook secret).
 
 Terms of service: https://labyrinthe-rdc.com/conditions — Privacy policy: https://labyrinthe-rdc.com/confidentialite
@@ -66,9 +66,15 @@ Terms of service: https://labyrinthe-rdc.com/conditions — Privacy policy: http
 
 = Why does an SMS cost 2 credits? / Pourquoi un SMS coûte-t-il 2 crédits ? =
 
-An SMS holds 160 characters in GSM-7. A single accent (é, à, ç), a typographic quote (’ « ») or an emoji switches it to Unicode: 70 characters only, so the same text often needs twice as many SMS. The settings show the count under each template; enable "Remove accents" to stay in GSM-7. The default French templates have no accents on purpose.
+An SMS holds 160 characters in GSM-7. A single accent (é, à, ç), a typographic quote (’ « ») or an emoji switches it to Unicode: 70 characters only, so the same text often needs twice as many SMS. The settings show the count under each template; enable "Remove accents" to stay in GSM-7 (Labyrinthe Connect removes them when sending, also from OTP codes). The default French templates have no accents on purpose.
 
 Un SMS contient 160 caractères en GSM-7. Un seul accent le fait passer en Unicode (70 caractères) : activez « Retirer les accents ».
+
+= What is the "Automatic code filling" (Web OTP) option? / Remplissage automatique du code (Web OTP) =
+
+With it, the SMS that carries a code ends with a line such as `@shop.example.com #482913`. Chrome on Android then offers to fill in the code on your site, and the code is checked right away: the customer does not need to copy it. It is on by default, with the domain of your site. Change the domain only if the code is typed on another domain (it must be the domain shown in the address bar, without `https://`); a local address (`localhost`, IP address) turns it off. Other browsers are not affected: the code is typed as usual, and the field already uses `autocomplete="one-time-code"` (iOS offers the code above the keyboard).
+
+Avec cette option, le SMS du code se termine par une ligne comme `@boutique.exemple.cd #482913` : Chrome sur Android propose alors de remplir le code, qui est vérifié aussitôt. Activée par défaut avec le domaine du site ; à désactiver ou à changer dans l'onglet OTP si le code est saisi sur un autre domaine.
 
 = Does the plugin slow down checkout? =
 
@@ -77,6 +83,10 @@ No. When an order changes status, the plugin only schedules a background action 
 = Can a customer receive the same SMS twice? =
 
 No. Each SMS carries an idempotency key built from the site, the order and the status: if WooCommerce fires the same hook twice, or if a send is retried after a network error, the API sends it only once. The order also remembers which SMS were sent.
+
+= An order note shows a "Request ID". What is it? =
+
+Every call of the plugin to the API carries an identifier (`X-Request-Id`). When an SMS fails, it is written in the order note and in the SMS log: give it to the Labyrinthe Connect support so that they find the request at once. The SMS log can be searched by request ID.
 
 = What is test mode? =
 
@@ -109,10 +119,28 @@ Yes for order SMS. For OTP forms, exclude the login, registration and checkout p
 
 == Changelog ==
 
+= 1.1.1 =
+* Foreign numbers of 10 digits or fewer (e.g. +248 Seychelles) now keep their country code: the bundled PHP SDK 1.1.1 sends numbers with their "+".
+* When Labyrinthe Connect cannot tell whether an SMS was sent (IDEMPOTENCY_KEY_UNRESOLVED), the SMS is never sent again automatically: the order note and the SMS log say so, with the request ID for the support.
+
+= 1.1.0 =
+* OTP: a double click or a network retry never sends a second code (idempotency key per send); code field adapted to the code length and type (numeric or letters); resend countdown from the API; attempts left shown after a wrong code.
+* Web OTP: Chrome on Android fills in the code from the SMS (setting "Automatic code filling", on by default with the site domain).
+* Accents removed by Labyrinthe Connect (also for OTP codes); segment preview counted by the API.
+* Webhooks: delivery failures with their error code in the SMS log and the order note; new actions `labyrinthe_otp_verified` and `labyrinthe_otp_failed`.
+* Clear notice when the Labyrinthe Connect account is suspended; request ID in failed order notes and in the SMS log, for the support.
+* Requires the Labyrinthe Connect PHP SDK 1.1.0 (bundled) and API 1.2.0.
+
 = 1.0.0 =
 * First release: WooCommerce order SMS (per status, shop manager notification, Action Scheduler, idempotency, order notes), OTP phone verification (registration, classic and block checkout), login by SMS (login form, shortcode, block), signed webhook endpoint with deduplication, SMS log with automatic purge, encrypted API key, French translation.
 
 == Upgrade Notice ==
+
+= 1.1.1 =
+Fix for short foreign numbers (10 digits or fewer). Automatic update, no setting to change.
+
+= 1.1.0 =
+No double OTP codes, Web OTP automatic filling, attempts left, request ID for the support. Automatic update, no setting to change.
 
 = 1.0.0 =
 First release.
