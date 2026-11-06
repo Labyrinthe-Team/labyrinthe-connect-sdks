@@ -49,11 +49,14 @@ class LabyrintheManager
         $config = $this->container->make('config');
         $template = $config->get('labyrinthe.otp.template');
         $locale = $config->get('labyrinthe.otp.locale');
+        $domain = $config->get('labyrinthe.otp.web_otp_domain');
 
         return new OtpGateway(
             $this->client()->otp,
             \is_string($template) && $template !== '' ? $template : null,
             \is_string($locale) && $locale !== '' ? $locale : null,
+            \is_string($domain) && $domain !== '' ? $domain : null,
+            (bool) $config->get('labyrinthe.otp.strip_accents', false),
         );
     }
 
@@ -69,10 +72,11 @@ class LabyrintheManager
         ?string $sender = null,
         ?string $reference = null,
         ?string $idempotencyKey = null,
+        bool $stripAccents = false,
     ): Message|MessageBatch {
         return \is_string($to)
-            ? $this->sms()->send($to, $body, $sender, $reference, $idempotencyKey)
-            : $this->sms()->sendMany($to, $body, $sender, $reference, $idempotencyKey);
+            ? $this->sms()->send($to, $body, $sender, $reference, $idempotencyKey, $stripAccents)
+            : $this->sms()->sendMany($to, $body, $sender, $reference, $idempotencyKey, $stripAccents);
     }
 
     public function isTestMode(): bool

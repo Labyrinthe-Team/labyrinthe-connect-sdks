@@ -19,7 +19,7 @@ use Psr\Log\LoggerInterface;
 
 final class LabyrintheServiceProvider extends ServiceProvider
 {
-    public const VERSION = '1.0.0';
+    public const VERSION = '1.1.1';
 
     /**
      * CSRF middleware of Laravel 10 (VerifyCsrfToken), 11-12 (ValidateCsrfToken)
