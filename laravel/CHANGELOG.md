@@ -5,6 +5,18 @@ All notable changes to `labyrinthe/connect-laravel` are documented here. This pr
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-06
+
+On top of `labyrinthe/connect-php` ^1.2.0 (API specification 1.3.0). Backward compatible with 1.1.x.
+
+### Added
+- `FeatureDisabledException` (from `labyrinthe/connect-php` 1.2.0): 503 `FEATURE_DISABLED` (whole API or one feature
+  shut down by the platform, nothing sent) and 503 `OTP_SERVICE_DISABLED`, with `getFeature()`, `getBlockedBy()`,
+  `getAdminMessage()`, `getUntil()` and `getRetryAfter()`. Only retried by the SDK after a `Retry-After` no longer
+  than 10 seconds (`maxRetryWait`); a queued notification can `release()` its job for `getRetryAfter()` seconds.
+- `Labyrinthe::fake()->failNextRequestWithFeatureDisabled($feature, $message, $until, $blockedBy)` simulates it
+  (`'otp'` gives `OTP_SERVICE_DISABLED`; `$until` adds `Retry-After`). Fake failures can now carry response headers.
+
 ## [1.1.1] - 2026-11-06
 
 ### Fixed

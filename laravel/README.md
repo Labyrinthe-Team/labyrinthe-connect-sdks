@@ -97,6 +97,11 @@ job replays the first send instead of sending a second SMS (if the content chang
 may have been sent. Retrying the job only gets the same answer (never a second SMS); check first
 (`Labyrinthe::sms()->list(reference: …)`), then send a **new** notification (new id, so new key) if nothing left.
 
+**Maintenance.** When the platform shuts SMS sending down (`FeatureDisabledException`, 503 `FEATURE_DISABLED`), nothing
+was sent. Do not let the queue retry in a tight loop: in a queued job, release it until the announced return time
+(`$this->release($e->getRetryAfter() ?? 900)`), or rely on your job's `backoff`. `getAdminMessage()` and `getUntil()`
+tell you what the administrator announced.
+
 ## Sending directly
 
 ```php
@@ -171,6 +176,9 @@ class PhoneLoginController
   5xx or `IDEMPOTENCY_REQUEST_IN_PROGRESS` is retried safely; a replay returns the same `otpId` (`$otp->replayed`).
   Your own key must identify one send (it returns the same code for 24 hours). `OTP_RESEND_TOO_SOON` and
   `OTP_RATE_LIMITED` are never retried; `verify()` is never retried after a network error or a 5xx.
+- **Maintenance**: `FeatureDisabledException` (503 `FEATURE_DISABLED`, or `OTP_SERVICE_DISABLED` when the whole OTP
+  service is off) means no code was sent: show `getAdminMessage()` (or a generic "temporarily unavailable") and,
+  when known, `getUntil()`. It is only retried by the SDK after a `Retry-After` of at most 10 seconds.
 - **Unknown outcome**: `IdempotencyKeyUnresolvedException` (409 `IDEMPOTENCY_KEY_UNRESOLVED`) means the original send
   with this key failed unexpectedly and a code may have been sent. It is never retried: ask the user whether the code
   arrived, then send again with a **new** key (or no key: a new one is generated).
@@ -268,6 +276,7 @@ public function test_phone_login(): void
 | `sent()`, `otps()`, `otpCode(?$phone)` | inspect what was recorded |
 | `withBalance(int)`, `withSenderIds([...])`, `withOtpCode('123456')`, `withOtpMaxAttempts(5)`, `withOtpResendAfter(60)` | set up the fake |
 | `failNextRequest('INSUFFICIENT_CREDITS', 409, ['available' => 0, 'required' => 1])` | simulate an API error (e.g. `failNextRequest('IDEMPOTENCY_KEY_UNRESOLVED', 409)`: never retried) |
+| `failNextRequestWithFeatureDisabled('api.sms_send', 'Maintenance.', now()->addHour())` | simulate a maintenance (503 `FEATURE_DISABLED`, `Retry-After` when `$until` is given; `'otp'` → `OTP_SERVICE_DISABLED`) |
 
 The fake behaves like the sandbox: idempotent replays (SMS and OTP, fingerprint after phone normalisation), merged
 duplicates, OTP single use, attempts cap with `attemptsRemaining`, `codeLength` / `codeType` derived from the code,

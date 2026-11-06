@@ -88,6 +88,11 @@ inconnu : un SMS a pu partir. Relancer le job renvoie la même réponse (jamais 
 (`Labyrinthe::sms()->list(reference: …)`), puis envoyez une **nouvelle** notification (nouvel identifiant, donc
 nouvelle clé) si rien n'est parti.
 
+**Maintenance.** Quand la plateforme coupe l'envoi de SMS (`FeatureDisabledException`, 503 `FEATURE_DISABLED`), rien
+n'est parti. Ne laissez pas la file relancer en boucle : dans un job en file, remettez-le à plus tard jusqu'au retour
+annoncé (`$this->release($e->getRetryAfter() ?? 900)`), ou appuyez-vous sur le `backoff` du job. `getAdminMessage()`
+et `getUntil()` donnent ce que l'administrateur a annoncé.
+
 ## Envoi direct
 
 ```php
@@ -161,6 +166,10 @@ class ConnexionTelephoneController
   (`$otp->replayed`). Votre propre clé doit désigner un seul envoi (elle renvoie le même code pendant 24 h).
   `OTP_RESEND_TOO_SOON` et `OTP_RATE_LIMITED` ne sont jamais relancés ; `verify()` n'est jamais relancé après une
   erreur réseau ou une 5xx.
+- **Maintenance** : `FeatureDisabledException` (503 `FEATURE_DISABLED`, ou `OTP_SERVICE_DISABLED` quand tout le
+  service OTP est coupé) signifie qu'aucun code n'est parti : affichez `getAdminMessage()` (ou un message générique
+  « momentanément indisponible ») et, si elle est connue, `getUntil()`. Le SDK ne la relance qu'après un
+  `Retry-After` d'au plus 10 secondes.
 - **Résultat inconnu** : `IdempotencyKeyUnresolvedException` (409 `IDEMPOTENCY_KEY_UNRESOLVED`) signifie que l'envoi
   d'origine avec cette clé a échoué de façon inattendue et qu'un code a pu partir. Elle n'est jamais relancée :
   demandez à l'utilisateur s'il a reçu le code, puis renvoyez avec une **nouvelle** clé (ou sans clé : une nouvelle
@@ -247,6 +256,7 @@ public function test_connexion_par_telephone(): void
 | `sent()`, `otps()`, `otpCode(?$tel)` | inspecter ce qui a été enregistré |
 | `withBalance(int)`, `withSenderIds([...])`, `withOtpCode('123456')`, `withOtpMaxAttempts(5)`, `withOtpResendAfter(60)` | préparer le fake |
 | `failNextRequest('INSUFFICIENT_CREDITS', 409, ['available' => 0, 'required' => 1])` | simuler une erreur de l'API (par ex. `failNextRequest('IDEMPOTENCY_KEY_UNRESOLVED', 409)` : jamais relancée) |
+| `failNextRequestWithFeatureDisabled('api.sms_send', 'Maintenance.', now()->addHour())` | simuler une maintenance (503 `FEATURE_DISABLED`, `Retry-After` si `$until` est donné ; `'otp'` → `OTP_SERVICE_DISABLED`) |
 
 Le fake se comporte comme le bac à sable : rejeu idempotent (SMS et OTP, empreinte après normalisation des numéros),
 doublons fusionnés, OTP à usage unique, plafond de tentatives avec `attemptsRemaining`, `codeLength` / `codeType`
