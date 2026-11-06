@@ -1,21 +1,40 @@
 # Labyrinthe Connect — SDK Java
 
-[![CI](https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/actions/workflows/java.yml/badge.svg)](https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/actions/workflows/java.yml)
-[![Maven Central](https://img.shields.io/maven-central/v/cd.labyrinthe/labyrinthe-connect.svg)](https://central.sonatype.com/artifact/cd.labyrinthe/labyrinthe-connect)
+[![CI](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/actions/workflows/java.yml/badge.svg)](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/actions/workflows/java.yml)
+[![Maven Central](https://img.shields.io/maven-central/v/cd.labyrinthe/labyrinthe-connect.svg?label=labyrinthe-connect)](https://central.sonatype.com/artifact/cd.labyrinthe/labyrinthe-connect)
+[![Maven Central](https://img.shields.io/maven-central/v/cd.labyrinthe/labyrinthe-connect-spring-boot-starter.svg?label=spring-boot-starter)](https://central.sonatype.com/artifact/cd.labyrinthe/labyrinthe-connect-spring-boot-starter)
 ![Java](https://img.shields.io/badge/java-11%20%E2%86%92%2021-007396)
+![Licence](https://img.shields.io/badge/licence-MIT-green)
 
-Client Java officiel de [Labyrinthe Connect](https://labyrinthe-rdc.com) : envoyez des SMS et vérifiez des
-numéros de téléphone par code à usage unique (OTP), en RDC et en Afrique centrale.
+Client Java officiel de [Labyrinthe Connect](https://labyrinthe-rdc.com) : envoyez des SMS et vérifiez des numéros
+de téléphone par code à usage unique (OTP), en RDC et en Afrique centrale.
 
 *English version: [README.md](README.md).*
 
-- Java 11+, basé sur `java.net.http.HttpClient`. **Aucune dépendance d'exécution** (pas même une bibliothèque JSON).
-- API synchrone **et** asynchrone (`CompletableFuture`), client thread-safe, modèles immuables, `Optional` pour
-  les champs facultatifs, `Instant` pour les dates, énumérations avec une valeur `UNKNOWN` pour les valeurs futures.
-- Sûr par défaut : relances automatiques **uniquement** quand elles ne peuvent pas envoyer deux fois un SMS.
-- Ne journalise et n'affiche jamais votre clé API, les codes OTP ni les numéros complets.
-- Starter Spring Boot 3 facultatif : bean client configuré par `labyrinthe.*` et point d'entrée de webhook signé
-  qui publie des événements Spring.
+| Artefact | Contenu |
+|---|---|
+| `cd.labyrinthe:labyrinthe-connect` | Le client (Java 11+) : SMS, solde, Sender IDs, OTP, vérification des webhooks. |
+| `cd.labyrinthe:labyrinthe-connect-spring-boot-starter` | Auto-configuration Spring Boot 3 (Java 17+) : bean client depuis les propriétés `labyrinthe.*` et point d'entrée de webhook signé qui publie des événements Spring. |
+
+- Construit sur `java.net.http.HttpClient`. **Aucune dépendance à l'exécution** (pas même une bibliothèque JSON).
+- API synchrone **et** asynchrone (`CompletableFuture`), client thread-safe, modèles immuables, `Optional` pour les
+  champs facultatifs, `Instant` pour les dates, enums avec une valeur `UNKNOWN` pour les futures valeurs de l'API.
+- Sûr par défaut : relances automatiques **uniquement** quand elles ne peuvent pas envoyer deux fois un SMS ou un OTP.
+- Exceptions typées non vérifiées pour chaque erreur de l'API, dont l'erreur de maintenance `FeatureDisabledException`.
+- Ne journalise ni n'affiche jamais votre clé API, les codes OTP ou les numéros complets.
+
+**Sommaire :** [Prérequis](#prérequis) · [Installation](#installation) · [Démarrage rapide](#démarrage-rapide) ·
+[Configuration](#configuration) · [Envoyer des SMS](#envoyer-des-sms) · [Solde et Sender IDs](#solde-et-sender-ids) ·
+[OTP](#otp--vérifier-un-numéro-de-téléphone) · [Webhooks](#webhooks) · [Erreurs](#erreurs) ·
+[Relances et idempotence](#relances-et-idempotence) · [Mode test, journalisation et sécurité](#mode-test-journalisation-et-sécurité) ·
+[Sans le package](#sans-le-package-http-brut) · [Mise à jour](#mise-à-jour) · [Contribuer](#contribuer)
+
+## Prérequis
+
+| Artefact | Java | Framework |
+|---|---|---|
+| `labyrinthe-connect` | 11+ (testé sur 11, 17 et 21) | aucun |
+| `labyrinthe-connect-spring-boot-starter` | 17+ | Spring Boot 3 (construit avec la 3.5) ; le point d'entrée de webhook demande Spring MVC (`spring-boot-starter-web`) |
 
 ## Installation
 
@@ -27,14 +46,33 @@ Maven :
   <artifactId>labyrinthe-connect</artifactId>
   <version>1.2.0</version>
 </dependency>
+
+<!-- Spring Boot 3 (Java 17+), à la place de la dépendance ci-dessus : il apporte labyrinthe-connect -->
+<dependency>
+  <groupId>cd.labyrinthe</groupId>
+  <artifactId>labyrinthe-connect-spring-boot-starter</artifactId>
+  <version>1.2.0</version>
+</dependency>
 ```
 
-Gradle :
+Gradle (DSL Kotlin) :
 
 ```kotlin
-implementation("cd.labyrinthe:labyrinthe-connect:1.2.0")
-// Spring Boot 3 (Java 17+) :
-implementation("cd.labyrinthe:labyrinthe-connect-spring-boot-starter:1.2.0")
+dependencies {
+    implementation("cd.labyrinthe:labyrinthe-connect:1.2.0")
+    // Spring Boot 3 (Java 17+) :
+    implementation("cd.labyrinthe:labyrinthe-connect-spring-boot-starter:1.2.0")
+}
+```
+
+Gradle (DSL Groovy) :
+
+```groovy
+dependencies {
+    implementation 'cd.labyrinthe:labyrinthe-connect:1.2.0'
+    // Spring Boot 3 (Java 17+) :
+    implementation 'cd.labyrinthe:labyrinthe-connect-spring-boot-starter:1.2.0'
+}
 ```
 
 ## Démarrage rapide
@@ -49,17 +87,16 @@ System.out.println(message.status());                                           
 ```
 
 Créez vos clés dans l'espace client (*Développeurs > Clés API*). **Gardez-les côté serveur**, jamais dans un
-navigateur ni une application mobile.
+navigateur ni dans une application mobile.
 
 | Clé | Mode | Effet |
 |---|---|---|
 | `lsk_test_…` | Bac à sable | Rien n'est envoyé, aucun crédit n'est consommé. Mêmes réponses qu'en production. L'envoi d'OTP renvoie le code (`testCode()`). |
 | `lsk_live_…` | Production | Les SMS partent réellement et consomment des crédits. |
 
-`client.isTestMode()` indique le mode utilisé. Tous les exemples ci-dessous fonctionnent avec une clé de test.
-
-Le client est thread-safe et garde un pool de connexions `HttpClient` : créez-en **un seul** par application et
-partagez-le.
+`client.isTestMode()` / `client.isLiveMode()` indiquent le mode utilisé. Tous les exemples ci-dessous fonctionnent
+avec une clé de test. Le client est thread-safe et garde un pool de connexions `HttpClient` : créez-en **un** par
+application et partagez-le.
 
 ### Synchrone et asynchrone
 
@@ -70,18 +107,108 @@ client.async().sms().send("0812345678", "Bonjour")                 // Completabl
     .thenAccept(message -> System.out.println(message.id()));
 ```
 
-`client.async()` expose les mêmes services, avec les mêmes règles (relances, idempotence, erreurs). Les futurs
-échouent avec une `LabyrintheException` (enveloppée dans une `CompletionException` par `join()`, dans une
-`ExecutionException` par `get()`) ; un argument invalide donne aussi un futur en échec.
+`client.async()` expose les mêmes services (`sms()`, `balance()`, `senderIds()`, `otp()`) avec les mêmes règles
+(relances, idempotence, erreurs). Les futures échouent avec une `LabyrintheException` (enveloppée dans une
+`CompletionException` par `join()`, dans une `ExecutionException` par `get()`) ; des arguments invalides donnent aussi
+une future en échec.
+
+## Configuration
+
+### Options du builder
+
+| `LabyrintheClient.builder()` | Défaut | Rôle |
+|---|---|---|
+| `apiKey(String)` | `LABYRINTHE_API_KEY` | `lsk_live_…` ou `lsk_test_…`. Obligatoire (`InvalidArgumentException` sans clé). |
+| `baseUrl(String)` | `LABYRINTHE_BASE_URL`, puis `https://api.labyrinthe-rdc.com/api/public/v1` | Racine de l'API. Un hôte seul (`http://localhost:8000`) est complété par `/api/public/v1`. |
+| `timeout(Duration)` | 30 s | Délai de **chaque tentative**, aussi délai de connexion. |
+| `maxRetries(int)` | 2 | Relances automatiques quand elles sont sûres ; `0` les désactive (10 au maximum). |
+| `maxRetryWait(Duration)` | 10 s | Plus long `Retry-After` que le SDK accepte d'attendre ; au-delà, l'erreur est levée. |
+| `defaultCountryCode(String)` | `"243"` | Ajouté aux numéros locaux (`0812345678` → `243812345678`) ; 1 à 3 chiffres, sans `+`. |
+| `defaultSender(String)` | aucun | Sender ID utilisé quand un envoi n'en a pas. |
+| `httpClient(HttpClient)` | un client créé par le SDK | Votre propre client (proxy, TLS, executor…). Il ne doit pas suivre les redirections (`HttpClient.Redirect.NEVER`, le défaut de `HttpClient.newBuilder()`) ; sinon `build()` le refuse. |
+
+```java
+LabyrintheClient client = LabyrintheClient.builder()
+    .apiKey(System.getenv("LABYRINTHE_API_KEY"))
+    .baseUrl("https://api.labyrinthe-rdc.com/api/public/v1")
+    .timeout(Duration.ofSeconds(30))
+    .maxRetries(2)
+    .maxRetryWait(Duration.ofSeconds(10))
+    .defaultCountryCode("243")
+    .defaultSender("MABOUTIQUE")
+    .httpClient(HttpClient.newBuilder().proxy(ProxySelector.of(new InetSocketAddress("proxy.local", 3128))).build())
+    .build();
+```
+
+`LabyrintheClient.fromEnv()` équivaut à `LabyrintheClient.builder().build()` : clé et racine lues dans
+l'environnement, options par défaut. Les constantes `LabyrintheClient.DEFAULT_BASE_URL`, `DEFAULT_TIMEOUT`,
+`DEFAULT_MAX_RETRIES` et `DEFAULT_MAX_RETRY_WAIT` donnent les valeurs par défaut.
+
+### Variables d'environnement
+
+| Variable | Utilisée pour |
+|---|---|
+| `LABYRINTHE_API_KEY` | Clé API, quand `apiKey()` n'est pas appelé (active aussi le bean client Spring Boot) |
+| `LABYRINTHE_BASE_URL` | Racine de l'API, quand `baseUrl()` n'est pas appelé (ex. `http://localhost:8000` pour un backend local) |
+| `LABYRINTHE_WEBHOOK_SECRET` | Nom conventionnel du secret de webhook ; Spring Boot le lie à `labyrinthe.webhook.secret` |
+
+### Spring Boot
+
+Avec le starter dans le classpath, configurez `application.yml` (ou les clés équivalentes d'`application.properties`) :
+
+```yaml
+labyrinthe:
+  api-key: ${LABYRINTHE_API_KEY}            # nécessaire au bean client (ou la variable d'environnement seule)
+  base-url: https://api.labyrinthe-rdc.com/api/public/v1   # défaut : LABYRINTHE_BASE_URL, puis la production
+  timeout: 30s
+  max-retries: 2
+  max-retry-wait: 10s
+  default-country-code: "243"
+  default-sender: MABOUTIQUE
+  webhook:
+    secret: ${LABYRINTHE_WEBHOOK_SECRET}    # le point d'entrée n'est enregistré que s'il est renseigné
+    path: /webhooks/labyrinthe
+    tolerance: 5m                           # 0 désactive le contrôle d'horodatage (déconseillé)
+    enabled: true
+```
+
+```java
+@Service
+class Orders {
+  private final LabyrintheClient labyrinthe;   // bean auto-configuré
+  Orders(LabyrintheClient labyrinthe) { this.labyrinthe = labyrinthe; }
+
+  String notifyReady(String phone) {
+    return labyrinthe.sms().send(phone, "Votre commande est prête.").id();
+  }
+}
+```
+
+- `LabyrintheAutoConfiguration` crée le bean `LabyrintheClient` quand `labyrinthe.api-key` (ou `LABYRINTHE_API_KEY`)
+  est renseignée et que vous n'avez pas déclaré votre propre bean `LabyrintheClient`. Toutes les clés ci-dessus sont
+  facultatives et ont la valeur par défaut indiquée ; les IDE les complètent (métadonnées de configuration incluses).
+- Des beans `LabyrintheClientBuilderCustomizer` ajustent le builder après les propriétés (appliqués dans l'ordre) :
+
+```java
+@Bean
+LabyrintheClientBuilderCustomizer labyrintheProxy() {
+  return builder -> builder.httpClient(HttpClient.newBuilder().proxy(ProxySelector.of(proxyAddress)).build());
+}
+```
+
+- Le point d'entrée de webhook est décrit dans [Webhooks](#point-dentrée-spring-boot). Application d'exemple :
+  [`SpringBootExample.java`](examples/src/spring/java/cd/labyrinthe/connect/examples/spring/SpringBootExample.java).
 
 ## Envoyer des SMS
 
 ```java
 Message message = client.sms().send(SendSmsParams.builder()
-    .to("+243 81 234 5678")        // +243…, 00243…, 243…, 0812…, 812… sont acceptés
+    .to("+243 81 234 5678")         // +243…, 00243…, 243…, 0812…, 812…, 33612345678 sont acceptés
     .body("Votre commande 1042 est prête.")
-    .sender("MABOUTIQUE")          // facultatif : un Sender ID approuvé (client.senderIds().list())
-    .reference("commande-1042")    // facultatif : votre référence, 64 caractères au plus
+    .sender("MABOUTIQUE")           // facultatif : un Sender ID approuvé (client.senderIds().list())
+    .reference("commande-1042")     // facultatif : votre référence, 64 caractères au maximum
+    .stripAccents(false)            // facultatif : voir « Coût avant envoi »
+    .idempotencyKey("commande-1042-prete") // facultatif : voir « Idempotence »
     .build());
 
 message.id();               // "9d5c0a3e-…"
@@ -90,363 +217,529 @@ message.status();           // MessageStatus.QUEUED
 message.segments();         // 1
 message.creditsCharged();   // 1
 message.createdAt();        // Instant
+message.reference();        // Optional[commande-1042]
 ```
+
+`client.sms().send(to, body)` est la forme courte. Le texte d'un message n'est jamais renvoyé par l'API (il peut
+contenir un code).
 
 L'envoi est asynchrone : `202 Accepted` signifie *mis en file et payé*, pas *remis*. Suivez le statut par webhook
 (`message.status_changed`, recommandé) ou en interrogeant l'API :
 
 ```java
 Message latest = client.sms().get(message.id());
-if (latest.status().isFinal()) {
+if (latest.status().isFinal()) {           // aussi isFailed(), isPending()
   System.out.println(latest.status() == MessageStatus.DELIVERED
       ? "Remis" : "Échec : " + latest.errorCode().orElse("?"));
 }
 ```
 
-### Coût avant l'envoi
+`MessageStatus` : `QUEUED`, `SUBMITTED`, `SENT`, `DELIVERED`, `FAILED`, `REJECTED`, `EXPIRED`, `UNDELIVERABLE`, et
+`UNKNOWN` pour une valeur ajoutée après cette version du SDK. `status.value()` (et `toString()`) donne la valeur de
+l'API (`"queued"`).
 
-1 crédit = 1 segment SMS. Un message en ASCII pur (GSM-7) tient en 160 caractères (153 par segment au-delà).
-**Tout caractère non ASCII** (é, à, ç, emoji, guillemets typographiques…) passe en UCS-2 : 70 caractères (67 par
-segment au-delà).
+### Coût avant envoi
+
+1 crédit = 1 segment SMS. Un message en ASCII pur (GSM-7) tient en 160 caractères (153 par segment au-delà). **Tout
+caractère non ASCII** (é, à, ç, emoji, guillemets typographiques…) passe en UCS-2 : 70 caractères (67 par segment
+au-delà).
 
 ```java
 Estimate estimate = client.sms().estimate(EstimateSmsParams.builder()
     .body("Réunion demain à 9h")
     .recipients(List.of("0812345678", "0899999999"))
+    .stripAccents(false)
     .build());
-estimate.encoding();       // Encoding.UCS2
-estimate.totalCredits();   // 2
-estimate.isAffordable();   // le solde suffit-il ?
+estimate.encoding();             // Encoding.UCS2
+estimate.segmentsPerMessage();   // 1
+estimate.recipientsCount();      // 2 (normalisés, doublons fusionnés, numéros invalides ignorés)
+estimate.totalCredits();         // 2
+estimate.balanceAfter();         // OptionalLong
+estimate.isAffordable();         // le solde suffit-il ?
 ```
 
 `stripAccents(true)` (sur `SendSmsParams`, `SendManySmsParams`, `EstimateSmsParams` et `SendOtpParams`) demande à
-l'API de remplacer accents et caractères typographiques par leur équivalent ASCII : le message passe en GSM-7,
-souvent deux fois moins cher. La translittération dépend du serveur (`Café` peut devenir `Cafe` ou `Caf'e`) : ne
-pas s'en servir pour un texte exact.
+l'API de remplacer accents et caractères typographiques par de l'ASCII : le message passe en GSM-7, souvent deux
+fois moins cher. La translittération est faite par le serveur : ne l'utilisez pas pour un texte exact.
+
+**Numéros de téléphone.** `+` ou `00` conserve l'indicatif ; sans `+`, 11 chiffres ou plus ne commençant pas par 0
+sont déjà internationaux (`33612345678` reste `33612345678`) ; sinon le numéro est local et reçoit l'indicatif par
+défaut (`0812345678` → `243812345678`). Pour un numéro étranger court (10 chiffres ou moins), utilisez toujours le
+`+`. Le SDK envoie chaque numéro en E.164 avec `+` ; les réponses utilisent le format international sans `+`.
+`PhoneNumbers.normalize("0812345678")` (`Optional[243812345678]`), `PhoneNumbers.isValid()` et
+`PhoneNumbers.mask()` appliquent les mêmes règles en local.
 
 ### Plusieurs destinataires : tout ou rien
 
 ```java
 try {
   MessageBatch batch = client.sms().sendMany(SendManySmsParams.builder()
-      .recipients(List.of("0812345678", "0899999999"))
+      .recipients(List.of("0812345678", "0899999999"))   // ou .addRecipient(…)
       .body("Réunion demain à 9h.")
+      .sender("MABOUTIQUE")
+      .reference("reunion-2026-11-07")
       .build());
-  batch.messages();          // un message par numéro distinct (les doublons sont fusionnés)
+  batch.messages();          // un message par numéro distinct (doublons fusionnés) ; MessageBatch est Iterable
+  batch.idempotencyKey(); batch.replayed(); batch.requestId();
 } catch (RecipientNotSendableException e) {
-  // RIEN n'a été envoyé : corrigez la liste et recommencez.
+  // RIEN n'est parti : corrigez la liste et réessayez.
   for (RejectedRecipient rejected : e.rejected()) {
-    System.out.println(rejected.recipient() + " : " + rejected.reason());  // INVALID_PHONE, BLACKLISTED, OPTED_OUT
+    System.out.println(rejected.recipient() + " : " + rejected.reason());   // INVALID_PHONE, BLACKLISTED, OPTED_OUT
   }
 }
 ```
 
-Jusqu'à 1000 destinataires par appel. Tous les destinataires, le Sender ID et le solde sont vérifiés **avant** le
-moindre envoi : un seul numéro refusé (ou un solde insuffisant) et aucun SMS ne part. Les numéros que le SDK sait
-déjà invalides sont refusés localement (`InvalidArgumentException`, avec leur position seulement), avant tout appel.
-
-### Idempotence (jamais de double envoi)
-
-Chaque envoi porte un en-tête `Idempotency-Key`. Sans clé fournie, le SDK génère un UUID aléatoire et le réutilise
-pour ses propres relances : une erreur réseau ne produit jamais un second SMS. Pour vous protéger aussi de **vos**
-relances (files de tâches, double clic, plantage), passez une clé dérivée de votre événement métier. Un rejeu dans
-les 24 h renvoie les messages d'origine sans rien renvoyer ni facturer :
-
-```java
-MessageBatch batch = client.sms().sendMany(SendManySmsParams.builder()
-    .addRecipient("0812345678")
-    .body("Votre commande 1042 est prête.")
-    .idempotencyKey("commande-1042-prete")
-    .build());
-batch.replayed();   // true pour un rejeu
-```
-
-La même clé avec un autre contenu est refusée par `IdempotencyKeyReusedException` (409). Les destinataires sont
-comparés après normalisation (`0812345678` puis `243812345678` avec la même clé = rejeu). Tant que la requête
-d'origine est en cours, l'API répond 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` : le SDK attend `Retry-After` et relance
-avec la même clé, puis lève `IdempotencyRequestInProgressException` (`retryAfter()`).
-
-**`IdempotencyKeyUnresolvedException` (409 `IDEMPOTENCY_KEY_UNRESOLVED`, `sms().send()`, `sendMany()` et
-`otp().send()`).** La requête d'origine avec cette clé a échoué de façon inattendue côté API et son résultat est
-inconnu : un SMS a **peut-être** été envoyé. Le SDK ne la relance jamais, et vous ne devez pas la relancer
-automatiquement non plus (ni avec la même clé : l'API répondra toujours cette erreur ; ni avec une nouvelle clé : vous
-risqueriez un double envoi). Conduite à tenir :
-
-1. vérifier si le message est parti : `client.sms().list(ListSmsParams.builder().reference("commande-1042").build())`
-   si vous avez passé une `reference`, ou demander à l'utilisateur si le code est arrivé (OTP) ;
-2. seulement si rien n'est parti, renvoyer avec une **nouvelle** `Idempotency-Key`.
-
-```java
-try {
-  client.sms().send(params);
-} catch (IdempotencyKeyUnresolvedException e) {
-  log.warn("Résultat inconnu (requête {}) : vérifier avant de renvoyer", e.requestId().orElse("?"));
-}
-```
+Jusqu'à 1000 destinataires par appel (`Limits.MAX_RECIPIENTS`). Chaque destinataire, le Sender ID et le solde sont
+vérifiés **avant** tout envoi : un seul numéro refusé (ou un solde insuffisant) et aucun SMS ne part. Les numéros
+que le SDK sait déjà invalides sont refusés localement (`InvalidArgumentException`, avec leur position seulement),
+avant tout appel réseau.
 
 ### Lister les messages
 
 ```java
 Page<Message> page = client.sms().list(ListSmsParams.builder()
     .status(MessageStatus.FAILED)
-    .from(LocalDate.of(2026, 11, 1))     // une LocalDate couvre la journée entière
-    .to(Instant.now())
-    .perPage(50)
+    .recipient("0812345678")             // tout format
+    .from(LocalDate.of(2026, 11, 1))     // un LocalDate couvre la journée entière
+    .to(Instant.now())                   // ou un OffsetDateTime
+    .page(1)
+    .perPage(50)                         // 15 par défaut, 100 au maximum
     .build());
-page.total(); page.data(); page.hasMore(); page.nextPage();
+page.data(); page.currentPage(); page.lastPage(); page.total(); page.hasMore();
+Optional<Page<Message>> next = page.nextPage();
 
 for (Message m : client.sms().list(ListSmsParams.builder().reference("commande-1042").build()).autoPagingIterable()) {
-  // toutes les pages, chargées à la demande (ou : autoPagingStream())
+  // toutes les pages, chargées à la demande (aussi : autoPagingStream())
 }
+
+client.async().sms().list(ListSmsParams.defaults())
+    .thenCompose(first -> first.autoPagingForEach(m -> handle(m)));   // ou autoPagingToList()
 ```
 
-Filtres : `status`, `recipient` (tout format), `reference`, `from`, `to` (`LocalDate`, `Instant` ou
-`OffsetDateTime`), `page`, `perPage` (100 au plus). Seuls les messages envoyés **avec la clé appelante**.
+Filtres : `status`, `recipient`, `reference`, `from`, `to` (inclus), `page`, `perPage`. La liste ne contient que les
+messages envoyés **avec la clé appelante** ; `get(id)` trouve n'importe quel message du compte, par `id` uniquement.
 
-### Solde et Sender IDs
+## Solde et Sender IDs
 
 ```java
-Balance balance = client.balance().get();              // balance.balance(), balance.held()
-List<SenderId> senderIds = client.senderIds().list();  // noms approuvés, utilisables comme sender
+Balance balance = client.balance().get();               // balance.balance(), balance.held() (crédits)
+List<SenderId> senderIds = client.senderIds().list();
+
+for (SenderId senderId : senderIds) {
+  System.out.println(senderId.value() + " " + senderId.status() + " défaut=" + senderId.isDefault());  // utilisable comme sender
+}
 ```
 
 ## OTP : vérifier un numéro de téléphone
 
-Le code est généré, envoyé par SMS et vérifié par Labyrinthe Connect. L'API ne le renvoie jamais (sauf avec une
-clé de test) et le SDK ne le journalise jamais.
+Le code est généré, envoyé par SMS et vérifié par Labyrinthe Connect. Il n'est jamais renvoyé par l'API (sauf avec
+une clé de test) et jamais journalisé par le SDK.
 
 ```java
-// 1. Envoyer le code. Garder otpId CÔTÉ SERVEUR (session, cache, base), jamais dans le navigateur.
+// 1. Envoyer le code. Gardez otpId CÔTÉ SERVEUR (session, cache, base de données), jamais dans le navigateur.
 OtpSendResult otp = client.otp().send("0812345678");
 session.setAttribute("otpId", otp.otpId());
+otp.expiresAt(); otp.maxAttempts();
 otp.codeLength();           // ex. 6 : taille du champ de saisie
-otp.codeType();             // OtpCodeType.NUMERIC (clavier numérique) ou ALPHANUMERIC
-otp.resendAfterSeconds();   // ex. 60 : compte à rebours « Renvoyer le code »
+otp.codeType();             // OtpCodeType.NUMERIC (pavé numérique) ou ALPHANUMERIC
+otp.resendAfterSeconds();   // ex. 60 : compte à rebours de « Renvoyer le code » (aussi resendAfter() : Duration)
 
 // 2. L'utilisateur saisit le code reçu par SMS.
 
 // 3. Le vérifier.
-OtpVerifyResult result = client.otp().verify((String) session.getAttribute("otpId"), codeSaisi);
+OtpVerifyResult result = client.otp().verify((String) session.getAttribute("otpId"), typedCode);
 if (result.isVerified()) {
-  session.removeAttribute("otpId");                 // connecter l'utilisateur / marquer le numéro vérifié
+  session.removeAttribute("otpId");                 // connecter l'utilisateur / marquer le numéro comme vérifié
 } else if (result.reason().orElseThrow() == OtpFailureReason.INVALID_CODE) {
-  // code faux : une tentative consommée, il en reste result.attemptsRemaining() (OptionalInt)
+  // mauvais code : une tentative consommée, il en reste result.attemptsRemaining() (OptionalInt)
 } else {
-  // EXPIRED, ALREADY_USED, MAX_ATTEMPTS_REACHED : redemander un code
+  // EXPIRED, ALREADY_USED, MAX_ATTEMPTS_REACHED : demander un nouveau code
 }
 ```
 
-- Un code faux n'est **pas** une exception : `verify()` renvoie un résultat `isVerified() == false` avec un `reason()`.
-- Un nouvel `send()` au même numéro invalide le code précédent.
-- Longueur, validité, tentatives, Sender ID et modèle viennent des paramètres OTP du compte. Vous pouvez imposer le
-  modèle (`SendOtpParams.builder().template("Votre code MaBoutique : {code}")`, doit contenir `{code}` ; jetons
-  facultatifs `{app_name}`, `{minutes}`), la langue (`.locale(OtpLocale.FR)`), ajouter la ligne
-  [Web OTP API](https://developer.mozilla.org/docs/Web/API/WebOTP_API) pour le remplissage automatique
-  (`.webOtpDomain("app.exemple.com")`) et `.stripAccents(true)`.
-- Limites : `OtpResendTooSoonException` et `OtpRateLimitedException` (`scope()`, `limit()`), toutes deux avec
-  `retryAfter()`. Après une vérification réussie, un nouveau code peut être envoyé tout de suite.
+Toutes les options d'un envoi :
+
+```java
+OtpSendResult otp = client.otp().send(SendOtpParams.builder()
+    .phone("0812345678")
+    .template("Votre code MaBoutique : {code}")   // doit contenir {code} ; {app_name}, {minutes} facultatifs
+    .locale(OtpLocale.FR)                         // FR ou EN (modèles standard)
+    .webOtpDomain("app.example.com")              // ajoute « @app.example.com #123456 » pour la Web OTP API
+    .stripAccents(true)
+    .idempotencyKey("login-42-essai-1")           // facultatif : un UUID aléatoire sinon
+    .build());
+```
+
+- Un mauvais code n'est **pas** une exception : `verify()` renvoie un résultat avec `isVerified() == false` et une
+  `reason()`.
+- Un nouvel `send()` au même numéro invalide le code précédent. Après une vérification réussie, un nouveau code peut
+  être envoyé tout de suite.
+- Longueur, validité, tentatives, Sender ID et modèle viennent par défaut des réglages OTP du compte.
+- `webOtpDomain` active le remplissage automatique avec la
+  [Web OTP API](https://developer.mozilla.org/docs/Web/API/WebOTP_API) (Chrome, Android).
+- Limites : `OtpResendTooSoonException` et `OtpRateLimitedException` (`scope()` = `PHONE` / `ACCOUNT`, `limit()`),
+  toutes deux avec `retryAfter()`. Jamais relancées par le SDK. `otp/send` est aussi limité à 10 requêtes par minute
+  et par clé API.
 - **Mode test** : avec une clé `lsk_test_`, aucun SMS ne part et `otp.testCode()` contient le code, pour tester tout
   le parcours. Toujours vide avec une clé live ; exclu de `toString()`, `equals()` et `hashCode()`.
 
-`otp().send()` porte toujours une `Idempotency-Key` (un UUID, ou la vôtre avec `.idempotencyKey("login-42")`) : il est
-relancé sans risque après une erreur réseau, un délai dépassé, une 5xx, un 429 `TOO_MANY_REQUESTS` ou un 409
-`IDEMPOTENCY_REQUEST_IN_PROGRESS` ; une relance renvoie le même OTP (`otp.replayed()`), jamais un second SMS.
-`OTP_RESEND_TOO_SOON` et `OTP_RATE_LIMITED` ne sont jamais relancés. `otp().verify()` n'est relancé que sur 429
-`TOO_MANY_REQUESTS` (sinon une tentative pourrait être consommée deux fois) et sur 503 `FEATURE_DISABLED` après
-`Retry-After` (tous deux refusés avant traitement).
+`otp().send()` porte toujours une `Idempotency-Key` réutilisée par ses relances : un rejeu renvoie le même OTP
+(`otp.replayed()`), jamais un second SMS. Chaque résultat de vérification est aussi notifié par les webhooks
+`otp.verified` et `otp.failed`.
 
 ## Webhooks
 
 Configurez un point d'entrée dans l'espace client (*Développeurs > Webhooks*) et copiez son secret. Les événements
-sont envoyés en `POST` JSON, signés (`X-Signature: sha256=<HMAC-SHA256 du corps brut>`). Le SDK vérifie la
-signature en temps constant (`MessageDigest.isEqual`) sur le **corps brut**, puis l'horodatage signé (5 minutes
-par défaut).
+sont envoyés en `POST` JSON (`{ id, event, data, timestamp }`) et signés : `X-Signature: sha256=<HMAC-SHA256(secret,
+corps brut)>`. Le SDK vérifie la signature en temps constant (`MessageDigest.isEqual`) sur le **corps brut**, avant
+toute lecture JSON, puis contrôle l'horodatage signé (5 minutes par défaut, protection contre le rejeu).
+
+> Vérifiez toujours les **octets exacts** reçus (`byte[]`, ou le corps en `String` décodé en UTF-8). Un corps
+> désérialisé en objet puis resérialisé ne correspond plus à la signature.
+
+### Point d'entrée Spring Boot
+
+Avec le starter et Spring MVC, `POST /webhooks/labyrinthe` (`labyrinthe.webhook.path`) est enregistré dès que
+`labyrinthe.webhook.secret` est renseigné. Il lit le corps brut, le vérifie et publie chaque événement comme
+événement d'application Spring : écoutez `WebhookEvent` ou une sous-classe.
 
 ```java
-WebhookEvent event;
-try {
-  event = Webhooks.constructEvent(rawBody, request.getHeader("X-Signature"), secret);  // byte[] ou String, jamais du JSON re-sérialisé
-} catch (SignatureVerificationException | InvalidWebhookPayloadException e) {
-  // répondre 400
+@Component
+class LabyrintheEvents {
+  @EventListener
+  void onStatus(MessageStatusChanged event) {
+    orders.updateSmsStatus(event.data().messageId(), event.data().status());
+  }
+
+  @EventListener
+  void onOtpFailed(OtpFailed event) {          // aussi OtpVerified, BalanceLow, CampaignCompleted, TestPing, UnknownEvent
+    audit.otpFailed(event.data().otpId(), event.data().reason());
+  }
 }
-if (event instanceof MessageStatusChanged) {
-  MessageStatusChanged changed = (MessageStatusChanged) event;
-  updateMessage(changed.data().messageId(), changed.data().status());
-}
-// ou : switch (event.eventType()) { case MESSAGE_STATUS_CHANGED: … }
 ```
 
-Chaque événement a un `id()` (dédoublonnez dessus : jusqu'à 5 tentatives, ordre non garanti), `type()`,
-`eventType()`, `timestamp()` (`Instant`), `raw()` et un `data()` typé :
+- Il répond `200 {"received":true}`, ou `400 {"error":"<code>"}` pour une signature invalide, un horodatage expiré ou
+  un corps invalide. Un listener qui lève une exception donne un `500`, et la livraison est retentée : dédoublonnez
+  sur `event.id()`.
+- Répondez en moins de 10 secondes : confiez les traitements longs à des listeners `@Async` ou à une file d'attente.
+- `labyrinthe.webhook.enabled=false` désactive le point d'entrée ; déclarer votre propre bean
+  `LabyrintheWebhookController` le remplace.
+- Avec Spring Security, exemptez le point d'entrée de CSRF et autorisez-le : la signature fait office
+  d'authentification.
+
+```java
+@Bean
+SecurityFilterChain security(HttpSecurity http) throws Exception {
+  return http
+      .csrf(csrf -> csrf.ignoringRequestMatchers("/webhooks/labyrinthe"))
+      .authorizeHttpRequests(auth -> auth
+          .requestMatchers(HttpMethod.POST, "/webhooks/labyrinthe").permitAll()
+          .anyRequest().authenticated())
+      .build();
+}
+```
+
+### Votre propre contrôleur, ou tout framework
+
+`Webhooks.constructEvent()` fonctionne partout où vous pouvez lire le corps brut. Un contrôleur Spring à vous (avec
+`labyrinthe.webhook.enabled=false`) :
+
+```java
+@RestController
+class SmsWebhookController {
+  private final String secret;
+
+  SmsWebhookController(@Value("${labyrinthe.webhook.secret}") String secret) { this.secret = secret; }
+
+  @PostMapping("/hooks/sms")
+  ResponseEntity<Void> receive(@RequestBody byte[] body,
+                               @RequestHeader(name = Webhooks.SIGNATURE_HEADER, required = false) String signature) {
+    WebhookEvent event;
+    try {
+      event = Webhooks.constructEvent(body, signature, secret);   // byte[] ou String, jamais du JSON resérialisé
+    } catch (SignatureVerificationException | InvalidWebhookPayloadException e) {
+      return ResponseEntity.badRequest().build();
+    }
+    if (event instanceof MessageStatusChanged) {
+      MessageStatusChanged changed = (MessageStatusChanged) event;
+      updateMessage(changed.data().messageId(), changed.data().status());
+    }
+    // ou : switch (event.eventType()) { case MESSAGE_STATUS_CHANGED: … }
+    return ResponseEntity.ok().build();
+  }
+}
+```
+
+`Webhooks.constructEvent(body, header, secret, tolerance)` fixe une autre tolérance (`Webhooks.DEFAULT_TOLERANCE`
+vaut 5 minutes ; `Duration.ZERO` désactive le contrôle, déconseillé). `Webhooks.verifySignature(body, header, secret)`
+ne vérifie que la signature ; `Webhooks.sign(body, secret)` construit un en-tête valide pour vos tests. Un récepteur
+complet avec le serveur HTTP du JDK : [`WebhookServer.java`](examples/src/main/java/cd/labyrinthe/connect/examples/WebhookServer.java).
+
+### Événements
+
+Chaque événement a `id()` (dédoublonnez dessus : les livraisons sont retentées jusqu'à 5 fois et peuvent arriver dans
+le désordre), `type()`, `eventType()` (`WebhookEventType`), `timestamp()` (`Instant`), `raw()` et un `data()` typé :
 
 | Classe | `type()` | `data()` |
 |---|---|---|
 | `MessageStatusChanged` | `message.status_changed` | `messageId`, `recipient`, `status`, `providerMessageId`, `campaignId`, `reference`, `errorCode`, `errorMessage` |
+| `OtpVerified` | `otp.verified` | `OtpEventData` : `otpId`, `phone`, `status` (`VERIFIED`), `reason` (vide), `verifiedAt` |
+| `OtpFailed` | `otp.failed` | `OtpEventData` : `status` `FAILED` (`reason` = `MAX_ATTEMPTS_REACHED`) ou `EXPIRED` (`reason` = `EXPIRED`) |
 | `CampaignCompleted` | `campaign.completed` | `campaignId`, `name`, `recipientsCount`, `messagesByStatus`, `creditsCharged`, `completedAt` |
 | `BalanceLow` | `balance.low` | `balance`, `threshold` |
-| `OtpVerified` | `otp.verified` | `OtpEventData` : `otpId`, `phone`, `status` (`VERIFIED`), `reason` (vide), `verifiedAt` |
-| `OtpFailed` | `otp.failed` | `OtpEventData` : `status` `FAILED` (`MAX_ATTEMPTS_REACHED`) ou `EXPIRED` (`EXPIRED`) |
 | `TestPing` | `test.ping` | `Map` (vide) |
-| `UnknownEvent` | type ajouté après cette version du SDK | `Map`, tel quel ; répondre 2xx |
+| `UnknownEvent` | un type ajouté après cette version du SDK | `Map`, tel quel ; répondez 2xx |
 
-Répondez `2xx` en moins de 10 secondes ; mettez le travail long en file. `Webhooks.sign(body, secret)` construit un
-en-tête valide pour vos tests. Récepteur complet avec le serveur HTTP du JDK :
-[`WebhookServer.java`](examples/src/main/java/cd/labyrinthe/connect/examples/WebhookServer.java).
-
-## Spring Boot
-
-```xml
-<dependency>
-  <groupId>cd.labyrinthe</groupId>
-  <artifactId>labyrinthe-connect-spring-boot-starter</artifactId>
-  <version>1.2.0</version>
-</dependency>
-```
-
-```properties
-labyrinthe.api-key=${LABYRINTHE_API_KEY}
-labyrinthe.webhook.secret=${LABYRINTHE_WEBHOOK_SECRET}
-# facultatif : labyrinthe.base-url, timeout=30s, max-retries=2, max-retry-wait=10s, default-country-code=243,
-#              default-sender, webhook.path=/webhooks/labyrinthe, webhook.tolerance=5m, webhook.enabled=true
-```
-
-```java
-@Service
-class Commandes {
-  private final LabyrintheClient labyrinthe;               // bean auto-configuré
-  Commandes(LabyrintheClient labyrinthe) { this.labyrinthe = labyrinthe; }
-
-  @EventListener                                            // les webhooks vérifiés sont des événements Spring
-  void onStatus(MessageStatusChanged event) { … }
-}
-```
-
-- Le bean `LabyrintheClient` est créé si `labyrinthe.api-key` (ou `LABYRINTHE_API_KEY`) est défini et que vous
-  n'avez pas déclaré le vôtre. Des beans `LabyrintheClientBuilderCustomizer` peuvent ajuster le builder.
-- Dans une application Spring MVC, `POST /webhooks/labyrinthe` est enregistré si `labyrinthe.webhook.secret` est
-  défini. Réponse `200 {"received":true}`, ou `400` (signature fausse, horodatage expiré, corps invalide). Les
-  événements sont publiés par `ApplicationEventPublisher.publishEvent(event)` : écoutez `WebhookEvent` ou une
-  sous-classe. Un écouteur qui lève une exception donne une `500`, et la livraison est retentée.
-- Avec Spring Security, excluez le point d'entrée du CSRF (`csrf.ignoringRequestMatchers("/webhooks/labyrinthe")`)
-  et autorisez-le : la signature tient lieu d'authentification.
-- Nécessite Spring Boot 3 et Java 17+. Exemple :
-  [`SpringBootExample.java`](examples/src/spring/java/cd/labyrinthe/connect/examples/spring/SpringBootExample.java).
+La hiérarchie est fermée (constructeurs package-private). Répondez `2xx` en moins de 10 secondes ; mettez les
+traitements longs en file d'attente.
 
 ## Erreurs
 
 Toutes les exceptions sont non vérifiées et héritent de `LabyrintheException`, avec `code()` (stable, pour votre
-code), `getMessage()`, `statusCode()` (statut HTTP, `0` sans réponse) et `details()`. Les erreurs de l'API héritent
-d'`ApiException` et exposent aussi `headers()`, `requestId()` (`X-Request-Id`, pour le support) et `apiVersion()`.
+code), `getMessage()` (en français, pour les humains), `statusCode()` (statut HTTP, `0` sans réponse) et `details()`.
+Les erreurs de l'API héritent d'`ApiException` et exposent aussi `headers()`, `requestId()` (`X-Request-Id`, à donner
+au support) et `apiVersion()`.
 
-| Exception | Quand |
-|---|---|
-| `AuthenticationException` | 401 — clé absente, invalide ou révoquée |
-| `PermissionException` | 403 — IP non autorisée (`FORBIDDEN`), OTP désactivé pour le compte (`OTP_DISABLED_FOR_ACCOUNT`) |
-| `AccountSuspendedException` | 403 `ACCOUNT_SUSPENDED` — hérite de `PermissionException` ; toute l'API est fermée |
-| `NotFoundException` | 404 — message ou `otpId` inconnu |
-| `ValidationException` | 422 `VALIDATION_ERROR` — `fieldErrors()` |
-| `RecipientNotSendableException` | 422 — `rejected()`, `reason()` ; rien n'a été envoyé |
-| `SenderIdNotApprovedException` | 422 — `sender` n'est pas un Sender ID approuvé |
-| `InvalidPhoneException` | 422 `INVALID_PHONE` (OTP) |
-| `InsufficientCreditsException` | 409 — `available()`, `required()` ; rien n'a été envoyé |
-| `IdempotencyKeyReusedException` | 409 — même clé, requête différente |
-| `IdempotencyRequestInProgressException` | 409 — requête d'origine encore en cours ; `retryAfter()`, relancer avec la même clé |
-| `IdempotencyKeyUnresolvedException` | 409 `IDEMPOTENCY_KEY_UNRESOLVED` — la requête d'origine a échoué, résultat inconnu (un SMS a pu partir) ; jamais relancée : vérifier, puis renvoyer avec une **nouvelle** clé |
-| `RateLimitException` | 429 `TOO_MANY_REQUESTS` — `retryAfter()` |
-| `OtpResendTooSoonException`, `OtpRateLimitedException` | 429 — héritent de `RateLimitException` (`retryAfter()`) ; `scope()`, `limit()` |
-| `ServiceUnavailableException` | 5xx |
-| `FeatureDisabledException` | 503 `FEATURE_DISABLED` (ou `OTP_SERVICE_DISABLED` sur `otp().send`) — hérite de `ServiceUnavailableException` ; coupé par la plateforme, rien n'a été fait ; `feature()`, `blockedBy()`, `adminMessage()`, `until()`, `retryAfter()` |
-| `ApiException` | tout autre code (liste ouverte : de nouveaux codes peuvent apparaître) |
-| `ApiConnectionException`, `ApiTimeoutException` | erreur réseau (`CONNECTION_ERROR`) ou délai dépassé (`TIMEOUT`) |
-| `InvalidArgumentException` | donnée invalide détectée par le SDK, avant tout appel (`INVALID_ARGUMENT`) |
-| `UnexpectedResponseException` | réponse illisible pour le SDK |
-| `SignatureVerificationException`, `InvalidWebhookPayloadException` | vérification de webhook (répondre 400) |
+| Exception | HTTP / code | Quand — accesseurs utiles |
+|---|---|---|
+| `AuthenticationException` | 401 `UNAUTHENTICATED` | Clé absente, invalide ou révoquée |
+| `PermissionException` | 403 `FORBIDDEN`, `OTP_DISABLED_FOR_ACCOUNT` | IP non autorisée pour cette clé, OTP désactivé pour le compte |
+| `AccountSuspendedException` | 403 `ACCOUNT_SUSPENDED` | Hérite de `PermissionException` ; toute l'API est fermée au compte |
+| `NotFoundException` | 404 `NOT_FOUND` | Message ou `otpId` inconnu, route inconnue |
+| `ValidationException` | 422 `VALIDATION_ERROR` | `fieldErrors()` (champ → messages) |
+| `RecipientNotSendableException` | 422 `RECIPIENT_NOT_SENDABLE` | `rejected()`, `reason()` ; rien n'est parti |
+| `SenderIdNotApprovedException` | 422 `SENDER_ID_NOT_APPROVED` | `sender` n'est pas un Sender ID approuvé |
+| `InvalidPhoneException` | 422 `INVALID_PHONE` | Numéro OTP refusé par l'API |
+| `InsufficientCreditsException` | 409 `INSUFFICIENT_CREDITS` | `available()`, `required()` (`OptionalLong`) ; rien n'est parti (jamais en mode test) |
+| `IdempotencyKeyReusedException` | 409 `IDEMPOTENCY_KEY_REUSED` | Même clé, requête différente |
+| `IdempotencyRequestInProgressException` | 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` | `retryAfter()` ; déjà relancée par le SDK |
+| `IdempotencyKeyUnresolvedException` | 409 `IDEMPOTENCY_KEY_UNRESOLVED` | Issue inconnue, un SMS a pu partir ; jamais relancée |
+| `RateLimitException` | 429 `TOO_MANY_REQUESTS` | `retryAfter()` |
+| `OtpResendTooSoonException`, `OtpRateLimitedException` | 429 | Héritent de `RateLimitException` ; `scope()`, `limit()` (plafond atteint) |
+| `FeatureDisabledException` | 503 `FEATURE_DISABLED`, `OTP_SERVICE_DISABLED` | Hérite de `ServiceUnavailableException` ; maintenance, rien n'a été fait ; `feature()`, `blockedBy()`, `adminMessage()`, `until()`, `retryAfter()` |
+| `ServiceUnavailableException` | autres 5xx | Panne temporaire de l'API |
+| `ApiException` | tout autre code | La liste est ouverte : de nouveaux codes peuvent apparaître |
+| `ApiConnectionException`, `ApiTimeoutException` | `CONNECTION_ERROR`, `TIMEOUT` | Erreur réseau, délai d'une tentative dépassé (`ApiTimeoutException` hérite d'`ApiConnectionException`) |
+| `InvalidArgumentException` | `INVALID_ARGUMENT` | Saisie invalide détectée par le SDK, avant tout appel |
+| `UnexpectedResponseException` | — | Une réponse que le SDK ne sait pas lire |
+| `SignatureVerificationException`, `InvalidWebhookPayloadException` | — | Vérification d'un webhook (répondre 400) |
+
+Attrapez les types les plus précis en premier :
+
+```java
+try {
+  client.sms().send("0812345678", "Bonjour");
+} catch (InsufficientCreditsException e) {
+  alertFinance(e.available().orElse(0), e.required().orElse(0));
+} catch (ValidationException e) {
+  e.fieldErrors().forEach((field, messages) -> log.warn("{} : {}", field, String.join(" ", messages)));
+} catch (ApiException e) {
+  log.error("Erreur Labyrinthe Connect {} (HTTP {}, requête {})", e.code(), e.statusCode(), e.requestId().orElse("?"));
+} catch (ApiConnectionException e) {
+  log.error("Labyrinthe Connect injoignable : {}", e.code());   // CONNECTION_ERROR ou TIMEOUT
+}
+```
 
 ### Maintenance (503 `FEATURE_DISABLED`)
 
 Un administrateur de la plateforme peut couper temporairement toute l'API (`blockedBy()` = `api`, toutes les routes,
-avant même la vérification de la clé) ou une fonction (`api.sms_send`, `api.otp_send`, `api.otp_verify`). Rien n'est
+même avant la vérification de la clé) ou une fonction : `api.sms_send` (`sms().send` / `sendMany`), `api.otp_send`
+(`otp().send`), `api.otp_verify` (`otp().verify`). Le service OTP entier coupé répond par le code historique
+`OTP_SERVICE_DISABLED` sur `otp().send()`, avec les mêmes détails (`feature()` = `blockedBy()` = `otp`). Rien n'est
 fait (aucun SMS, aucun débit). Le SDK ne relance que si une réactivation est programmée dans la limite de
-`maxRetryWait` (`Retry-After`), après exactement ce délai ; sinon il lève l'exception aussitôt. Ne relancez pas en
-boucle : mettez l'appel en file d'attente et prévenez l'utilisateur.
+`maxRetryWait` (`Retry-After`), en attendant exactement ce délai ; sinon il lève l'exception aussitôt. Ne relancez
+pas en boucle : mettez l'appel en file d'attente et prévenez l'utilisateur.
 
 ```java
 try {
   client.sms().send("0812345678", "Bonjour");
 } catch (FeatureDisabledException e) {
-  // e.feature() = "api.sms_send", e.blockedBy() = "api" quand toute l'API est coupée
-  String texte = e.adminMessage().orElse("L'envoi de SMS est momentanément indisponible.");
-  Duration attente = e.retryAfter().orElse(Duration.ofMinutes(15)); // until() donne la date, si connue
-  fileAttente.relancerPlusTard(commande, attente, texte);
+  // e.feature() = Optional[api.sms_send], e.blockedBy() = Optional[api] quand toute l'API est coupée
+  String text = e.adminMessage().orElse("L'envoi de SMS est temporairement indisponible.");
+  Instant retryAt = e.until().orElseGet(() -> Instant.now().plus(e.retryAfter().orElse(Duration.ofMinutes(15))));
+  outbox.retryAt(order, retryAt, text);   // votre file d'attente
 }
 ```
 
-## Relances et délais
+Chaque accesseur renvoie un `Optional` vide quand l'API n'envoie pas la valeur. Attrapez `FeatureDisabledException`
+avant `ServiceUnavailableException`.
 
-Le SDK relance automatiquement (par défaut 2 relances, backoff exponentiel 0,5 s → 1 s → 2 s avec jitter)
-**seulement quand un rejeu ne peut pas produire deux fois un effet** :
+## Relances et idempotence
+
+### Relances automatiques
+
+Le SDK relance automatiquement (par défaut : 2 relances, backoff exponentiel 0,5 s → 1 s → 2 s avec jitter, plafonné
+à 8 s) **uniquement quand un rejeu ne peut pas produire deux fois un effet** :
 
 | Requête | Erreur réseau / délai | 5xx | 429 `TOO_MANY_REQUESTS` | 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` | 503 `FEATURE_DISABLED` |
 |---|---|---|---|---|---|
-| `get`, `list`, `balance().get`, `senderIds().list`, `estimate` | relancée | relancée | relancée après `Retry-After` | — | seulement après `Retry-After` |
-| `send` / `sendMany` / `otp().send` (toujours avec `Idempotency-Key`) | relancée, même clé | relancée, même clé | relancée après `Retry-After` | relancée après `Retry-After`, même clé | seulement après `Retry-After`, même clé |
-| `otp().verify` | **jamais** | **jamais** | relancée (refusée avant traitement) | — | seulement après `Retry-After` (refusée avant traitement) |
+| `get`, `list`, `balance().get`, `senderIds().list`, `estimate` | relancée | relancée | après `Retry-After` | — | seulement après `Retry-After` |
+| `send` / `sendMany` / `otp().send` (toujours avec une `Idempotency-Key`) | relancée, même clé | relancée, même clé | après `Retry-After` | après `Retry-After`, même clé | seulement après `Retry-After`, même clé |
+| `otp().verify` | **jamais** | **jamais** | après `Retry-After` (refusée avant traitement) | — | seulement après `Retry-After` (refusée avant traitement) |
 
-Les erreurs métier (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`, 409 `IDEMPOTENCY_KEY_UNRESOLVED`) ne sont
-jamais relancées. Les 503 `FEATURE_DISABLED` et `OTP_SERVICE_DISABLED` ne sont jamais relancées avec un backoff à
-l'aveugle : seulement après `Retry-After` (envoyé quand une réactivation est programmée). Si l'API demande
-d'attendre plus que `maxRetryWait` (10 s par défaut), le SDK lève l'exception (`RateLimitException`,
-`FeatureDisabledException`…) au lieu d'attendre. Les
-redirections ne sont jamais suivies (un `HttpClient` personnalisé qui les suit est refusé).
+Les erreurs métier (autres 4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`, 409 `IDEMPOTENCY_KEY_UNRESOLVED`) ne sont
+jamais relancées. Quand l'API demande d'attendre plus que `maxRetryWait`, le SDK lève l'exception
+(`RateLimitException`, `FeatureDisabledException`…) au lieu d'attendre. Les redirections ne sont jamais suivies.
 
-Chaque méthode accepte un `RequestOptions` : un délai pour un appel, votre propre `X-Request-Id` (envoyé à chaque
-relance, repris par l'API dans ses journaux et ses réponses) et un rappel qui lit les en-têtes de la réponse :
+### Idempotence (pas de double envoi)
+
+Chaque envoi de SMS et d'OTP porte une `Idempotency-Key`. Si vous n'en donnez pas, le SDK génère un UUID aléatoire et
+le réutilise pour ses propres relances : une erreur réseau ne produit jamais de second SMS. Pour vous protéger aussi
+de **vos** relances (files de tâches, double clic, plantage), passez une clé dérivée de votre événement métier. Un
+rejeu dans les 24 heures renvoie le résultat d'origine sans nouvel envoi ni débit :
+
+```java
+MessageBatch batch = client.sms().sendMany(SendManySmsParams.builder()
+    .addRecipient("0812345678")
+    .body("Votre commande 1042 est prête.")
+    .idempotencyKey("commande-1042-prete")   // 255 caractères au maximum
+    .build());
+batch.replayed();   // true s'il s'agissait d'un rejeu
+```
+
+- La même clé avec un autre contenu : `IdempotencyKeyReusedException` (409). Les destinataires sont comparés après
+  normalisation (`0812345678` puis `243812345678` est un rejeu). `/sms` et `/otp/send` ont des espaces de clés séparés.
+- Requête d'origine encore en cours : l'API répond 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` ; le SDK attend
+  `Retry-After` et relance avec la même clé, puis lève `IdempotencyRequestInProgressException` (`retryAfter()`).
+- `IdempotencyKeyUnresolvedException` (409 `IDEMPOTENCY_KEY_UNRESOLVED`) : la requête d'origine a échoué de façon
+  inattendue côté API et son issue est inconnue : un SMS **a peut-être** été envoyé. Ni le SDK ni vous ne devez la
+  relancer automatiquement (la même clé renvoie toujours cette erreur ; une nouvelle clé pourrait envoyer deux fois).
+  Vérifiez d'abord (`sms().list()` avec la `reference` envoyée, ou demandez à l'utilisateur si le code est arrivé),
+  puis, seulement si rien n'est parti, renvoyez avec une **nouvelle** clé.
+
+```java
+try {
+  client.sms().send(params);
+} catch (IdempotencyKeyUnresolvedException e) {
+  Page<Message> sent = client.sms().list(ListSmsParams.builder().reference("commande-1042").build());
+  log.warn("Issue inconnue (requête {}), {} message(s) trouvé(s)", e.requestId().orElse("?"), sent.total());
+}
+```
+
+## Mode test, journalisation et sécurité
+
+### Mode test
+
+Une clé `lsk_test_…` utilise un fournisseur simulé : **rien n'est envoyé, aucun crédit n'est consommé**, les
+réponses ont la forme de la production. Deux différences : le solde n'est pas vérifié (pas
+d'`InsufficientCreditsException` en mode test) et `otp().send()` renvoie le code dans `testCode()`. Utilisez les clés
+de test en développement, en CI et dans les exemples ; vérifiez `client.isTestMode()` au démarrage si vous voulez
+refuser une clé live hors production.
+
+### Journalisation
+
+Le SDK journalise via `System.Logger`, nommé `cd.labyrinthe.connect` (dirigé vers `java.util.logging` par défaut, ou
+vers SLF4J / Log4j avec leur pont `System.Logger`, ex. `org.slf4j:slf4j-jdk-platform-logging`). Requêtes et réponses
+sont journalisées en `DEBUG`, les relances automatiques en `WARNING` — jamais la clé, un code, un corps ni un numéro
+complet (`24381*****78`). Les erreurs sont levées, pas journalisées. Avec Spring Boot et le pont SLF4J :
+`logging.level.cd.labyrinthe.connect=DEBUG`.
+
+### Sécurité
+
+- `client.toString()` affiche `lsk_test_****` ; les modèles masquent les numéros dans `toString()` ; `OtpSendResult`
+  exclut `testCode()` de `toString()` ; `LabyrintheProperties.toString()` masque la clé et le secret de webhook ; les
+  exceptions sont sérialisables sans leurs `details()`.
+- Les clés restent côté serveur ; injectez-les depuis des variables d'environnement ou un coffre, jamais depuis un
+  fichier versionné.
+- Webhooks : signature vérifiée en temps constant sur le corps brut, tolérance d'horodatage, dédoublonnage sur `id()`.
+
+### Identifiants de requête, délais par appel et en-têtes de réponse
+
+Chaque réponse porte `X-Request-Id` : `ApiException.requestId()` et `MessageBatch.requestId()` l'exposent. Chaque
+méthode accepte aussi un `RequestOptions` : un délai pour un appel, votre propre `X-Request-Id` (envoyé à chaque
+relance, renvoyé par l'API) et un callback qui lit les en-têtes de réponse (`ResponseInfo`) :
 
 ```java
 client.sms().send(params, RequestOptions.builder()
-    .timeout(Duration.ofSeconds(5))
+    .timeout(Duration.ofSeconds(5))                       // par tentative, pour cet appel seulement
     .requestId("commande-1042")                           // 1 à 128 caractères parmi A-Z a-z 0-9 . _ : -
-    .onResponse(info -> log.info("requête {} (API v{}), {} requêtes restantes",
-        info.requestId().orElse("?"), info.apiVersion().orElse("?"), info.rateLimitRemaining()))
+    .onResponse(info -> log.info("requête {} (API v{}), {} requêtes restantes, rejeu={}",
+        info.requestId().orElse("?"), info.apiVersion().orElse("?"),
+        info.rateLimitRemaining().orElse(-1), info.replayed()))
     .build());
+
+client.balance().get(RequestOptions.requestId("health-check-42"));   // raccourcis : RequestOptions.timeout(…), none()
 ```
 
-## Configuration
+### Délais
+
+`timeout` (builder, ou `RequestOptions` par appel) limite **chaque tentative** (la valeur du builder est aussi le
+délai de connexion) ; une tentative qui le dépasse lève `ApiTimeoutException` (et est relancée quand c'est sûr). La
+durée totale d'un appel vaut au plus `(maxRetries + 1)` tentatives plus les attentes entre elles. Avec l'API
+asynchrone, `future.orTimeout(…)` borne votre attente mais n'arrête pas un envoi déjà parti : renvoyez avec la
+**même** `idempotencyKey` pour connaître son issue sans double envoi.
+
+## Sans le package (HTTP brut)
+
+L'API est du JSON sur HTTPS ; le SDK est une commodité. Avec `java.net.http.HttpClient` seulement :
 
 ```java
-LabyrintheClient client = LabyrintheClient.builder()
-    .apiKey(System.getenv("LABYRINTHE_API_KEY"))   // par défaut : LABYRINTHE_API_KEY
-    .baseUrl("http://localhost:8000")              // par défaut : LABYRINTHE_BASE_URL, puis la production ; un hôte seul est complété
-    .timeout(Duration.ofSeconds(30))               // par tentative, aussi délai de connexion
-    .maxRetries(2)                                  // 0 désactive les relances (10 au plus)
-    .maxRetryWait(Duration.ofSeconds(10))          // plus long Retry-After accepté
-    .defaultCountryCode("243")                     // ajouté aux numéros locaux : 0812345678 → 243812345678
-    .defaultSender("MABOUTIQUE")                   // utilisé quand l'envoi n'en précise pas
-    .httpClient(monHttpClient)                     // votre propre client (ne doit pas suivre les redirections)
+HttpClient http = HttpClient.newHttpClient();
+HttpRequest request = HttpRequest.newBuilder(URI.create("https://api.labyrinthe-rdc.com/api/public/v1/sms"))
+    .timeout(Duration.ofSeconds(30))
+    .header("Authorization", "Bearer " + System.getenv("LABYRINTHE_API_KEY"))
+    .header("Content-Type", "application/json")
+    .header("Accept", "application/json")
+    .header("Idempotency-Key", UUID.randomUUID().toString())   // à conserver pour relancer sans risque
+    .POST(HttpRequest.BodyPublishers.ofString(
+        "{\"recipient\":\"+243812345678\",\"body\":\"Votre commande 1042 est prete.\",\"reference\":\"commande-1042\"}"))
     .build();
+
+HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+// 202 : {"data":[{"id":"…","recipient":"243812345678","status":"queued",…}]}
+// erreur : {"error":{"code":"…","message":"…","details":{}}}, avec X-Request-Id
 ```
 
-- **Journalisation** : `System.Logger` nommé `cd.labyrinthe.connect` (vers `java.util.logging` par défaut, ou vers
-  SLF4J/Log4j avec leur pont `System.Logger`, par ex. `org.slf4j:slf4j-jdk-platform-logging`). Requêtes et réponses
-  en `DEBUG`, relances automatiques en `WARNING` — jamais la clé, un code, un corps ni un numéro complet
-  (`24381*****78`). Les erreurs sont levées, pas journalisées.
-- `toString()` affiche `lsk_test_****` ; les modèles masquent les numéros dans `toString()`.
-- `PhoneNumbers.normalize("0812345678")` renvoie `Optional[243812345678]` avec les mêmes règles que l'API : sans
-  « + », 11 chiffres ou plus ne commençant pas par 0 sont déjà internationaux (`33612345678` reste `33612345678`) ;
-  utilisez le « + » pour un numéro étranger court. `isValid()` et `mask()` existent aussi. Les numéros internationaux ne sont jamais bloqués.
-  Les requêtes transmettent toujours le numéro au format E.164 avec le « + » (`+243812345678`) : un numéro
-  étranger court comme `+2481234567` garde son indicatif.
-- `User-Agent: labyrinthe-java/<version> Java/<version>` ; `Version.VERSION` donne la version du SDK.
+Signature de webhook sans le package : `Mac mac = Mac.getInstance("HmacSHA256"); mac.init(new
+SecretKeySpec(secret.getBytes(UTF_8), "HmacSHA256"));` puis comparez `"sha256=" + hex(mac.doFinal(rawBody))` à
+`X-Signature` avec `MessageDigest.isEqual`, et vérifiez que le `timestamp` de l'enveloppe (secondes Unix) est récent.
+Les relances, l'idempotence, la lecture des erreurs et le format des numéros sont alors à votre charge.
 
-## Développement
+Référence : la spécification OpenAPI [`openapi/openapi.yaml`](../openapi/openapi.yaml) (1.3.0), aussi servie par
+l'API sur `/api/public/openapi.yaml`.
+
+### Limites connues de l'API
+
+- Les points d'entrée de webhook se gèrent uniquement dans l'espace client (pas d'API).
+- `INSUFFICIENT_CREDITS` ne se reproduit pas avec une clé de test.
+- `estimate()` compte les numéros en liste noire ou désinscrits que `sendMany()` refuserait.
+- `list()` renvoie les messages de la clé appelante ; `get()` trouve n'importe quel message du compte.
+
+## Mise à jour
+
+Le SDK suit SemVer. Voir le [CHANGELOG](CHANGELOG.md) (en anglais).
+
+- **1.1.x → 1.2.0** (API 1.3.0) : nouvelle `FeatureDisabledException` (503 `FEATURE_DISABLED`).
+  `OTP_SERVICE_DISABLED` est désormais aussi une `FeatureDisabledException` (toujours une
+  `ServiceUnavailableException` : vos blocs `catch` existants fonctionnent encore). **Changement de comportement** :
+  `OTP_SERVICE_DISABLED` n'est plus relancé avec le backoff des 5xx ; les deux codes ne sont relancés qu'après un
+  `Retry-After` inférieur à `maxRetryWait`.
+- **1.1.0 → 1.1.1** : les numéros partent en E.164 avec `+` ; nouvelle `IdempotencyKeyUnresolvedException`.
+- **1.0.x → 1.1.0** (API 1.2.0) : `RequestOptions` / `ResponseInfo`, `otp().send()` idempotent et relancé,
+  `stripAccents`, `webOtpDomain`, événements `otp.verified` / `otp.failed`. Sans `+`, 11 chiffres ou plus ne
+  commençant pas par 0 sont désormais lus comme internationaux.
+
+## Contribuer
+
+Les issues et pull requests vont dans le [monorepo](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks) ;
+lisez d'abord [CONTRIBUTING.md](../CONTRIBUTING.md). Depuis `java/` :
 
 ```bash
 ./mvnw verify                 # tests unitaires + contrat OpenAPI, -Xlint:all -Werror, Spotless, SpotBugs, Javadoc
 ./mvnw spotless:apply         # formatage (google-java-format, JDK 17+)
+./mvnw -q -pl examples -am verify -DskipTests   # construire seulement les exemples
 
 # tests d'intégration contre un backend local, avec une clé de TEST uniquement
 LABYRINTHE_API_KEY=lsk_test_… LABYRINTHE_BASE_URL=http://localhost:8000 ./mvnw verify -Pintegration
 ```
+
+Modules : `core/` (`labyrinthe-connect`, Java 11), `spring-boot-starter/` (Java 17), `examples/` (compilés à chaque
+build, jamais publiés) : [`SendSms`](examples/src/main/java/cd/labyrinthe/connect/examples/SendSms.java),
+[`OtpLogin`](examples/src/main/java/cd/labyrinthe/connect/examples/OtpLogin.java),
+[`WebhookServer`](examples/src/main/java/cd/labyrinthe/connect/examples/WebhookServer.java) et
+[`SpringBootExample`](examples/src/spring/java/cd/labyrinthe/connect/examples/spring/SpringBootExample.java). Sur un
+JDK 11, seuls `core` et les exemples Java simples sont construits. Failles de sécurité : connect@labyrinthe-rdc.com
+plutôt qu'une issue publique.
 
 ## Licence
 
