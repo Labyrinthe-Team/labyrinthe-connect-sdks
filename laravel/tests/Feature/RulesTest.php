@@ -39,6 +39,20 @@ final class RulesTest extends TestCase
         self::assertSame('Le champ code est incorrect.', $validator->errors()->first('code'));
     }
 
+    public function test_valid_otp_can_mention_the_attempts_remaining(): void
+    {
+        Labyrinthe::fake()->withOtpCode('111111')->withOtpMaxAttempts(4);
+        $otp = Labyrinthe::otp()->send('0812345678');
+        $check = static fn (ValidOtp $rule): string => (string) Validator::make(['code' => '222222'], ['code' => [$rule]])->errors()->first('code');
+
+        self::assertSame('The code field is incorrect. 3 attempts remaining.', $check(ValidOtp::withAttemptsRemaining($otp->otpId)));
+        app()->setLocale('fr');
+        self::assertSame('Le champ code est incorrect. Encore 2 tentatives.', $check(new ValidOtp($otp->otpId, showAttemptsRemaining: true)));
+        self::assertSame('Le champ code est incorrect. Encore 1 tentative.', $check(ValidOtp::withAttemptsRemaining($otp->otpId)));
+        app()->setLocale('en');
+        self::assertSame('Too many incorrect attempts. Please request a new code.', $check(ValidOtp::withAttemptsRemaining($otp->otpId)));
+    }
+
     public function test_valid_otp_reports_already_used_codes(): void
     {
         $fake = Labyrinthe::fake();

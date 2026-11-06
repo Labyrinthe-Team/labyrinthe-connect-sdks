@@ -5,7 +5,11 @@ declare(strict_types=1);
 namespace Labyrinthe\Connect\Laravel\Tests\Feature;
 
 use Labyrinthe\Connect\Client;
+use Labyrinthe\Connect\Enum\Encoding;
+use Labyrinthe\Connect\Enum\OtpCodeType;
 use Labyrinthe\Connect\Enum\OtpFailureReason;
+use Labyrinthe\Connect\Exception\IdempotencyKeyReusedException;
+use Labyrinthe\Connect\Exception\IdempotencyKeyUnresolvedException;
 use Labyrinthe\Connect\Exception\InsufficientCreditsException;
 use Labyrinthe\Connect\Exception\SenderIdNotApprovedException;
 use Labyrinthe\Connect\Laravel\Facades\Labyrinthe;
@@ -128,6 +132,32 @@ final class FakeTest extends TestCase
         self::assertSame('en', $fake->otps()[1]->locale);
     }
 
+    public function test_an_unresolved_idempotency_key_is_never_retried(): void
+    {
+        $fake = Labyrinthe::fake()->failNextRequest('IDEMPOTENCY_KEY_UNRESOLVED', 409);
+
+        try {
+            Labyrinthe::otp()->send('0812345678', idempotencyKey: 'signup-1');
+            self::fail('IdempotencyKeyUnresolvedException expected.');
+        } catch (IdempotencyKeyUnresolvedException $e) {
+            self::assertSame(409, $e->getStatusCode());
+        }
+        // A retry would have reached the fake and recorded a code.
+        $fake->assertNoOtpSent();
+
+        $fake->failNextRequest('IDEMPOTENCY_KEY_UNRESOLVED', 409);
+        try {
+            Labyrinthe::send('0812345678', 'Hello');
+            self::fail('IdempotencyKeyUnresolvedException expected.');
+        } catch (IdempotencyKeyUnresolvedException) {
+        }
+        $fake->assertNothingSent();
+
+        // The next send with a new key goes through.
+        Labyrinthe::otp()->send('0812345678', idempotencyKey: 'signup-2');
+        $fake->assertOtpSent('0812345678');
+    }
+
     public function test_simulated_errors_are_typed(): void
     {
         $fake = Labyrinthe::fake()->failNextRequest('INSUFFICIENT_CREDITS', 409, ['available' => 0, 'required' => 1]);
@@ -162,5 +192,84 @@ final class FakeTest extends TestCase
         Labyrinthe::otp()->send('0812345678');
 
         self::assertStringNotContainsString('987654', print_r($fake->otps()[0], true));
+    }
+
+    public function test_otp_results_have_the_1_2_fields(): void
+    {
+        Labyrinthe::fake()->withOtpCode('AB12CD')->withOtpMaxAttempts(2)->withOtpResendAfter(30);
+
+        $otp = Labyrinthe::otp()->send('0812345678');
+        self::assertSame(6, $otp->codeLength);
+        self::assertSame(OtpCodeType::Alphanumeric, $otp->codeType);
+        self::assertSame(30, $otp->resendAfterSeconds);
+        self::assertSame(2, $otp->maxAttempts);
+        self::assertNotNull($otp->idempotencyKey);
+
+        $wrong = Labyrinthe::otp()->verify($otp->otpId, 'ZZZZZZ');
+        self::assertSame(OtpFailureReason::InvalidCode, $wrong->reason);
+        self::assertSame(1, $wrong->attemptsRemaining);
+
+        $last = Labyrinthe::otp()->verify($otp->otpId, 'ZZZZZZ');
+        self::assertSame(OtpFailureReason::MaxAttemptsReached, $last->reason);
+        self::assertSame(0, $last->attemptsRemaining);
+
+        $digits = Labyrinthe::fake()->withOtpCode('1234');
+        $numeric = Labyrinthe::otp()->send('0899999999');
+        self::assertSame(OtpCodeType::Numeric, $numeric->codeType);
+        self::assertSame(4, $numeric->codeLength);
+        self::assertNull(Labyrinthe::otp()->verify($numeric->otpId, '1234')->attemptsRemaining);
+        self::assertCount(1, $digits->otps());
+    }
+
+    public function test_otp_sends_are_idempotent_like_the_api(): void
+    {
+        $fake = Labyrinthe::fake();
+
+        $first = Labyrinthe::otp()->send('0812345678', idempotencyKey: 'signup-1', webOtpDomain: 'App.Example.com', stripAccents: true);
+        $replay = Labyrinthe::otp()->send('+243812345678', idempotencyKey: 'signup-1', webOtpDomain: 'app.example.com', stripAccents: true);
+
+        self::assertFalse($first->replayed);
+        self::assertTrue($replay->replayed);
+        self::assertSame($first->otpId, $replay->otpId);
+        self::assertCount(1, $fake->otps(), 'A replay sends no new SMS.');
+        self::assertSame('app.example.com', $fake->otps()[0]->webOtpDomain);
+        self::assertTrue($fake->otps()[0]->stripAccents);
+        self::assertSame('signup-1', $fake->otps()[0]->idempotencyKey);
+
+        $this->expectException(IdempotencyKeyReusedException::class);
+        Labyrinthe::otp()->send('0899999999', idempotencyKey: 'signup-1');
+    }
+
+    public function test_otp_defaults_for_web_otp_and_strip_accents_come_from_config(): void
+    {
+        config()->set('labyrinthe.otp.web_otp_domain', 'app.example.com');
+        config()->set('labyrinthe.otp.strip_accents', true);
+        $fake = Labyrinthe::fake();
+
+        Labyrinthe::otp()->send('0812345678');
+        Labyrinthe::otp()->send('0899999999', stripAccents: false);
+
+        self::assertSame('app.example.com', $fake->otps()[0]->webOtpDomain);
+        self::assertTrue($fake->otps()[0]->stripAccents);
+        self::assertFalse($fake->otps()[1]->stripAccents);
+    }
+
+    public function test_strip_accents_and_normalised_idempotency_for_sms(): void
+    {
+        $fake = Labyrinthe::fake();
+
+        self::assertSame(Encoding::Gsm7, Labyrinthe::sms()->estimate('Réunion à 9h', ['0812345678', '243812345678'], stripAccents: true)->encoding);
+        self::assertSame(1, Labyrinthe::sms()->estimate('Réunion', ['0812345678', '+243812345678'])->recipientsCount, 'Duplicates are merged.');
+
+        $message = Labyrinthe::sms()->send('0812345678', 'Réunion à 9h', idempotencyKey: 'k-1', stripAccents: true);
+        self::assertSame(Encoding::Gsm7, $message->encoding);
+        self::assertTrue($fake->sent()[0]->stripAccents);
+
+        // Same number in another format, same key: a replay (fingerprint after normalisation).
+        $replay = Labyrinthe::sms()->sendMany(['243812345678'], 'Réunion à 9h', idempotencyKey: 'k-1', stripAccents: true);
+        self::assertTrue($replay->replayed);
+        Labyrinthe::assertSmsSentCount(1);
+
+        self::assertSame('33612345678', Labyrinthe::sms()->send('33612345678', 'Hello')->recipient, 'Foreign numbers without + are kept.');
     }
 }

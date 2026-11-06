@@ -10,9 +10,13 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
 use Labyrinthe\Connect\Enum\MessageStatus;
+use Labyrinthe\Connect\Enum\OtpFailureReason;
+use Labyrinthe\Connect\Enum\OtpWebhookStatus;
 use Labyrinthe\Connect\Laravel\Events\BalanceLow;
 use Labyrinthe\Connect\Laravel\Events\CampaignCompleted;
 use Labyrinthe\Connect\Laravel\Events\MessageStatusChanged;
+use Labyrinthe\Connect\Laravel\Events\OtpFailed;
+use Labyrinthe\Connect\Laravel\Events\OtpVerified;
 use Labyrinthe\Connect\Laravel\Events\WebhookReceived;
 use Labyrinthe\Connect\Laravel\LabyrintheServiceProvider;
 use Labyrinthe\Connect\Laravel\Tests\TestCase;
@@ -21,7 +25,7 @@ use Labyrinthe\Connect\Webhook\Webhook;
 
 final class WebhookControllerTest extends TestCase
 {
-    private const EVENTS = [WebhookReceived::class, MessageStatusChanged::class, CampaignCompleted::class, BalanceLow::class];
+    private const EVENTS = [WebhookReceived::class, MessageStatusChanged::class, CampaignCompleted::class, BalanceLow::class, OtpVerified::class, OtpFailed::class];
 
     protected function defineRoutes($router): void
     {
@@ -95,16 +99,41 @@ final class WebhookControllerTest extends TestCase
         Event::assertDispatched(BalanceLow::class, static fn (BalanceLow $e): bool => $e->event->balance === 9);
     }
 
+    public function test_otp_events(): void
+    {
+        Event::fake(self::EVENTS);
+
+        $this->deliver(self::body('otp.verified', [
+            'otp_id' => 'otp-1', 'phone' => '243812345678', 'status' => 'verified', 'reason' => null, 'verified_at' => '2026-11-06T09:41:02+00:00',
+        ], id: 'evt-ov'))->assertOk();
+        $this->deliver(self::body('otp.failed', [
+            'otp_id' => 'otp-2', 'phone' => '243812345678', 'status' => 'failed', 'reason' => 'max_attempts_reached', 'verified_at' => null,
+        ], id: 'evt-of'))->assertOk();
+        $this->deliver(self::body('message.status_changed', [
+            'message_id' => 'm-1', 'recipient' => '243812345678', 'status' => 'failed', 'provider_message_id' => null,
+            'campaign_id' => null, 'reference' => 'CMD-1', 'error_code' => 'E1', 'error_message' => 'Refusé',
+        ], id: 'evt-ms'))->assertOk();
+
+        Event::assertDispatched(OtpVerified::class, static fn (OtpVerified $e): bool => $e->event->otpId === 'otp-1'
+            && $e->event->status === OtpWebhookStatus::Verified && $e->event->verifiedAt !== null);
+        Event::assertDispatched(OtpFailed::class, static fn (OtpFailed $e): bool => $e->event->otpId === 'otp-2'
+            && $e->event->reason === OtpFailureReason::MaxAttemptsReached);
+        Event::assertDispatched(MessageStatusChanged::class, static fn (MessageStatusChanged $e): bool => $e->event->reference === 'CMD-1'
+            && $e->event->errorCode === 'E1');
+        Event::assertDispatchedTimes(WebhookReceived::class, 3);
+    }
+
     public function test_unknown_and_test_events_only_dispatch_webhook_received(): void
     {
         Event::fake(self::EVENTS);
 
-        $this->deliver(self::body('otp.verified', ['otp_id' => 'x'], id: 'evt-u'))->assertOk();
+        $this->deliver(self::body('contact.opted_out', ['phone' => 'x'], id: 'evt-u'))->assertOk();
         $this->deliver(self::body('test.ping', [], id: 'evt-t'))->assertOk();
 
         Event::assertDispatchedTimes(WebhookReceived::class, 2);
         Event::assertDispatched(WebhookReceived::class, static fn (WebhookReceived $e): bool => $e->event instanceof UnknownEvent);
         Event::assertNotDispatched(MessageStatusChanged::class);
+        Event::assertNotDispatched(OtpVerified::class);
     }
 
     public function test_an_invalid_signature_is_rejected_with_400(): void

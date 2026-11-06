@@ -57,6 +57,31 @@ final class NotificationChannelTest extends TestCase
         self::assertSame(['243812345678', '243899999999'], $fake->sent()[0]->recipients);
     }
 
+    public function test_strip_accents_is_passed_to_the_api(): void
+    {
+        $fake = Labyrinthe::fake();
+        $notification = new class extends \Illuminate\Notifications\Notification {
+            /**
+             * @return list<string>
+             */
+            public function via(mixed $notifiable): array
+            {
+                return ['labyrinthe'];
+            }
+
+            public function toLabyrinthe(mixed $notifiable): \Labyrinthe\Connect\Laravel\Notifications\LabyrintheMessage
+            {
+                return \Labyrinthe\Connect\Laravel\Notifications\LabyrintheMessage::create('Votre réservation est confirmée.')->stripAccents();
+            }
+        };
+
+        (new User('0812345678'))->notify($notification);
+
+        self::assertTrue($fake->sent()[0]->stripAccents);
+        self::assertSame('Votre réservation est confirmée.', $fake->sent()[0]->body);
+        self::assertFalse(\Labyrinthe\Connect\Laravel\Notifications\LabyrintheMessage::create('x')->getStripAccents());
+    }
+
     public function test_the_idempotency_key_comes_from_the_notification_id(): void
     {
         $fake = Labyrinthe::fake();
