@@ -11,7 +11,9 @@ export const otp = createOtpHandlers({
   client: () => new Labyrinthe(), // créé au premier appel, pas au build
   secret: process.env['LABYRINTHE_OTP_SECRET'] ?? '',
   cookie: { path: '/api/otp' }, // le cookie n'est envoyé qu'aux deux routes OTP
-  resendAfterSeconds: 60,
+  // Longueur, alphabet du code et délai de renvoi : fournis par l'API (paramètres OTP du compte).
+  // Web OTP API (Chrome Android) : hôte de la page, ex. 'maboutique.cd'.
+  ...(process.env['WEB_OTP_DOMAIN'] ? { webOtpDomain: process.env['WEB_OTP_DOMAIN'] } : {}),
   exposeTestCode: process.env['NODE_ENV'] === 'development' && process.env['SHOW_TEST_CODE'] === '1',
   beforeSend: ({ request }) => {
     // Your anti-abuse checks: rate limit per IP (e.g. Upstash), captcha token…

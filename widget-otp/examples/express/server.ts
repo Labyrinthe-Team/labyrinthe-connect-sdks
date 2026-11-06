@@ -28,8 +28,9 @@ function underIpLimit(ip: string): boolean {
 const otp = createOtpHandlers({
   client: new Labyrinthe(), // LABYRINTHE_API_KEY (lsk_test_…: nothing is sent, nothing is billed)
   secret: process.env['LABYRINTHE_OTP_SECRET'] ?? '',
-  resendAfterSeconds: 60, // = anti-resend delay of your account's OTP settings
-  codeLength: 6,
+  // Code length / alphabet and resend delay come from the API (account's OTP settings).
+  // Web OTP API (Chrome on Android): the host serving this page, e.g. 'shop.example.com'.
+  ...(process.env['WEB_OTP_DOMAIN'] ? { webOtpDomain: process.env['WEB_OTP_DOMAIN'] } : {}),
   // Development only: shows the test code in the widget (refused when NODE_ENV=production).
   exposeTestCode: process.env['SHOW_TEST_CODE'] === '1',
   beforeSend: ({ request }) => underIpLimit((request as Request).ip ?? 'unknown'),
