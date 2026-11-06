@@ -335,6 +335,77 @@ public class RetryTests
         Assert.Single(mock.Requests);
     }
 
+    [Theory]
+    [InlineData("FEATURE_DISABLED")]
+    [InlineData("OTP_SERVICE_DISABLED")]
+    public async Task Never_retries_a_disabled_feature_without_retry_after(string code)
+    {
+        // Pas de date de retour : aucun backoff aveugle, même pour une requête sûre.
+        using var h = new Harness(o => o.MaxRetries = 4);
+        h.Http.Error(503, code, """{"feature":"api","blocked_by":"api","message":null,"until":null}""").Error(503, code);
+        await Assert.ThrowsAsync<FeatureDisabledException>(() => h.Client.Balance.GetAsync());
+        await Assert.ThrowsAsync<FeatureDisabledException>(() => h.Client.Sms.SendAsync("0812345678", "x"));
+        Assert.Equal(2, h.Requests.Count);
+        Assert.Empty(h.Sleeps);
+    }
+
+    [Theory]
+    [InlineData("balance")]
+    [InlineData("sms")]
+    [InlineData("otp-send")]
+    [InlineData("otp-verify")]
+    public async Task Retries_a_disabled_feature_after_retry_after_in_every_mode(string operation)
+    {
+        using var h = new Harness(o => o.MaxRetryWait = TimeSpan.FromSeconds(10));
+        var (status, body) = operation switch
+        {
+            "balance" => (200, Fixtures.Balance),
+            "sms" => (202, Fixtures.Messages(Fixtures.Message())),
+            "otp-send" => (201, Fixtures.OtpSent),
+            _ => (200, Fixtures.Verified),
+        };
+        h.Http.Error(503, "FEATURE_DISABLED", """{"feature":"api","blocked_by":"api","message":null,"until":"2026-11-06T10:00:07+00:00"}""", ("Retry-After", "7"))
+            .Json(status, body);
+
+        await (operation switch
+        {
+            "balance" => h.Client.Balance.GetAsync(),
+            "sms" => h.Client.Sms.SendAsync("0812345678", "x"),
+            "otp-send" => h.Client.Otp.SendAsync("0812345678"),
+            _ => (Task)h.Client.Otp.VerifyAsync("otp-1", "123456"),
+        });
+
+        Assert.Equal(2, h.Requests.Count);
+        Assert.Equal(TimeSpan.FromSeconds(7), Assert.Single(h.Sleeps));
+        Assert.Equal(h.Requests[0].Header("Idempotency-Key"), h.Requests[1].Header("Idempotency-Key"));
+    }
+
+    [Fact]
+    public async Task Gives_up_on_a_disabled_feature_when_retry_after_exceeds_max_retry_wait_or_retries_run_out()
+    {
+        using var h = new Harness(o => o.MaxRetryWait = TimeSpan.FromSeconds(10));
+        h.Http.Error(503, "FEATURE_DISABLED", headers: ("Retry-After", "11"));
+        var error = await Assert.ThrowsAsync<FeatureDisabledException>(() => h.Client.Otp.VerifyAsync("otp-1", "123456"));
+        Assert.Equal(TimeSpan.FromSeconds(11), error.RetryAfter);
+        Assert.Single(h.Requests);
+        Assert.Empty(h.Sleeps);
+
+        using var limited = new Harness(o => o.MaxRetries = 1);
+        limited.Http.Repeat(2, m => m.Error(503, "OTP_SERVICE_DISABLED", headers: ("Retry-After", "2")));
+        await Assert.ThrowsAsync<FeatureDisabledException>(() => limited.Client.Otp.SendAsync("0812345678"));
+        Assert.Equal(2, limited.Requests.Count);
+        Assert.Equal(TimeSpan.FromSeconds(2), Assert.Single(limited.Sleeps));
+    }
+
+    [Fact]
+    public async Task Otp_verify_still_never_retries_another_503()
+    {
+        using var h = new Harness();
+        h.Http.Error(503, "HTTP_ERROR", headers: ("Retry-After", "1"));
+        await Assert.ThrowsAsync<ServiceUnavailableException>(() => h.Client.Otp.VerifyAsync("otp-1", "123456"));
+        Assert.Single(h.Requests);
+    }
+
     private static Task Otp(Harness h, string operation) =>
         operation == "send" ? h.Client.Otp.SendAsync("0812345678") : h.Client.Otp.VerifyAsync("otp-1", "123456");
 }

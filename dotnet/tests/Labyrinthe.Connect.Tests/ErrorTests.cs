@@ -24,7 +24,8 @@ public class ErrorTests
     [InlineData(429, "TOO_MANY_REQUESTS", typeof(RateLimitException))]
     [InlineData(429, "OTP_RESEND_TOO_SOON", typeof(OtpResendTooSoonException))]
     [InlineData(429, "OTP_RATE_LIMITED", typeof(OtpRateLimitedException))]
-    [InlineData(503, "OTP_SERVICE_DISABLED", typeof(ServiceUnavailableException))]
+    [InlineData(503, "OTP_SERVICE_DISABLED", typeof(FeatureDisabledException))]
+    [InlineData(503, "FEATURE_DISABLED", typeof(FeatureDisabledException))]
     [InlineData(418, "BRAND_NEW_CODE", typeof(ApiException))]
     [InlineData(401, "BRAND_NEW_CODE", typeof(AuthenticationException))]
     [InlineData(403, "BRAND_NEW_CODE", typeof(PermissionException))]
@@ -105,6 +106,62 @@ public class ErrorTests
         h.Http.Error(429, "TOO_MANY_REQUESTS", """{"retry_after_seconds":30}""", ("Retry-After", "12")).Error(429, "TOO_MANY_REQUESTS", """{"retry_after_seconds":30}""");
         Assert.Equal(TimeSpan.FromSeconds(12), (await Assert.ThrowsAsync<RateLimitException>(() => h.Client.Balance.GetAsync())).RetryAfter);
         Assert.Equal(TimeSpan.FromSeconds(30), (await Assert.ThrowsAsync<RateLimitException>(() => h.Client.Balance.GetAsync())).RetryAfter);
+    }
+
+    [Theory]
+    [InlineData("FEATURE_DISABLED", "api.sms_send", "api")]
+    [InlineData("OTP_SERVICE_DISABLED", "otp", "otp")]
+    public async Task Exposes_the_details_of_a_disabled_feature(string code, string feature, string blockedBy)
+    {
+        using var h = new Harness(o => o.MaxRetries = 0);
+        h.Http.Error(
+            503,
+            code,
+            $$"""{"feature":"{{feature}}","blocked_by":"{{blockedBy}}","message":"Maintenance jusqu'à 10 h.","until":"2026-11-06T10:00:00+00:00"}""",
+            ("Retry-After", "1800"),
+            ("X-Request-Id", "req-off"));
+
+        var error = await Assert.ThrowsAsync<FeatureDisabledException>(() => h.Client.Sms.SendAsync("0812345678", "x"));
+
+        Assert.IsAssignableFrom<ServiceUnavailableException>(error);
+        Assert.Equal((code, 503, "req-off"), (error.Code, error.StatusCode!.Value, error.RequestId!));
+        Assert.Equal(feature, error.Feature);
+        Assert.Equal(blockedBy, error.BlockedBy);
+        Assert.Equal("Maintenance jusqu'à 10 h.", error.AdminMessage);
+        Assert.Equal(new DateTimeOffset(2026, 11, 6, 10, 0, 0, TimeSpan.Zero), error.Until);
+        Assert.Equal(TimeSpan.FromMinutes(30), error.RetryAfter);
+        Assert.Empty(h.Sleeps);
+    }
+
+    [Theory]
+    [InlineData("{}", null)]
+    [InlineData("[]", null)]
+    [InlineData("""{"feature":"api","blocked_by":"api","message":null,"until":null}""", "api")]
+    [InlineData("""{"feature":42,"blocked_by":["api"],"message":{"x":1},"until":"demain"}""", null)]
+    [InlineData("""{"until":12}""", null)]
+    public async Task Tolerates_missing_or_malformed_details_of_a_disabled_feature(string details, string? feature)
+    {
+        using var h = new Harness(o => o.MaxRetries = 0);
+        h.Http.Error(503, "FEATURE_DISABLED", details);
+
+        var error = await Assert.ThrowsAsync<FeatureDisabledException>(() => h.Client.Balance.GetAsync());
+
+        Assert.Equal("FEATURE_DISABLED", error.Code);
+        Assert.Equal("Erreur FEATURE_DISABLED.", error.Message);
+        Assert.Equal(feature, error.Feature);
+        Assert.Equal(feature, error.BlockedBy);
+        Assert.Null(error.AdminMessage);
+        Assert.Null(error.Until);
+        Assert.Null(error.RetryAfter);
+    }
+
+    [Fact]
+    public async Task A_503_without_a_code_is_not_a_disabled_feature()
+    {
+        using var h = new Harness(o => o.MaxRetries = 0);
+        h.Http.Json(503, "");
+        var error = await Assert.ThrowsAsync<ServiceUnavailableException>(() => h.Client.Balance.GetAsync());
+        Assert.Equal("HTTP_ERROR", error.Code);
     }
 
     [Theory]

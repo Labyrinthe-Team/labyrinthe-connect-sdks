@@ -21,7 +21,7 @@ public class ContractTests
     private static Spec S => Spec.Current ?? throw new InvalidOperationException("openapi/openapi.yaml not found");
 
     [SpecFact]
-    public void Targets_spec_1_2_0() => Assert.Equal("1.2.0", S.At("info", "version").GetValue<string>());
+    public void Targets_spec_1_3_0() => Assert.Equal("1.3.0", S.At("info", "version").GetValue<string>());
 
     [SpecFact]
     public void Every_response_documents_the_request_id_and_api_version_headers()
@@ -99,6 +99,20 @@ public class ContractTests
         // Codes sans classe dédiée : ApiException générique.
         var generic = new HashSet<string>(StringComparer.Ordinal) { "HTTP_ERROR", "INVALID_OTP_TEMPLATE" };
         Assert.Equal(documented.Except(generic).OrderBy(c => c, StringComparer.Ordinal), Mapping.ErrorTypesByCode.Keys.OrderBy(c => c, StringComparer.Ordinal));
+    }
+
+    [SpecFact]
+    public void Reads_the_details_of_a_disabled_feature_documented_by_the_spec()
+    {
+        static string[] Values(JsonNode node) => node.AsArray().Select(v => v!.GetValue<string>()).OrderBy(v => v, StringComparer.Ordinal).ToArray();
+        var error = S.Schema("FeatureDisabledError")["allOf"]![1]!["properties"]!["error"]!["properties"]!;
+        var codes = Values(error["code"]!["enum"]!);
+        Assert.Equal(new[] { "FEATURE_DISABLED", "OTP_SERVICE_DISABLED" }, codes);
+        Assert.All(codes, code => Assert.Equal(typeof(FeatureDisabledException), Mapping.ErrorTypesByCode[code]));
+        Assert.Equal(new[] { "blocked_by", "feature", "message", "until" }, Values(error["details"]!["required"]!));
+        Assert.Equal(
+            "#/components/headers/Retry-After-Feature",
+            S.At("components", "responses", "ServiceUnavailable", "headers", "Retry-After", "$ref").GetValue<string>());
     }
 
     [SpecFact]

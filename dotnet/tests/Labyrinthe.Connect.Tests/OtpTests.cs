@@ -182,7 +182,8 @@ public class OtpTests
         Assert.Equal(100, limited.Limit);
         Assert.Equal(TimeSpan.FromMinutes(30), limited.RetryAfter);
         Assert.IsAssignableFrom<RateLimitException>(limited);
-        await Assert.ThrowsAsync<ServiceUnavailableException>(() => h.Client.Otp.SendAsync("0812345678"));
+        var off = await Assert.ThrowsAsync<FeatureDisabledException>(() => h.Client.Otp.SendAsync("0812345678"));
+        Assert.Equal("OTP_SERVICE_DISABLED", off.Code);
         var disabled = await Assert.ThrowsAsync<PermissionException>(() => h.Client.Otp.SendAsync("0812345678"));
         Assert.Equal("OTP_DISABLED_FOR_ACCOUNT", disabled.Code);
         var suspended = await Assert.ThrowsAsync<AccountSuspendedException>(() => h.Client.Otp.SendAsync("0812345678"));
