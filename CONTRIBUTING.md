@@ -65,13 +65,13 @@ member of the `@labyrinthe` npm organisation, stored in the `npm` environment of
 published with `npm publish --provenance --access public` (provenance requires a public repository).
 
 `python-release.yml` needs no secret: it publishes with PyPI Trusted Publishing (OIDC). Register it once as a
-trusted publisher of the `labyrinthe-connect` project on PyPI (owner `labyrinthe-rdc`, repository
+trusted publisher of the `labyrinthe-connect` project on PyPI (owner `Labyrinthe-Team`, repository
 `labyrinthe-connect-sdks`, workflow `python-release.yml`, environment `pypi`) and create the `pypi` environment in
 this repository (required reviewers recommended). Pinned dev tools live in `python/requirements-dev.txt` (universal
 lock, regenerated from `requirements-dev.in` with `uv pip compile --universal`).
 
 `dotnet-release.yml` publishes with NuGet Trusted Publishing (OIDC, `NuGet/login`): add a trusted publishing policy
-on nuget.org (repository `labyrinthe-rdc/labyrinthe-connect-sdks`, workflow `dotnet-release.yml`, environment
+on nuget.org (repository `Labyrinthe-Team/labyrinthe-connect-sdks`, workflow `dotnet-release.yml`, environment
 `nuget`), set the repository variable `NUGET_USER` to the owning nuget.org profile and create the `nuget`
 environment. Fallback: a push-only `NUGET_API_KEY` secret in that environment (used when present). Reserve the
 `Labyrinthe` ID prefix on nuget.org before the first release.
