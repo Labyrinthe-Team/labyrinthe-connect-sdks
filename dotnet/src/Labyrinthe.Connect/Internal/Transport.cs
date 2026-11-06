@@ -22,7 +22,9 @@ namespace Labyrinthe.Connect.Internal;
 /// <item><see cref="ThrottledOnly"/> : POST /otp/verify. Relancée seulement sur 429 TOO_MANY_REQUESTS (refusée avant
 /// traitement), jamais sur erreur réseau ni 5xx (risque d'une tentative consommée).</item>
 /// </list>
-/// Les limites métier (OTP_RESEND_TOO_SOON, OTP_RATE_LIMITED) ne sont jamais relancées.
+/// Les limites métier (OTP_RESEND_TOO_SOON, OTP_RATE_LIMITED) ne sont jamais relancées. Une fonctionnalité coupée
+/// (503 FEATURE_DISABLED / OTP_SERVICE_DISABLED, refusée avant traitement) n'est jamais relancée à l'aveugle : dans les
+/// deux modes, seulement après un Retry-After présent et au plus égal à MaxRetryWait.
 /// </summary>
 internal enum RetryMode
 {
@@ -203,7 +205,14 @@ internal sealed class Transport
 
     public override string ToString() => $"Transport {{ ApiKey = {Redact.ApiKey(apiKey)}, BaseUrl = {BaseUrl}, MaxRetries = {MaxRetries} }}";
 
-    internal static TimeSpan? RetryAfter(ApiException error)
+    internal static TimeSpan? RetryAfter(ApiException error) =>
+        RetryAfterHeader(error)
+        ?? (error.Details.TryGetValue("retry_after_seconds", out var detail) && Json.ToInt(detail) is { } s
+            ? TimeSpan.FromSeconds(s)
+            : null);
+
+    /// <summary>En-tête Retry-After seul (secondes ou date HTTP) ; <see langword="null"/> s'il est absent ou illisible.</summary>
+    internal static TimeSpan? RetryAfterHeader(ApiException error)
     {
         if (error.Headers.TryGetValue("Retry-After", out var header) && header.Trim().Length > 0)
         {
@@ -222,9 +231,7 @@ internal sealed class Transport
             }
         }
 
-        return error.Details.TryGetValue("retry_after_seconds", out var detail) && Json.ToInt(detail) is { } s
-            ? TimeSpan.FromSeconds(s)
-            : null;
+        return null;
     }
 
     private static readonly IReadOnlyDictionary<string, string> EmptyHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -244,6 +251,13 @@ internal sealed class Transport
 
     private static bool IsRetryable(RetryMode mode, ApiException error)
     {
+        // Fonctionnalité coupée : refusée avant traitement, relancée dans tous les modes, mais seulement après le
+        // Retry-After annoncé (vérifié par RetryDelay), jamais avec un backoff aveugle.
+        if (error is FeatureDisabledException)
+        {
+            return true;
+        }
+
         // Seulement la limite générique : OTP_RESEND_TOO_SOON / OTP_RATE_LIMITED sont des limites métier.
         if (error.StatusCode == 429)
         {
@@ -401,6 +415,11 @@ internal sealed class Transport
     /// <summary>Délai avant la prochaine tentative ; <see langword="null"/> pour abandonner (attente demandée trop longue).</summary>
     private TimeSpan? RetryDelay(ApiException error, int attempt)
     {
+        if (error is FeatureDisabledException)
+        {
+            return RetryAfterHeader(error) is { } reenabled && reenabled <= MaxRetryWait ? reenabled : null;
+        }
+
         if ((error.StatusCode == 429 || error is IdempotencyRequestInProgressException) && RetryAfter(error) is { } retryAfter)
         {
             return retryAfter <= MaxRetryWait ? retryAfter : null;

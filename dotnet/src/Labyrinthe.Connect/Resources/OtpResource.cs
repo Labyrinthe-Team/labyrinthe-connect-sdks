@@ -51,7 +51,9 @@ public sealed class OtpResource
     /// <see cref="Guid"/> when you give none) and reused by every retry, so the send is retried safely after a network
     /// error, a 5xx, 429 <c>TOO_MANY_REQUESTS</c> or 409 <c>IDEMPOTENCY_REQUEST_IN_PROGRESS</c>: a replay returns the
     /// same <see cref="OtpSendResult.OtpId"/> (<see cref="OtpSendResult.Replayed"/>) without a second SMS.
-    /// <c>OTP_RESEND_TOO_SOON</c> and <c>OTP_RATE_LIMITED</c> are never retried.
+    /// <c>OTP_RESEND_TOO_SOON</c> and <c>OTP_RATE_LIMITED</c> are never retried. 503 <c>FEATURE_DISABLED</c> /
+    /// <c>OTP_SERVICE_DISABLED</c> (<see cref="FeatureDisabledException"/>) is retried only after its <c>Retry-After</c>,
+    /// when it is no longer than <see cref="LabyrintheClientOptions.MaxRetryWait"/>.
     /// With a test key, <see cref="OtpSendResult.TestCode"/> holds the code.</remarks>
     /// <param name="request">Phone number and options.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
@@ -122,7 +124,8 @@ public sealed class OtpResource
 
     /// <summary>Checks a code. A wrong code is NOT an exception: <see cref="OtpVerifyResult.Verified"/> is false with a reason.</summary>
     /// <remarks>One attempt is consumed per wrong code (<see cref="OtpVerifyResult.AttemptsRemaining"/>). Free. Retried
-    /// only on 429 <c>TOO_MANY_REQUESTS</c>, never after a network error or a 5xx (an attempt may have been consumed).</remarks>
+    /// only on 429 <c>TOO_MANY_REQUESTS</c> and on 503 <c>FEATURE_DISABLED</c> after its <c>Retry-After</c> (both refused
+    /// before processing), never after a network error or another 5xx (an attempt may have been consumed).</remarks>
     /// <param name="otpId">The <see cref="OtpSendResult.OtpId"/> kept server-side.</param>
     /// <param name="code">The code typed by the user (spaces and case are ignored by the API).</param>
     /// <param name="cancellationToken">Cancels the call.</param>

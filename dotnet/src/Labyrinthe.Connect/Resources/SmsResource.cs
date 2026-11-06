@@ -44,7 +44,9 @@ public sealed class SmsResource
     /// <summary>Sends one SMS. Asynchronous: the returned message is <c>queued</c>.</summary>
     /// <remarks>Follow its status with webhooks (<c>message.status_changed</c>) or <see cref="GetAsync"/>. An
     /// <c>Idempotency-Key</c> is always sent (a <see cref="Guid"/> when you give none), so network errors are retried
-    /// safely: the SMS is never sent twice.</remarks>
+    /// safely: the SMS is never sent twice. 503 <c>FEATURE_DISABLED</c> (<see cref="FeatureDisabledException"/>,
+    /// nothing sent) is retried only after its <c>Retry-After</c>, when it is no longer than
+    /// <see cref="LabyrintheClientOptions.MaxRetryWait"/>.</remarks>
     /// <param name="request">Recipient, body and options.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
     /// <exception cref="ArgumentException">Invalid input, detected before any network call.</exception>
