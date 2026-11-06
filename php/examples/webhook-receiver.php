@@ -12,9 +12,12 @@ require __DIR__.'/../vendor/autoload.php';
 
 use Labyrinthe\Connect\Exception\InvalidWebhookPayloadException;
 use Labyrinthe\Connect\Exception\SignatureVerificationException;
+use Labyrinthe\Connect\PhoneNumber;
 use Labyrinthe\Connect\Webhook\Event\BalanceLow;
 use Labyrinthe\Connect\Webhook\Event\CampaignCompleted;
 use Labyrinthe\Connect\Webhook\Event\MessageStatusChanged;
+use Labyrinthe\Connect\Webhook\Event\OtpFailed;
+use Labyrinthe\Connect\Webhook\Event\OtpVerified;
 use Labyrinthe\Connect\Webhook\Event\TestPing;
 use Labyrinthe\Connect\Webhook\Webhook;
 
@@ -50,6 +53,9 @@ match (true) {
     $event instanceof MessageStatusChanged => error_log(sprintf('Message %s is now %s', $event->messageId, $event->status->value)),
     $event instanceof CampaignCompleted => error_log(sprintf('Campaign "%s" completed: %d credits', $event->name, $event->creditsCharged)),
     $event instanceof BalanceLow => error_log(sprintf('Low balance: %d credits left (threshold %d)', $event->balance, $event->threshold)),
+    // OTP events never carry the code; mask the number before logging it.
+    $event instanceof OtpVerified => error_log(sprintf('OTP %s verified for %s', $event->otpId, PhoneNumber::mask($event->phone))),
+    $event instanceof OtpFailed => error_log(sprintf('OTP %s %s (%s) for %s', $event->otpId, $event->status->value, $event->reason->value ?? 'no reason', PhoneNumber::mask($event->phone))),
     $event instanceof TestPing => error_log('Test ping received'),
     default => error_log('Unhandled event '.$event->type()),
 };
