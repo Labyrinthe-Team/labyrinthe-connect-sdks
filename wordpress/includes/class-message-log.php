@@ -25,7 +25,7 @@ final class Message_Log {
 	public const FINAL_STATUSES = array( 'delivered', 'failed', 'rejected', 'expired', 'undeliverable' );
 
 	/** Filtres de la recherche : un critère vide est neutralisé par « %s = '' ». */
-	private const WHERE = "( %s = '' OR status = %s ) AND ( %s = '' OR context = %s ) AND ( %s = '' OR order_id = %d OR message_id = %s OR error_code = %s )";
+	private const WHERE = "( %s = '' OR status = %s ) AND ( %s = '' OR context = %s ) AND ( %s = '' OR order_id = %d OR message_id = %s OR error_code = %s OR request_id = %s )";
 
 	/** Colonnes triables. */
 	private const SORTABLE = array( 'created_at', 'updated_at', 'status', 'context', 'order_id' );
@@ -53,10 +53,11 @@ final class Message_Log {
 			'error_code'    => substr( (string) ( $row['error_code'] ?? '' ), 0, 64 ),
 			'error_message' => mb_substr( (string) ( $row['error_message'] ?? '' ), 0, 255 ),
 			'test_mode'     => empty( $row['test_mode'] ) ? 0 : 1,
+			'request_id'    => substr( (string) ( $row['request_id'] ?? '' ), 0, 128 ),
 		);
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- table du plugin.
-		$inserted = $wpdb->insert( Schema::log_table(), $data, array( '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%d', '%s', '%s', '%s', '%d' ) );
+		$inserted = $wpdb->insert( Schema::log_table(), $data, array( '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%d', '%s', '%s', '%s', '%d', '%s' ) );
 
 		return false === $inserted ? 0 : (int) $wpdb->insert_id;
 	}
@@ -95,16 +96,18 @@ final class Message_Log {
 	}
 
 	/**
-	 * Met à jour le statut d'un message reçu par webhook.
+	 * Met à jour le statut d'un message reçu par webhook (et son erreur, en cas d'échec).
 	 *
 	 * L'ordre d'arrivée des webhooks n'est pas garanti : un statut définitif n'est jamais
 	 * remplacé par un statut intermédiaire (« sent » arrivé après « delivered »).
 	 *
-	 * @param string $message_id Identifiant du message (API).
-	 * @param string $status     Nouveau statut.
+	 * @param string      $message_id    Identifiant du message (API).
+	 * @param string      $status        Nouveau statut.
+	 * @param string|null $error_code    Code d'erreur du fournisseur ou de la plateforme (webhook), ou null.
+	 * @param string|null $error_message Message d'erreur, ou null.
 	 * @return array<string, string>|null La ligne mise à jour, ou null si le message n'est pas dans le journal.
 	 */
-	public function update_status( string $message_id, string $status ): ?array {
+	public function update_status( string $message_id, string $status, ?string $error_code = null, ?string $error_message = null ): ?array {
 		global $wpdb;
 
 		$row = $this->find_by_message_id( $message_id );
@@ -117,17 +120,17 @@ final class Message_Log {
 			return $row;
 		}
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table du plugin.
-		$wpdb->update(
-			Schema::log_table(),
-			array(
-				'status'     => $status,
-				'updated_at' => current_time( 'mysql', true ),
-			),
-			array( 'id' => (int) $row['id'] ),
-			array( '%s', '%s' ),
-			array( '%d' )
+		$data = array(
+			'status'     => $status,
+			'updated_at' => current_time( 'mysql', true ),
 		);
+		if ( null !== $error_code && '' !== $error_code ) {
+			$data['error_code']    = substr( sanitize_text_field( $error_code ), 0, 64 );
+			$data['error_message'] = mb_substr( sanitize_text_field( (string) $error_message ), 0, 255 );
+		}
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table du plugin.
+		$wpdb->update( Schema::log_table(), $data, array( 'id' => (int) $row['id'] ), array_fill( 0, count( $data ), '%s' ), array( '%d' ) );
 
 		return $this->find( (int) $row['id'] );
 	}
@@ -153,7 +156,7 @@ final class Message_Log {
 		$page     = max( 1, (int) ( $args['page'] ?? 1 ) );
 
 		// Requêtes fixes (self::WHERE) ; table et colonne de tri passent par %i.
-		$filters = array( $status, $status, $context, $context, $search, $order_id, $search, strtoupper( $search ) );
+		$filters = array( $status, $status, $context, $context, $search, $order_id, $search, strtoupper( $search ), $search );
 
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- table du plugin ; requêtes constantes.
 		$total = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE ' . self::WHERE, array_merge( array( Schema::log_table() ), $filters ) ) );

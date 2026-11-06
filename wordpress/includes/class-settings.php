@@ -8,6 +8,7 @@
 namespace LabyrintheConnect;
 
 use LabyrintheConnect\Vendor\Labyrinthe\Connect\PhoneNumber;
+use LabyrintheConnect\Vendor\Labyrinthe\Connect\Service\OtpService;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -60,6 +61,8 @@ final class Settings {
 			'otp_checkout_enabled' => false,
 			'otp_template'         => '',
 			'otp_ip_send_limit'    => 5,
+			'otp_web_otp'          => true,
+			'otp_web_otp_domain'   => '',
 		);
 	}
 
@@ -241,6 +244,40 @@ final class Settings {
 	}
 
 	/**
+	 * Domaine Web OTP (remplissage automatique du code par le navigateur), ou null si l'option
+	 * est désactivée ou si le domaine n'est pas un nom d'hôte valide (localhost, adresse IP…).
+	 *
+	 * Par défaut : le domaine du site (home_url), qui doit être celui de la page où le code est saisi.
+	 */
+	public function web_otp_domain(): ?string {
+		if ( ! $this->get( 'otp_web_otp' ) ) {
+			return null;
+		}
+		$domain = (string) $this->get( 'otp_web_otp_domain' );
+		if ( '' === $domain ) {
+			$domain = (string) wp_parse_url( home_url(), PHP_URL_HOST );
+		}
+
+		/**
+		 * Domaine Web OTP ajouté aux SMS de code (dernière ligne « @domaine #code »).
+		 *
+		 * @param string $domain Nom d'hôte (exemple.com) ; une chaîne vide désactive le Web OTP.
+		 */
+		$domain = strtolower( trim( (string) apply_filters( 'labyrinthe_connect_web_otp_domain', $domain ) ) );
+
+		return self::is_valid_web_otp_domain( $domain ) ? $domain : null;
+	}
+
+	/**
+	 * Vrai pour un nom d'hôte accepté par l'API (au moins deux libellés, sans schéma, port ni chemin).
+	 *
+	 * @param string $domain Nom d'hôte.
+	 */
+	public static function is_valid_web_otp_domain( string $domain ): bool {
+		return '' !== $domain && strlen( $domain ) <= OtpService::MAX_WEB_OTP_DOMAIN_LENGTH && 1 === preg_match( '/' . OtpService::WEB_OTP_DOMAIN_PATTERN . '/', $domain );
+	}
+
+	/**
 	 * Assainit les réglages (callback de register_setting, aussi appelé par update_option).
 	 *
 	 * Depuis le formulaire, seul l'onglet envoyé (_tab) est modifié ; une case absente vaut
@@ -281,7 +318,7 @@ final class Settings {
 			}
 		}
 
-		foreach ( array( 'strip_accents', 'wc_admin_enabled', 'otp_login_enabled', 'otp_login_form', 'otp_allow_admins', 'otp_register_enabled', 'otp_checkout_enabled' ) as $flag ) {
+		foreach ( array( 'strip_accents', 'wc_admin_enabled', 'otp_login_enabled', 'otp_login_form', 'otp_allow_admins', 'otp_register_enabled', 'otp_checkout_enabled', 'otp_web_otp' ) as $flag ) {
 			if ( array_key_exists( $flag, $input ) ) {
 				$output[ $flag ] = self::to_bool( $input[ $flag ] );
 			}
@@ -289,6 +326,15 @@ final class Settings {
 
 		if ( array_key_exists( 'log_retention_days', $input ) ) {
 			$output['log_retention_days'] = min( 3650, absint( $input['log_retention_days'] ) );
+		}
+
+		if ( array_key_exists( 'otp_web_otp_domain', $input ) ) {
+			$domain = self::sanitize_domain( $input['otp_web_otp_domain'] );
+			if ( '' === $domain || self::is_valid_web_otp_domain( $domain ) ) {
+				$output['otp_web_otp_domain'] = $domain;
+			} else {
+				self::error( 'otp_web_otp_domain', __( 'The Web OTP domain must be a host name such as shop.example.com (no https://, port or path). The previous domain was kept.', 'labyrinthe-connect' ) );
+			}
 		}
 
 		if ( array_key_exists( 'otp_ip_send_limit', $input ) ) {
@@ -333,7 +379,7 @@ final class Settings {
 		$boxes = array(
 			self::TAB_GENERAL     => array( 'strip_accents' ),
 			self::TAB_WOOCOMMERCE => array( 'wc_admin_enabled' ),
-			self::TAB_OTP         => array( 'otp_login_enabled', 'otp_login_form', 'otp_allow_admins', 'otp_register_enabled', 'otp_checkout_enabled' ),
+			self::TAB_OTP         => array( 'otp_login_enabled', 'otp_login_form', 'otp_allow_admins', 'otp_register_enabled', 'otp_checkout_enabled', 'otp_web_otp' ),
 		);
 		foreach ( $boxes[ $tab ] ?? array() as $box ) {
 			if ( ! isset( $input[ $box ] ) ) {
@@ -467,6 +513,21 @@ final class Settings {
 		}
 
 		return is_scalar( $value ) && true === filter_var( $value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE );
+	}
+
+	/**
+	 * Nom d'hôte saisi : en minuscules, sans schéma, chemin ni port (https://Shop.example.com/ → shop.example.com).
+	 *
+	 * @param mixed $value Valeur saisie.
+	 */
+	private static function sanitize_domain( $value ): string {
+		$value = strtolower( trim( sanitize_text_field( is_scalar( $value ) ? (string) $value : '' ) ) );
+		if ( '' === $value ) {
+			return '';
+		}
+		$host = wp_parse_url( false === strpos( $value, '//' ) ? '//' . $value : $value, PHP_URL_HOST );
+
+		return is_string( $host ) ? rtrim( $host, '.' ) : $value;
 	}
 
 	/**

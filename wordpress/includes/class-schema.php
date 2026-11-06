@@ -14,7 +14,7 @@ defined( 'ABSPATH' ) || exit;
  */
 final class Schema {
 
-	public const VERSION        = '1';
+	public const VERSION        = '2';
 	public const VERSION_OPTION = 'labyrinthe_connect_db_version';
 
 	/**
@@ -72,6 +72,7 @@ final class Schema {
 			error_code varchar(64) NOT NULL DEFAULT '',
 			error_message varchar(255) NOT NULL DEFAULT '',
 			test_mode tinyint(1) NOT NULL DEFAULT 0,
+			request_id varchar(128) NOT NULL DEFAULT '',
 			PRIMARY KEY  (id),
 			KEY message_id (message_id),
 			KEY created_at (created_at),

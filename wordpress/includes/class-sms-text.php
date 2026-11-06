@@ -1,6 +1,6 @@
 <?php
 /**
- * Encodage, segments et nettoyage du texte d'un SMS.
+ * Encodage, segments et variables du texte d'un SMS.
  *
  * @package LabyrintheConnect
  */
@@ -12,8 +12,8 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Même règle que le backend (SegmentCalculator) : tout caractère hors ASCII fait passer
  * le message en UCS-2. GSM-7 : 160 caractères, 153 par segment au-delà ; UCS-2 : 70,
- * puis 67 par segment. Le backend reste l'autorité (POST /sms/estimate) : ce calcul
- * sert à l'aperçu dans les réglages et aux notes de commande.
+ * puis 67 par segment. Le backend reste l'autorité (POST /sms/estimate), y compris pour le
+ * retrait des accents (strip_accents) : ce calcul ne sert que d'estimation de repli.
  */
 final class Sms_Text {
 
@@ -66,36 +66,6 @@ final class Sms_Text {
 		}
 
 		return array_slice( array_values( array_unique( $matches[0] ) ), 0, 10 );
-	}
-
-	/**
-	 * Remplace accents et ponctuation typographique par de l'ASCII (é → e, « → ", ’ → ').
-	 *
-	 * Les emoji et les écritures non latines restent : le message reste alors en Unicode.
-	 *
-	 * @param string $text Texte.
-	 */
-	public static function strip_special_characters( string $text ): string {
-		$text = strtr(
-			$text,
-			array(
-				"\u{2019}" => "'",
-				"\u{2018}" => "'",
-				"\u{00AB}" => '"',
-				"\u{00BB}" => '"',
-				"\u{201C}" => '"',
-				"\u{201D}" => '"',
-				"\u{2014}" => '-',
-				"\u{2013}" => '-',
-				"\u{2026}" => '...',
-				"\u{00A0}" => ' ',
-				"\u{202F}" => ' ',
-				"\u{20AC}" => 'EUR',
-				"\u{00B0}" => 'o',
-			)
-		);
-
-		return remove_accents( $text );
 	}
 
 	/**

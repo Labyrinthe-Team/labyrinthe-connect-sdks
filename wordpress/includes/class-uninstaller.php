@@ -22,6 +22,8 @@ final class Uninstaller {
 		'labyrinthe_connect_db_version',
 		'labyrinthe_connect_balance_low',
 		'labyrinthe_connect_last_ping',
+		'labyrinthe_connect_account_suspended',
+		'labyrinthe_connect_otp_shape',
 	);
 
 	/** Actions planifiées du plugin (Action Scheduler et WP-Cron). */

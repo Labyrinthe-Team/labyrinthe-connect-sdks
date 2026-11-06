@@ -9,14 +9,16 @@ namespace LabyrintheConnect;
 
 use LabyrintheConnect\Vendor\Labyrinthe\Connect\Exception\ApiException;
 use LabyrintheConnect\Vendor\Labyrinthe\Connect\Exception\ConnectionException;
+use LabyrintheConnect\Vendor\Labyrinthe\Connect\Exception\IdempotencyKeyUnresolvedException;
 use LabyrintheConnect\Vendor\Labyrinthe\Connect\Exception\LabyrintheException;
 
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Point de passage unique des SMS du plugin : nettoyage du texte (accents), envoi par le
- * SDK avec une Idempotency-Key, inscription au journal. Ne lève jamais d'exception :
- * le résultat dit ce qui s'est passé.
+ * Point de passage unique des SMS du plugin : envoi par le SDK avec une Idempotency-Key,
+ * une référence (commande), le retrait des accents par l'API si le réglage est actif et un
+ * X-Request-Id, puis inscription au journal. Ne lève jamais d'exception : le résultat dit
+ * ce qui s'est passé (avec l'identifiant de requête à communiquer au support en cas d'échec).
  */
 final class Sms_Sender {
 
@@ -55,15 +57,12 @@ final class Sms_Sender {
 	}
 
 	/**
-	 * Texte réellement envoyé : modèle rendu, accents retirés si l'option est active.
+	 * Texte envoyé : modèle rendu, espaces de début et de fin retirés. Le retrait des accents
+	 * (réglage « Accents ») est fait par l'API (strip_accents), comme le calcul des segments.
 	 *
 	 * @param string $body Texte.
 	 */
 	public function prepare_body( string $body ): string {
-		if ( $this->settings->strip_accents() ) {
-			$body = Sms_Text::strip_special_characters( $body );
-		}
-
 		return trim( $body );
 	}
 
@@ -110,6 +109,7 @@ final class Sms_Sender {
 				'error_code'    => $result->error_code,
 				'error_message' => $result->error_message,
 				'test_mode'     => $test_mode,
+				'request_id'    => $result->request_id,
 			)
 		);
 		$result = $result->with_log_id( $log_id );
@@ -138,11 +138,21 @@ final class Sms_Sender {
 	private function dispatch( string $number, string $masked, string $body, array $meta, bool $test_mode, string $encoding ): Send_Result {
 		$reference       = isset( $meta['reference'] ) ? mb_substr( (string) $meta['reference'], 0, 64 ) : null;
 		$idempotency_key = isset( $meta['idempotency_key'] ) ? substr( (string) $meta['idempotency_key'], 0, 255 ) : null;
+		$request_id      = Account_Status::new_request_id();
 
 		try {
 			$client = $this->clients->make();
-			// « + » : le numéro est déjà international, le SDK ne doit pas y ajouter l'indicatif par défaut.
-			$message = $client->sms->send( to: '+' . $number, body: $body, reference: $reference, idempotencyKey: $idempotency_key );
+			// « + » : le numéro est déjà international ; sans lui, le SDK compléterait un numéro
+			// étranger court (10 chiffres ou moins) avec l'indicatif par défaut.
+			$message = $client->sms->send(
+				to: '+' . $number,
+				body: $body,
+				reference: $reference,
+				idempotencyKey: $idempotency_key,
+				stripAccents: $this->settings->strip_accents(),
+				requestId: $request_id
+			);
+			Account_Status::record_success();
 
 			return new Send_Result(
 				true,
@@ -154,14 +164,27 @@ final class Sms_Sender {
 				'',
 				'',
 				false,
-				$test_mode
+				$test_mode,
+				false,
+				0,
+				$request_id
 			);
 		} catch ( ApiException $e ) {
-			$retryable = $e->getStatusCode() >= 500 || 'TOO_MANY_REQUESTS' === $e->getErrorCode();
+			Account_Status::record_error( $e );
+			// IDEMPOTENCY_KEY_UNRESOLVED : résultat inconnu (un SMS a pu partir), jamais relancé.
+			$unresolved = $e instanceof IdempotencyKeyUnresolvedException;
+			$retryable  = ! $unresolved && ( $e->getStatusCode() >= 500 || in_array( $e->getErrorCode(), array( 'TOO_MANY_REQUESTS', 'IDEMPOTENCY_REQUEST_IN_PROGRESS' ), true ) );
+			if ( Account_Status::is_suspension( $e ) ) {
+				$message = __( 'Your Labyrinthe Connect account is suspended: no SMS can be sent until it is reactivated. Contact support.', 'labyrinthe-connect' );
+			} elseif ( $unresolved ) {
+				$message = __( 'The outcome of this SMS is unknown: it may have been sent. It will not be sent again automatically; check the messages in your Labyrinthe Connect dashboard before sending it manually.', 'labyrinthe-connect' );
+			} else {
+				$message = $e->getMessage();
+			}
 
-			return new Send_Result( false, $masked, '', Message_Log::STATUS_ERROR, 0, $encoding, $e->getErrorCode(), $e->getMessage(), $retryable, $test_mode );
+			return new Send_Result( false, $masked, '', Message_Log::STATUS_ERROR, 0, $encoding, $e->getErrorCode(), $message, $retryable, $test_mode, false, 0, Account_Status::request_id( $e, $request_id ) );
 		} catch ( ConnectionException $e ) {
-			return new Send_Result( false, $masked, '', Message_Log::STATUS_ERROR, 0, $encoding, $e->getErrorCode(), __( 'The Labyrinthe Connect API could not be reached.', 'labyrinthe-connect' ), true, $test_mode );
+			return new Send_Result( false, $masked, '', Message_Log::STATUS_ERROR, 0, $encoding, $e->getErrorCode(), __( 'The Labyrinthe Connect API could not be reached.', 'labyrinthe-connect' ), true, $test_mode, false, 0, $request_id );
 		} catch ( Configuration_Exception $e ) {
 			return new Send_Result( false, $masked, '', Message_Log::STATUS_ERROR, 0, $encoding, 'NOT_CONFIGURED', $e->getMessage(), false, $test_mode );
 		} catch ( LabyrintheException $e ) {

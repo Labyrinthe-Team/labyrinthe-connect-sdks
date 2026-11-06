@@ -16,6 +16,9 @@ defined( 'ABSPATH' ) || exit;
  */
 final class Templates {
 
+	/** Numéro d'exemple (aperçus et estimation du nombre de segments ; rien ne lui est envoyé). */
+	public const SAMPLE_PHONE = '243812345678';
+
 	/**
 	 * Variables disponibles dans les modèles de commande, avec leur description.
 	 *
@@ -56,7 +59,7 @@ final class Templates {
 			'{payment_method}'      => 'Mobile Money',
 			'{customer_name}'       => 'Marie Kabongo',
 			'{customer_first_name}' => 'Marie',
-			'{customer_phone}'      => '243812345678',
+			'{customer_phone}'      => self::SAMPLE_PHONE,
 			'{shop_name}'           => wp_specialchars_decode( (string) get_bloginfo( 'name' ), ENT_QUOTES ),
 			'{shop_url}'            => home_url( '/' ),
 			'{tracking_number}'     => 'CD123456789',
