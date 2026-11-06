@@ -2,7 +2,7 @@
 
 Plugin WordPress officiel de [Labyrinthe Connect](https://labyrinthe-rdc.com) (slug `labyrinthe-connect`) : SMS de
 commande WooCommerce, vérification du téléphone et connexion avec un code reçu par SMS. Il s'appuie sur le
-[SDK PHP](../php) et sur la [spécification de l'API](../openapi/openapi.yaml) (1.2.0), via le SDK PHP 1.1.1.
+[SDK PHP](../php) et sur la [spécification de l'API](../openapi/openapi.yaml) (1.3.0), via le SDK PHP 1.2.0.
 
 *English version: [README.md](README.md). La documentation utilisateur pour wordpress.org est [`readme.txt`](readme.txt).*
 
@@ -38,6 +38,7 @@ commande WooCommerce, vérification du téléphone et connexion avec un code re�
 | Webhooks | `POST /wp-json/labyrinthe/v1/webhook` : signature vérifiée par le SDK sur le corps brut (temps constant, tolérance de 5 min), dédoublonnage sur `id` (clé primaire, `INSERT IGNORE`), mise à jour du journal (un statut définitif n'est jamais remplacé par un statut intermédiaire ; `error_code` / `error_message` enregistrés), notes de commande, `otp.verified` / `otp.failed` → actions `labyrinthe_otp_verified` / `labyrinthe_otp_failed`. |
 | Journal des SMS | Table `{prefix}labyrinthe_sms_log`, `WP_List_Table` filtrable (commande, identifiant de message, code d'erreur, identifiant de requête) ; numéros masqués, textes jamais enregistrés ; identifiant de requête de chaque appel (`wp-<uuid>`, envoyé en `X-Request-Id`, utile aussi pour une erreur réseau) ; purge quotidienne (réglage, 90 jours par défaut). |
 | Résultat inconnu | `409 IDEMPOTENCY_KEY_UNRESOLVED` (`IdempotencyKeyUnresolvedException`) : la requête d'origine avec cette clé a échoué de façon inattendue côté API et un SMS a pu partir. Échec définitif, jamais relancé ni replanifié : note de commande et ligne du journal avec le code d'erreur et l'identifiant de requête, invitant à vérifier les messages dans l'espace Labyrinthe Connect avant tout envoi manuel. OTP : le visiteur voit un message neutre (« demandez un nouveau code si vous ne l'avez pas reçu ») ; sa demande suivante part avec une nouvelle clé d'idempotence. |
+| Maintenance | `503 FEATURE_DISABLED` / `OTP_SERVICE_DISABLED` (`FeatureDisabledException`) : la plateforme a coupé l'API, l'envoi de SMS ou l'OTP ; rien n'est parti. OTP : code d'échec `FEATURE_DISABLED` avec le message de l'administrateur (texte brut) ou un message traduit « momentanément indisponible », l'heure de retour si elle est connue, et `retry_after` pour le compte à rebours. SMS de commande : replanifié à l'heure de retour annoncée (`Retry-After`), sinon 5, 10, 15 min ; jamais relancé en boucle. `Send_Result::$retry_after` donne le délai. |
 | Compte suspendu | `403 ACCOUNT_SUSPENDED` (`AccountSuspendedException`) : avis d'erreur clair dans l'administration avec l'identifiant de requête, jamais relancé ; effacé au premier appel réussi. Les visiteurs ne voient qu'un message neutre. |
 | Numéros | Normalisés par le plugin (indicatif du pays de facturation pour un numéro local), puis envoyés en `+<numéro international>` (le `+` empêche le SDK d'ajouter 243 à un numéro étranger de 10 chiffres ou moins ; le SDK 1.1.1 le transmet à l'API avec son `+`). L'API conserve l'indicatif pour les SMS comme pour les OTP (`+2481234567` → `2481234567` ; `BACKEND-TODO.md` n° 34 corrigé côté API). |
 

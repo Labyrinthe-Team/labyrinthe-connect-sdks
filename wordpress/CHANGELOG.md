@@ -6,6 +6,27 @@ The wordpress.org changelog lives in `readme.txt`.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-06
+
+Built on `labyrinthe/connect-php` 1.2.0 (API specification 1.3.0). No setting to change.
+
+### Added
+- Platform maintenance: `503 FEATURE_DISABLED` (whole API, SMS sending or OTP shut down by a Labyrinthe Connect
+  administrator) and `503 OTP_SERVICE_DISABLED` (`FeatureDisabledException`, PHP SDK 1.2.0). Nothing was sent, no
+  credit used.
+  - OTP send and verify: new failure code `FEATURE_DISABLED` with the administrator's message (plain text, tags
+    removed) or a translated "temporarily unavailable" message, followed by the expected return time when
+    `details.until` is known, and `retry_after` (countdown) when the API sends `Retry-After`. Sends are logged with
+    the error code and the request ID; a refused verification consumes no attempt.
+  - Order SMS: retryable failure. The action is rescheduled at the announced return time (`Retry-After`, at least
+    1 minute) when it is known, otherwise after 5, 10 then 15 minutes as before; the order note and the SMS log carry
+    the maintenance message.
+- `Send_Result::$retry_after` (seconds, `0` when unknown), also in the `labyrinthe_connect_sms_sent` action data.
+
+### Changed
+- The SDK no longer retries `FEATURE_DISABLED` / `OTP_SERVICE_DISABLED` blindly: only after a `Retry-After` no longer
+  than its 3-second limit (`maxRetryWait`).
+
 ## [1.1.1] - 2026-11-06
 
 Built on `labyrinthe/connect-php` 1.1.1.

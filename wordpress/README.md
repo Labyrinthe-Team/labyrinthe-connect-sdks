@@ -2,7 +2,7 @@
 
 Official WordPress plugin of [Labyrinthe Connect](https://labyrinthe-rdc.com) (slug `labyrinthe-connect`): WooCommerce
 order SMS, phone verification and login with a one-time code received by SMS. Built on the
-[PHP SDK](../php) and the [API specification](../openapi/openapi.yaml) (1.2.0), through the PHP SDK 1.1.1.
+[PHP SDK](../php) and the [API specification](../openapi/openapi.yaml) (1.3.0), through the PHP SDK 1.2.0.
 
 *Version française : [README.fr.md](README.fr.md). The user documentation for wordpress.org is [`readme.txt`](readme.txt).*
 
@@ -37,6 +37,7 @@ order SMS, phone verification and login with a one-time code received by SMS. Bu
 | Webhooks | `POST /wp-json/labyrinthe/v1/webhook`: SDK signature check on the raw body (constant time, 5-minute timestamp tolerance), deduplication on `id` (primary key, `INSERT IGNORE`), SMS log update (a final status is never downgraded; `error_code` / `error_message` saved), order notes, `otp.verified` / `otp.failed` → WordPress actions. |
 | SMS log | Table `{prefix}labyrinthe_sms_log`, `WP_List_Table` with filters and search (order, message ID, error code, request ID); numbers stored masked, texts never stored; request ID of every call (`wp-<uuid>`, sent as `X-Request-Id`, also for network errors); daily purge (setting, default 90 days). |
 | Unknown outcome | `409 IDEMPOTENCY_KEY_UNRESOLVED` (`IdempotencyKeyUnresolvedException`): the original request with this key failed unexpectedly on the API side and an SMS may have been sent. Final failure, never retried nor rescheduled: order note and SMS log row with the error code and the request ID, asking to check the messages in the Labyrinthe Connect dashboard before sending manually. OTP: the visitor sees a neutral message ("request a new code if you did not receive it"); their next request uses a new idempotency key. |
+| Maintenance | `503 FEATURE_DISABLED` / `OTP_SERVICE_DISABLED` (`FeatureDisabledException`): the platform shut the API, SMS sending or OTP down; nothing was sent. OTP: failure code `FEATURE_DISABLED` with the administrator's message (plain text) or a translated "temporarily unavailable" one, the expected return time when known, and `retry_after` for the countdown. Order SMS: rescheduled at the announced return time (`Retry-After`), otherwise 5, 10, 15 min; never retried in a loop. `Send_Result::$retry_after` exposes the delay. |
 | Suspended account | `403 ACCOUNT_SUSPENDED` (`AccountSuspendedException`): clear error notice in the administration with the request ID, never retried; cleared by the next successful call. Visitors only see a neutral message. |
 | Phone numbers | Normalised by the plugin (billing country calling code for local numbers), then sent as `+<international number>` (the `+` stops the SDK from adding 243 to a foreign number of 10 digits or fewer; SDK 1.1.1 sends it to the API with its `+`). The API keeps the country code for SMS and OTP alike (`+2481234567` → `2481234567`; `BACKEND-TODO.md` n° 34 fixed on the API side). |
 

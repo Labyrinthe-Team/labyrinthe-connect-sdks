@@ -4,7 +4,7 @@ Tags: sms, otp, woocommerce, notifications, congo
 Requires at least: 6.4
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 1.1.1
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -119,6 +119,11 @@ Yes for order SMS. For OTP forms, exclude the login, registration and checkout p
 
 == Changelog ==
 
+= 1.2.0 =
+* Platform maintenance (Labyrinthe Connect temporarily shut down the API, SMS sending or OTP): visitors see the message announced by Labyrinthe Connect (or a "temporarily unavailable" message) with the expected return time when known; nothing is sent and no credit is used.
+* Order SMS during a maintenance are sent again automatically: at the announced return time when it is known, otherwise after 5, 10 then 15 minutes, without calling the API in between.
+* Requires the Labyrinthe Connect PHP SDK 1.2.0 (bundled) and API 1.3.0.
+
 = 1.1.1 =
 * Foreign numbers of 10 digits or fewer (e.g. +248 Seychelles) now keep their country code: the bundled PHP SDK 1.1.1 sends numbers with their "+".
 * When Labyrinthe Connect cannot tell whether an SMS was sent (IDEMPOTENCY_KEY_UNRESOLVED), the SMS is never sent again automatically: the order note and the SMS log say so, with the request ID for the support.
@@ -135,6 +140,9 @@ Yes for order SMS. For OTP forms, exclude the login, registration and checkout p
 * First release: WooCommerce order SMS (per status, shop manager notification, Action Scheduler, idempotency, order notes), OTP phone verification (registration, classic and block checkout), login by SMS (login form, shortcode, block), signed webhook endpoint with deduplication, SMS log with automatic purge, encrypted API key, French translation.
 
 == Upgrade Notice ==
+
+= 1.2.0 =
+Clear message and automatic order SMS retry during a Labyrinthe Connect maintenance. Automatic update, no setting to change.
 
 = 1.1.1 =
 Fix for short foreign numbers (10 digits or fewer). Automatic update, no setting to change.
