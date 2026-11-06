@@ -102,6 +102,6 @@ First release, built on `labyrinthe/connect-php` 1.0.0 (API specification 1.1.0)
 - French translation (fr_FR, also used for the other French locales).
 - Bundled SDK prefixed with PHP-Scoper (`LabyrintheConnect\Vendor\`), reproducible zip build.
 
-[Unreleased]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/wordpress-v1.1.0...HEAD
-[1.1.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/wordpress-v1.0.0...wordpress-v1.1.0
-[1.0.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/releases/tag/wordpress-v1.0.0
+[Unreleased]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/wordpress-v1.1.0...HEAD
+[1.1.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/wordpress-v1.0.0...wordpress-v1.1.0
+[1.0.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/releases/tag/wordpress-v1.0.0
