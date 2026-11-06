@@ -20,7 +20,7 @@ const specText = readFileSync(specPath, 'utf8');
 const spec = parse(specText);
 
 // Ordre d'exécution du parcours nominal, par operationId (send avant get, send OTP avant verify).
-const ORDER = ['sendSms', 'listSms', 'getSms', 'estimateSms', 'getBalance', 'listSenderIds', 'sendOtp', 'verifyOtp'];
+const ORDER = ['sendSms', 'listSms', 'getSms', 'estimateSms', 'getBalance', 'listSenderIds', 'sendOtp', 'sendOtpReplay', 'verifyOtp'];
 
 const collection = await convert(specText);
 enrich(collection);
@@ -117,6 +117,7 @@ function enrich(c) {
     { key: 'messageId', value: '', type: 'string', description: 'Set by "POST /sms", used by "GET /sms/:id".' },
     { key: 'otpPhone', value: '', type: 'string', description: 'Random DRC number generated before "POST /otp/send".' },
     { key: 'otpId', value: '', type: 'string', description: 'Set by "POST /otp/send", used by "POST /otp/verify".' },
+    { key: 'otpIdempotencyKey', value: '', type: 'string', description: 'Idempotency-Key generated before "POST /otp/send", replayed by the next request.' },
     { key: 'otpTestCode', value: '', type: 'secret', description: 'test_code returned with a test key only.' },
   ];
   c.auth = { type: 'bearer', bearer: [{ key: 'token', value: '{{apiKey}}', type: 'string' }] };
@@ -145,12 +146,32 @@ function enrich(c) {
       customize(op.operationId, item.request);
       item._order = ORDER.indexOf(op.operationId);
     }
+    // Cas non généré par le convertisseur : rejeu de POST /otp/send avec la même Idempotency-Key.
+    const sendOtp = folder.item.find((i) => i.id === stableId('item:sendOtp'));
+    if (sendOtp) folder.item.push(replayOf(sendOtp));
     folder.item.sort((a, b) => a._order - b._order);
     for (const item of folder.item) delete item._order;
   }
 }
 
+/** Copie de « POST /otp/send » rejouée avec la même Idempotency-Key : même otp_id, aucun nouveau SMS. */
+function replayOf(item) {
+  const copy = JSON.parse(JSON.stringify(item));
+  copy.id = stableId('item:sendOtpReplay');
+  copy.name = 'POST /otp/send — Replay with the same Idempotency-Key (same otp_id, no new SMS)';
+  copy.response = [];
+  copy.event = buildEvents('sendOtpReplay', 201);
+  copy._order = ORDER.indexOf('sendOtpReplay');
+  return copy;
+}
+
 function customize(operationId, request) {
+  // X-Request-Id facultatif : prêt à l'emploi, désactivé par défaut.
+  const requestId = request.header?.find((h) => h.key === 'X-Request-Id');
+  if (requestId) {
+    requestId.value = '{{$guid}}';
+    requestId.disabled = true;
+  }
   switch (operationId) {
     case 'sendSms':
       setHeader(request, 'Idempotency-Key', '{{$guid}}');
@@ -167,6 +188,7 @@ function customize(operationId, request) {
       for (const v of request.url.variable) if (v.key === 'id') v.value = '{{messageId}}';
       break;
     case 'sendOtp':
+      setHeader(request, 'Idempotency-Key', '{{otpIdempotencyKey}}');
       setBody(request, { phone: '{{otpPhone}}', locale: 'fr' });
       break;
     case 'verifyOtp':
@@ -183,6 +205,10 @@ function buildEvents(operationId, status) {
     '});',
     "pm.test('JSON body with data', function () {",
     "  pm.expect(pm.response.json()).to.have.property('data');",
+    '});',
+    "pm.test('X-Request-Id and X-Api-Version headers', function () {",
+    "  pm.response.to.have.header('X-Request-Id');",
+    "  pm.expect(pm.response.headers.get('X-Api-Version')).to.eql('1');",
     '});',
   ];
   const prerequest = [];
@@ -204,19 +230,38 @@ function buildEvents(operationId, status) {
       prerequest.push(
         '// Numéro RDC aléatoire : les limites OTP par numéro ne se croisent pas entre deux exécutions.',
         "pm.collectionVariables.set('otpPhone', '0899' + String(Math.floor(Math.random() * 1e6)).padStart(6, '0'));",
+        "// Nouvelle clé d'idempotence à chaque exécution, rejouée par la requête suivante.",
+        "pm.collectionVariables.set('otpIdempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
       );
       tests.push(
         'const otp = pm.response.json().data || {};',
         "pm.test('otp_id returned', function () { pm.expect(otp.otp_id).to.be.a('string'); });",
+        "pm.test('Code shape returned', function () {",
+        "  pm.expect(otp.code_length).to.be.a('number');",
+        "  pm.expect(otp.code_type).to.be.oneOf(['numeric', 'alphanumeric']);",
+        "  pm.expect(otp.resend_after_seconds).to.be.a('number');",
+        '});',
         "pm.collectionVariables.set('otpId', otp.otp_id || '');",
         '// test_code n\'existe qu\'avec une clé lsk_test_ (aucun SMS envoyé).',
         "pm.collectionVariables.set('otpTestCode', otp.test_code || '');",
       );
       break;
+    case 'sendOtpReplay':
+      tests.push(
+        "pm.test('Same otp_id, replayed', function () {",
+        "  pm.expect(pm.response.json().data.otp_id).to.eql(pm.collectionVariables.get('otpId'));",
+        "  pm.expect(pm.response.headers.get('Idempotent-Replayed')).to.eql('true');",
+        '});',
+      );
+      break;
     case 'verifyOtp':
       tests.push(
         "if (pm.collectionVariables.get('otpTestCode')) {",
-        "  pm.test('Code verified (test mode)', function () { pm.expect(pm.response.json().data.verified).to.eql(true); });",
+        "  pm.test('Code verified (test mode)', function () {",
+        '    const result = pm.response.json().data;',
+        '    pm.expect(result.verified).to.eql(true);',
+        '    pm.expect(result.attempts_remaining).to.eql(null);',
+        '  });',
         '}',
       );
       break;
