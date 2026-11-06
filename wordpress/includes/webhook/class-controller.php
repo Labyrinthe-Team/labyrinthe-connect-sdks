@@ -8,7 +8,9 @@
 namespace LabyrintheConnect\Webhook;
 
 use LabyrintheConnect\Message_Log;
+use LabyrintheConnect\Phone;
 use LabyrintheConnect\Settings;
+use LabyrintheConnect\WooCommerce\Order_Notifications;
 use LabyrintheConnect\Vendor\Labyrinthe\Connect\Exception\InvalidWebhookPayloadException;
 use LabyrintheConnect\Vendor\Labyrinthe\Connect\Exception\SignatureVerificationException;
 use LabyrintheConnect\Vendor\Labyrinthe\Connect\Webhook\Event\MessageStatusChanged;
@@ -22,8 +24,10 @@ defined( 'ABSPATH' ) || exit;
  * 1. vérifie la signature X-Signature sur le corps brut (temps constant, SDK) et
  *    l'horodatage signé (anti-rejeu, 5 minutes) ;
  * 2. dédoublonne sur `id` (un événement déjà traité répond 200 sans rien refaire) ;
- * 3. met à jour le journal des SMS et déclenche les actions WordPress :
- *    labyrinthe_webhook_received, labyrinthe_message_status_changed,
+ * 3. met à jour le journal des SMS (statut, erreur) et les notes de commande (la commande est
+ *    retrouvée par le journal, sinon par la référence « order-<id> » passée à l'envoi), puis
+ *    déclenche les actions WordPress : labyrinthe_webhook_received,
+ *    labyrinthe_message_status_changed, labyrinthe_otp_verified, labyrinthe_otp_failed,
  *    labyrinthe_campaign_completed, labyrinthe_balance_low, labyrinthe_webhook_test_ping.
  *
  * Les actions reçoivent l'enveloppe décodée (tableau { id, event, data, timestamp }),
@@ -165,18 +169,44 @@ final class Controller {
 			case 'message.status_changed':
 				$row = null;
 				if ( null !== $message ) {
-					$row = $this->log->update_status( $message->messageId, $message->status->value ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- propriété du SDK.
-					if ( null !== $row ) {
-						$this->add_delivery_note( $row );
-					}
+					// phpcs:disable WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- propriétés du SDK.
+					$row = $this->log->update_status( $message->messageId, $message->status->value, $message->errorCode, $message->errorMessage );
+					$this->add_delivery_note(
+						null !== $row ? (int) $row['order_id'] : 0,
+						$message->reference,
+						null !== $row ? $row['recipient'] : Phone::mask( $message->recipient ),
+						$message->status->value,
+						(string) $message->errorCode,
+						(string) $message->errorMessage,
+						$row
+					);
+					// phpcs:enable
 				}
 				/**
 				 * Le statut d'un message du compte a changé.
 				 *
-				 * @param array      $envelope { id, event, data: { message_id, recipient, status, provider_message_id, campaign_id }, timestamp }.
+				 * @param array      $envelope { id, event, data: { message_id, recipient, status, provider_message_id, campaign_id, reference, error_code, error_message }, timestamp }.
 				 * @param array|null $row      Ligne du journal du plugin (null : message non envoyé par ce site).
 				 */
 				do_action( 'labyrinthe_message_status_changed', $envelope, $row );
+				break;
+
+			case 'otp.verified':
+				/**
+				 * Un code OTP du compte a été vérifié (API ou console OTP de l'espace client). Jamais le code.
+				 *
+				 * @param array $envelope Enveloppe (data : otp_id, phone, status « verified », reason null, verified_at).
+				 */
+				do_action( 'labyrinthe_otp_verified', $envelope );
+				break;
+
+			case 'otp.failed':
+				/**
+				 * Une vérification OTP du compte a échoué définitivement (tentatives épuisées ou code expiré).
+				 *
+				 * @param array $envelope Enveloppe (data : otp_id, phone, status « failed » ou « expired », reason, verified_at null).
+				 */
+				do_action( 'labyrinthe_otp_failed', $envelope );
 				break;
 
 			case 'campaign.completed':
@@ -222,21 +252,34 @@ final class Controller {
 	/**
 	 * Note de commande quand un SMS de commande atteint un statut définitif.
 	 *
-	 * @param array<string, string> $row Ligne du journal.
+	 * @param int                        $order_id      Commande du journal (0 : inconnue).
+	 * @param string|null                $reference     Référence passée à l'envoi (order-<id>).
+	 * @param string                     $recipient     Numéro masqué.
+	 * @param string                     $status        Statut.
+	 * @param string                     $error_code    Code d'erreur ('' : aucun).
+	 * @param string                     $error_message Message d'erreur.
+	 * @param array<string, string>|null $row           Ligne du journal (null : message absent du journal).
 	 */
-	private function add_delivery_note( array $row ): void {
-		$order_id = (int) $row['order_id'];
-		if ( $order_id <= 0 || ! in_array( $row['status'], Message_Log::FINAL_STATUSES, true ) || ! function_exists( 'wc_get_order' ) ) {
+	private function add_delivery_note( int $order_id, ?string $reference, string $recipient, string $status, string $error_code, string $error_message, ?array $row ): void {
+		if ( $order_id <= 0 ) {
+			$order_id = Order_Notifications::order_id_from_reference( $reference );
+		}
+		if ( $order_id <= 0 || ! in_array( $status, Message_Log::FINAL_STATUSES, true ) || ! function_exists( 'wc_get_order' ) ) {
 			return;
 		}
+		$context = null !== $row ? $row : array(
+			'order_id'  => (string) $order_id,
+			'recipient' => $recipient,
+			'status'    => $status,
+		);
 
 		/**
 		 * Ajouter une note de commande à la remise (ou à l'échec définitif) d'un SMS.
 		 *
 		 * @param bool  $enabled Vrai par défaut.
-		 * @param array $row     Ligne du journal.
+		 * @param array $row     Ligne du journal (ou order_id, recipient et status si le message n'y est pas).
 		 */
-		if ( ! apply_filters( 'labyrinthe_connect_delivery_order_notes', true, $row ) ) {
+		if ( ! apply_filters( 'labyrinthe_connect_delivery_order_notes', true, $context ) ) {
 			return;
 		}
 
@@ -245,11 +288,17 @@ final class Controller {
 			return;
 		}
 
-		$note = 'delivered' === $row['status']
+		if ( 'delivered' === $status ) {
 			/* translators: %s: masked phone number. */
-			? sprintf( __( 'Labyrinthe Connect: SMS delivered to %s.', 'labyrinthe-connect' ), $row['recipient'] )
+			$note = sprintf( __( 'Labyrinthe Connect: SMS delivered to %s.', 'labyrinthe-connect' ), $recipient );
+		} else {
 			/* translators: 1: masked phone number, 2: delivery status (failed, undeliverable…). */
-			: sprintf( __( 'Labyrinthe Connect: SMS to %1$s not delivered (%2$s).', 'labyrinthe-connect' ), $row['recipient'], $row['status'] );
+			$note = sprintf( __( 'Labyrinthe Connect: SMS to %1$s not delivered (%2$s).', 'labyrinthe-connect' ), $recipient, $status );
+			if ( '' !== $error_code ) {
+				/* translators: 1: error code, 2: error message. */
+				$note .= ' ' . sprintf( __( 'Error %1$s: %2$s', 'labyrinthe-connect' ), sanitize_text_field( $error_code ), sanitize_text_field( $error_message ) );
+			}
+		}
 
 		$order->add_order_note( $note );
 	}
