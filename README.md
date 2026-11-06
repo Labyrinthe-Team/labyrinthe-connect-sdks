@@ -9,16 +9,16 @@ the DR Congo and Central Africa. Send an SMS or verify a phone number in less th
 
 | Folder | Package | Registry | Status |
 |---|---|---|---|
-| [`php/`](php) | `labyrinthe/connect-php` | [Packagist](https://packagist.org/packages/labyrinthe/connect-php) | 1.1.1 — stable |
-| [`laravel/`](laravel) | `labyrinthe/connect-laravel` | [Packagist](https://packagist.org/packages/labyrinthe/connect-laravel) | 1.1.1 — stable |
-| [`openapi/`](openapi) | OpenAPI 3.1 specification | — | 1.1.0 — source of truth |
-| [`postman/`](postman) | Postman v2.1 collection + environments | — | 1.1.0 — generated from the spec |
-| [`node/`](node) | `@labyrinthe/connect` | [npm](https://www.npmjs.com/package/@labyrinthe/connect) | 1.1.1 — stable |
-| [`python/`](python) | `labyrinthe-connect` | [PyPI](https://pypi.org/project/labyrinthe-connect/) | 1.1.1 — stable |
-| [`widget-otp/`](widget-otp) | `@labyrinthe/otp-widget` (`<labyrinthe-otp>` + React + server handlers) | [npm](https://www.npmjs.com/package/@labyrinthe/otp-widget) | 1.1.1 — stable |
-| [`dotnet/`](dotnet) | `Labyrinthe.Connect` + `Labyrinthe.Connect.AspNetCore` | [NuGet](https://www.nuget.org/packages/Labyrinthe.Connect) | 1.1.1 — stable |
-| [`java/`](java) | `cd.labyrinthe:labyrinthe-connect` + `labyrinthe-connect-spring-boot-starter` | [Maven Central](https://central.sonatype.com/artifact/cd.labyrinthe/labyrinthe-connect) | 1.1.1 — stable |
-| [`wordpress/`](wordpress) | WordPress / WooCommerce plugin `labyrinthe-connect` (order SMS, OTP verification and login) | [wordpress.org](https://wordpress.org/plugins/labyrinthe-connect/) | 1.1.1 (SDK PHP 1.1.1, API 1.2.0) — ready, not yet on wordpress.org |
+| [`php/`](php) | `labyrinthe/connect-php` | [Packagist](https://packagist.org/packages/labyrinthe/connect-php) | 1.2.0 — stable |
+| [`laravel/`](laravel) | `labyrinthe/connect-laravel` | [Packagist](https://packagist.org/packages/labyrinthe/connect-laravel) | 1.2.0 — stable |
+| [`openapi/`](openapi) | OpenAPI 3.1 specification | — | 1.3.0 — source of truth |
+| [`postman/`](postman) | Postman v2.1 collection + environments | — | 1.3.0 — generated from the spec |
+| [`node/`](node) | `@labyrinthe/connect` | [npm](https://www.npmjs.com/package/@labyrinthe/connect) | 1.2.0 — stable |
+| [`python/`](python) | `labyrinthe-connect` | [PyPI](https://pypi.org/project/labyrinthe-connect/) | 1.2.0 — stable |
+| [`widget-otp/`](widget-otp) | `@labyrinthe/otp-widget` (`<labyrinthe-otp>` + React + server handlers) | [npm](https://www.npmjs.com/package/@labyrinthe/otp-widget) | 1.2.0 — stable |
+| [`dotnet/`](dotnet) | `Labyrinthe.Connect` + `Labyrinthe.Connect.AspNetCore` | [NuGet](https://www.nuget.org/packages/Labyrinthe.Connect) | 1.2.0 — stable |
+| [`java/`](java) | `cd.labyrinthe:labyrinthe-connect` + `labyrinthe-connect-spring-boot-starter` | [Maven Central](https://central.sonatype.com/artifact/cd.labyrinthe/labyrinthe-connect) | 1.2.0 — stable |
+| [`wordpress/`](wordpress) | WordPress / WooCommerce plugin `labyrinthe-connect` (order SMS, OTP verification and login) | [wordpress.org](https://wordpress.org/plugins/labyrinthe-connect/) | 1.2.0 (SDK PHP 1.2.0, API 1.3.0) — ready, not yet on wordpress.org |
 
 The npm, PyPI, NuGet and Maven Central packages are published directly from this repository (tags `node-vX.Y.Z`, `widget-otp-vX.Y.Z`, `python-vX.Y.Z`, `dotnet-vX.Y.Z`, `java-vX.Y.Z`). PHP packages are developed here and published through read-only mirrors
 (`labyrinthe-connect-php`, `labyrinthe-connect-laravel`) that Packagist reads. Open issues and pull requests in
@@ -77,7 +77,9 @@ System.out.println(message.status());                                           
   `otp.send / verify`, `Webhook.constructEvent`, with names adapted to each language.
 - **Never a double SMS**: every send carries an `Idempotency-Key`; automatic retries only happen when replaying is
   safe, never for OTP after a network error or a 5xx.
-- **Typed errors** with a stable `code`, the HTTP status and the error `details`.
+- **Typed errors** with a stable `code`, the HTTP status and the error `details`. A feature shut down by the
+  platform (`503 FEATURE_DISABLED` / `OTP_SERVICE_DISABLED`) is a dedicated `FeatureDisabled` error exposing
+  `feature`, `blockedBy`, the admin message and `until`; it is only retried after `Retry-After`, never in a loop.
 - **Secure by default**: the API key, OTP codes and full phone numbers never reach logs, dumps or exception messages;
   webhooks are verified in constant time on the raw body, with replay protection.
 - **Test mode first**: `lsk_test_…` keys send nothing and bill nothing; every example uses them.
