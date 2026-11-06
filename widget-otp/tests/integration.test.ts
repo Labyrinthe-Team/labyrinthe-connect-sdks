@@ -6,7 +6,8 @@
  *
  * Ignoré sans LABYRINTHE_API_KEY, ou si ce n'est pas une clé de test.
  */
-import { randomInt } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
+
 import { describe, expect, it } from 'vitest';
 import { Labyrinthe } from '@labyrinthe/connect';
 import { createOtpHandlers, type OtpHandlers } from '../src/server/index.js';
@@ -50,19 +51,25 @@ describe.skipIf(!enabled)('integration (local backend, test key)', () => {
     },
   });
 
-  it('send → wrong code → right code → verified; otp_id never reaches the browser', async () => {
+  it('send (real code_length / code_type / resend_after_seconds) → wrong code (real attempts) → right code; otp_id never reaches the browser', async () => {
     const call = browser(otp);
     const phone = randomPhone();
 
     const sent = await call('send', { phone, locale: 'fr' });
     expect(sent.status).toBe(200);
-    expect(sent.json).toMatchObject({ sent: true, resend_after_seconds: 60 });
+    expect(sent.json['sent']).toBe(true);
     expect(sent.json['max_attempts']).toBeGreaterThanOrEqual(1);
     expect(typeof sent.json['test_code']).toBe('string');
     expect(sent.text).not.toMatch(/otp_id|[0-9a-f]{8}-[0-9a-f]{4}-/i);
 
     const code = sent.json['test_code'] as string;
-    const wrong = code === '0'.repeat(code.length) ? '1'.repeat(code.length) : '0'.repeat(code.length);
+    // Valeurs de l'API (paramètres OTP du compte), plus de configuration manuelle.
+    expect(sent.json['code_length']).toBe(code.length);
+    expect(['numeric', 'alphanumeric']).toContain(sent.json['code_type']);
+    expect(Number.isInteger(sent.json['resend_after_seconds'])).toBe(true);
+
+    const first = code.charAt(0);
+    const wrong = (/\d/.test(first) ? String((Number(first) + 1) % 10) : first === 'A' ? 'B' : 'A') + code.slice(1);
     if (sent.json['max_attempts'] > 1) {
       const refused = await call('verify', { code: wrong });
       expect(refused.json).toEqual({ verified: false, reason: 'invalid_code', attempts_left: sent.json['max_attempts'] - 1 });
@@ -74,6 +81,56 @@ describe.skipIf(!enabled)('integration (local backend, test key)', () => {
 
     const replay = await call('verify', { code });
     expect(replay.json['error'].code).toBe('no_pending_verification');
+  });
+
+  it('the same send_id replays the send (same code, no second SMS); a foreign number without "+" is kept', async () => {
+    const call = browser(otp);
+    const sendId = randomBytes(16).toString('hex');
+    const phone = randomPhone();
+
+    const first = await call('send', { phone, send_id: sendId });
+    const again = await call('send', { phone, send_id: sendId });
+    expect(first.status).toBe(200);
+    expect(again.status).toBe(200);
+    expect(again.json['test_code']).toBe(first.json['test_code']);
+
+    expect((await call('verify', { code: first.json['test_code'] })).json['verified']).toBe(true);
+    expect(verifiedPhones).toContain(`243${phone.slice(1)}`);
+
+    const foreign = `336${String(randomInt(0, 100_000_000)).padStart(8, '0')}`;
+    const call2 = browser(otp);
+    const sentAbroad = await call2('send', { phone: foreign });
+    expect(sentAbroad.status).toBe(200);
+    expect((await call2('verify', { code: sentAbroad.json['test_code'] })).json['verified']).toBe(true);
+    expect(verifiedPhones).toContain(foreign);
+  });
+
+  it('a short foreign number reaches the API with its "+" (BACKEND-TODO n° 32)', async () => {
+    // Corps réellement envoyé à l'API, capturé sous le SDK Node.
+    const phones: unknown[] = [];
+    const seychelles = createOtpHandlers({
+      client: () =>
+        new Labyrinthe({
+          apiKey: key,
+          baseUrl,
+          fetch: (url, init) => {
+            if (url.endsWith('/otp/send') && typeof init.body === 'string') {
+              phones.push((JSON.parse(init.body) as Record<string, unknown>)['phone']);
+            }
+            return globalThis.fetch(url, init);
+          },
+        }),
+      secret: SECRET,
+      exposeTestCode: true,
+      onVerified: ({ phone }) => ({ phone }),
+    });
+    const call = browser(seychelles);
+    const phone = `+248${String(randomInt(1_000_000, 10_000_000))}`;
+    const sent = await call('send', { phone });
+    expect(sent.status).toBe(200);
+    expect(phones).toEqual([phone]);
+    expect(sent.json['phone_masked']).toMatch(/^\+248 /);
+    expect((await call('verify', { code: sent.json['test_code'] })).json).toEqual({ verified: true, data: { phone: phone.slice(1) } });
   });
 
   it('a second send to the same number is refused with resend_too_soon and a delay', async () => {

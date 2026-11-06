@@ -113,11 +113,93 @@ describe('phone step', () => {
     expect(element.shadowRoot!.activeElement).toBe($(element, '#pn'));
   });
 
+  it('sends a short foreign number with its "+" (BACKEND-TODO n° 32)', async () => {
+    const element = mount({ locale: 'en' });
+    await sendPhone(element, '+248 123 4567');
+    expect(net.exchanges[0]!.requestBody).toMatchObject({ phone: '+2481234567' });
+    expect(client.sent[0]).toMatchObject({ phone: '+2481234567' });
+  });
+
   it('normalises the number like the SDK and sends the widget locale', async () => {
     const element = mount({ locale: 'en' });
     await sendPhone(element, '+243 81 234 5678');
-    expect(net.exchanges[0]!.requestBody).toEqual({ phone: '+243812345678', locale: 'en' });
-    expect(client.sent[0]).toEqual({ phone: '+243812345678', locale: 'en' });
+    expect(net.exchanges[0]!.requestBody).toEqual({ phone: '+243812345678', locale: 'en', send_id: expect.stringMatching(/^[0-9a-f]{32}$/) });
+    expect(client.sent[0]).toEqual({ phone: '+243812345678', locale: 'en', idempotencyKey: expect.stringMatching(/^otp-widget-/) });
+  });
+
+  it('reuses the send_id after a lost response: a second click does not send a second SMS', async () => {
+    const element = mount();
+    const realFetch = net.fetch;
+    // Le serveur traite l'envoi, mais la réponse n'arrive jamais au navigateur.
+    vi.stubGlobal('fetch', async (input: string, init: RequestInit) => {
+      await realFetch(input, init);
+      throw new TypeError('Failed to fetch');
+    });
+    await sendPhone(element);
+    expect(errorText(element)).toMatch(/Connexion impossible/);
+
+    vi.stubGlobal('fetch', realFetch);
+    await sendPhone(element);
+
+    expect(element.step).toBe('code');
+    expect(client.sent).toHaveLength(2);
+    expect(client.sent[1]!.idempotencyKey).toBe(client.sent[0]!.idempotencyKey);
+    expect(client.replays).toBe(1);
+    expect(client.otps.size).toBe(1);
+  });
+
+  it('uses a new send_id for each successful send (resend = new code)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const element = mount({}, { resendAfterSeconds: 0 });
+      await sendPhone(element);
+      $<HTMLButtonElement>(element, '#rs').click();
+      await flush();
+      expect(client.sent).toHaveLength(2);
+      expect(client.sent[1]!.idempotencyKey).not.toBe(client.sent[0]!.idempotencyKey);
+      expect(client.replays).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('builds the code boxes from the code_length / code_type returned by the API', async () => {
+    client = fakeClient({ code: 'AB7K9QXZ', codeLength: 8, codeType: 'alphanumeric' });
+    // Sans surcharge serveur : les valeurs viennent de l'API.
+    net = browserFetch(handlers(client));
+    vi.stubGlobal('fetch', net.fetch);
+    const element = document.createElement('labyrinthe-otp');
+    document.body.append(element);
+
+    await sendPhone(element);
+
+    expect(cells(element)).toHaveLength(8);
+    expect(cells(element)[0]!.inputMode).toBe('text');
+  });
+
+  it('shows a stable account_suspended error', async () => {
+    const element = mount();
+    const log = events(element);
+    client.nextSendError = sdkErrors.accountSuspended();
+    await sendPhone(element);
+    expect(errorText(element)).toMatch(/pas disponible sur ce site/);
+    expect(log[0]).toMatchObject({ type: EVENT_ERROR, detail: { code: 'account_suspended', status: 503 } });
+  });
+
+
+  it('shows send_failed when the outcome of a send is unknown, and a new click uses a new send_id', async () => {
+    const element = mount();
+    const log = events(element);
+    client.nextSendError = sdkErrors.unresolved();
+    await sendPhone(element);
+    expect(errorText(element)).toMatch(/n’a pas pu être confirmé/);
+    expect(log[0]).toMatchObject({ type: EVENT_ERROR, detail: { code: 'send_failed', status: 502 } });
+    expect(client.sent).toHaveLength(1);
+
+    await sendPhone(element);
+    expect(element.step).toBe('code');
+    expect(client.sent).toHaveLength(2);
+    expect(client.sent[1]!.idempotencyKey).not.toBe(client.sent[0]!.idempotencyKey);
   });
 
   it('uses the country code field for local numbers', async () => {

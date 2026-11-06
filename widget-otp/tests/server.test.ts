@@ -63,6 +63,14 @@ describe('configuration', () => {
 });
 
 describe('send', () => {
+  // BACKEND-TODO n° 32 : sans « + », l'API lit un numéro de moins de 11 chiffres comme local RDC.
+  it('always hands the SDK an E.164 number with "+" (short foreign number kept, local number prefixed)', async () => {
+    const client = fakeClient();
+    await session(handlers(client)).call('send', { phone: '+2481234567' });
+    await session(handlers(client)).call('send', { phone: '0812345678' });
+    expect(client.sent.map((sent) => sent.phone)).toEqual(['+2481234567', '+243812345678']);
+  });
+
   it('sends the code and never returns otp_id, the code or the full number', async () => {
     const client = fakeClient();
     const { call, cookie } = session(handlers(client, { codeLength: 6, resendAfterSeconds: 45 }));
@@ -384,4 +392,129 @@ describe('express adapter', () => {
       );
     });
   }
+});
+
+describe('API 1.2.0', () => {
+  it('sends the code shape and the anti-resend delay returned by the API; the server options override them', async () => {
+    const client = fakeClient({ code: 'AB7K9Q', codeType: 'alphanumeric', resendAfterSeconds: 75 });
+    const fromApi = await session(handlers(client)).call('send', { phone: '0812345678' });
+    expect(fromApi.json).toMatchObject({ code_length: 6, code_type: 'alphanumeric', resend_after_seconds: 75 });
+
+    const overridden = await session(handlers(client, { codeLength: 8, codeType: 'numeric', resendAfterSeconds: 30 })).call('send', {
+      phone: '0812345679',
+    });
+    expect(overridden.json).toMatchObject({ code_length: 8, code_type: 'numeric', resend_after_seconds: 30 });
+  });
+
+  it('with an older SDK: no code shape, 60 s by default', async () => {
+    const { json } = await session(handlers(fakeClient({ legacy: true }))).call('send', { phone: '0812345678' });
+    expect(json['code_length']).toBeUndefined();
+    expect(json['code_type']).toBeUndefined();
+    expect(json['resend_after_seconds']).toBe(60);
+  });
+
+  it('uses the real attemptsRemaining of the API, and estimates it with an older SDK', async () => {
+    const client = fakeClient({ maxAttempts: 5 });
+    // L'API compte aussi les essais faits ailleurs (console, autre onglet) : sa valeur fait foi.
+    const realVerify = client.otp.verify.bind(client.otp);
+    client.otp.verify = async (params) => ({ ...(await realVerify(params)), attemptsRemaining: 1 });
+    const s = session(handlers(client));
+    await s.call('send', { phone: '0812345678' });
+    expect((await s.call('verify', { code: '000000' })).json).toEqual({ verified: false, reason: 'invalid_code', attempts_left: 1 });
+
+    const legacy = session(handlers(fakeClient({ maxAttempts: 5, legacy: true })));
+    await legacy.call('send', { phone: '0812345678' });
+    expect((await legacy.call('verify', { code: '000000' })).json).toEqual({ verified: false, reason: 'invalid_code', attempts_left: 4 });
+  });
+
+  it('passes webOtpDomain and stripAccents to the SDK, and refuses an invalid webOtpDomain at start-up', async () => {
+    const client = fakeClient();
+    await session(handlers(client, { webOtpDomain: 'shop.example.com', stripAccents: true })).call('send', { phone: '0812345678' });
+    expect(client.sent[0]).toMatchObject({ webOtpDomain: 'shop.example.com', stripAccents: true });
+
+    for (const webOtpDomain of ['https://shop.example.com', 'localhost', 'shop.example.com:443', 'shop.example.com/otp']) {
+      expect(() => handlers(fakeClient(), { webOtpDomain }), webOtpDomain).toThrow(/webOtpDomain/);
+    }
+  });
+
+  it('derives the Idempotency-Key from send_id with the secret: replay = same code, no new SMS', async () => {
+    const client = fakeClient();
+    const s = session(handlers(client, { exposeTestCode: true }));
+    const sendId = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
+
+    const first = await s.call('send', { phone: '0812345678', send_id: sendId });
+    const again = await s.call('send', { phone: '0812345678', send_id: sendId });
+
+    const key = client.sent[0]!.idempotencyKey!;
+    expect(key).toMatch(/^otp-widget-[A-Za-z0-9_-]{43}$/);
+    expect(key).not.toContain(sendId);
+    expect(client.sent[1]!.idempotencyKey).toBe(key);
+    expect(client.replays).toBe(1);
+    expect(again.json['test_code']).toBe(first.json['test_code']);
+    expect((await s.call('verify', { code: '482913' })).json).toEqual({ verified: true });
+
+    // Un autre secret donne une autre clé : le navigateur ne choisit jamais la clé envoyée à l'API.
+    const other = fakeClient();
+    await session(createOtpHandlers({ client: other, secret: `${SECRET}-other`, onVerified: () => undefined })).call('send', {
+      phone: '0812345678',
+      send_id: sendId,
+    });
+    expect(other.sent[0]!.idempotencyKey).not.toBe(key);
+
+    // Sans send_id : le SDK génère sa propre clé.
+    const plain = fakeClient();
+    await session(handlers(plain)).call('send', { phone: '0812345678' });
+    expect(plain.sent[0]!.idempotencyKey).toBeUndefined();
+  });
+
+  it.each([['short'], ['with spaces in it here!'], [42], ['x'.repeat(65)]])('refuses an invalid send_id %j', async (sendId) => {
+    const client = fakeClient();
+    const { response, json } = await session(handlers(client)).call('send', { phone: '0812345678', send_id: sendId });
+    expect(response.status).toBe(400);
+    expect(json['error'].code).toBe('invalid_request');
+    expect(client.sent).toHaveLength(0);
+  });
+
+  it('maps ACCOUNT_SUSPENDED to a stable account_suspended code (reported to onError)', async () => {
+    const client = fakeClient();
+    const onError = vi.fn();
+    client.nextSendError = sdkErrors.accountSuspended();
+    const { response, text, json } = await session(handlers(client, { onError })).call('send', { phone: '0812345678' });
+    expect(response.status).toBe(503);
+    expect(json['error'].code).toBe('account_suspended');
+    expect(text).not.toContain('Compte suspendu');
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'ACCOUNT_SUSPENDED' }), { action: 'send' });
+
+    client.nextVerifyError = sdkErrors.accountSuspended();
+    const s = session(handlers(client));
+    await s.call('send', { phone: '0812345678' });
+    expect((await s.call('verify', { code: '000000' })).json['error'].code).toBe('account_suspended');
+  });
+
+  it('maps IDEMPOTENCY_KEY_UNRESOLVED to a stable send_failed code (reported to onError, never retried)', async () => {
+    const client = fakeClient();
+    const onError = vi.fn();
+    client.nextSendError = sdkErrors.unresolved();
+    const { response, text, json } = await session(handlers(client, { onError })).call('send', { phone: '0812345678', send_id: 'a'.repeat(32) });
+    expect(response.status).toBe(502);
+    expect(json['error'].code).toBe('send_failed');
+    expect(response.headers.get('Retry-After')).toBeNull();
+    expect(text).not.toContain('Résultat inconnu');
+    expect(client.sent).toHaveLength(1);
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'IDEMPOTENCY_KEY_UNRESOLVED' }), { action: 'send' });
+  });
+
+  it('maps IDEMPOTENCY_REQUEST_IN_PROGRESS (after the SDK retries) to rate_limited with a delay', async () => {
+    const client = fakeClient();
+    client.nextSendError = sdkErrors.inProgress();
+    const { response, json } = await session(handlers(client)).call('send', { phone: '0812345678' });
+    expect(response.status).toBe(429);
+    expect(json['error']).toMatchObject({ code: 'rate_limited', retry_after_seconds: 5 });
+  });
+
+  it('keeps a foreign number typed without "+" (11 digits or more)', async () => {
+    const client = fakeClient();
+    await session(handlers(client)).call('send', { phone: '33612345678' });
+    expect(client.sent[0]!.phone).toBe('+33612345678');
+  });
 });

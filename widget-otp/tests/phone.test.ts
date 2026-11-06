@@ -22,7 +22,28 @@ const SAMPLES = [
   'abc',
   '+1234567890123456',
   '2438123456789',
+  // Spec 1.2.0 : sans « + », 11 chiffres ou plus ne commençant pas par 0 = déjà international.
+  '33612345678',
+  '447911123456',
+  '14155550123',
+  '242061234567',
+  '24381234567',
+  '123456789012345',
+  '1234567890123456',
+  '08123456789012',
 ];
+
+describe('normalizePhone (spec 1.2.0)', () => {
+  it('keeps foreign numbers without "+" and is idempotent', () => {
+    expect(normalizePhone('33612345678')).toBe('33612345678');
+    for (const sample of ['0812345678', '33612345678', '+243812345678']) {
+      const once = normalizePhone(sample)!;
+      expect(normalizePhone(once)).toBe(once);
+      expect(normalizePhone(`+${once}`)).toBe(once);
+    }
+  });
+});
+
 
 describe('normalizePhone', () => {
   it.each(SAMPLES)('matches the Node SDK for %j', (sample) => {
