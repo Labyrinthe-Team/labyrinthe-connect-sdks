@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cd.labyrinthe.connect.exception.ApiException;
 import cd.labyrinthe.connect.exception.AuthenticationException;
+import cd.labyrinthe.connect.exception.FeatureDisabledException;
 import cd.labyrinthe.connect.exception.IdempotencyRequestInProgressException;
 import cd.labyrinthe.connect.exception.LabyrintheException;
 import cd.labyrinthe.connect.internal.ErrorMapper;
@@ -96,8 +97,42 @@ class ContractTest {
   }
 
   @Test
-  void targetsSpec120() {
-    assertEquals("1.2.0", at("info", "version"));
+  void targetsSpec130() {
+    assertEquals("1.3.0", at("info", "version"));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void mapsFeatureDisabledErrorsAndTheirDetails() throws Exception {
+    Map<String, Object> error =
+        at(
+            "components",
+            "schemas",
+            "FeatureDisabledError",
+            "allOf",
+            1,
+            "properties",
+            "error",
+            "properties");
+    for (String code : (List<String>) ((Map<String, Object>) error.get("code")).get("enum")) {
+      assertEquals(FeatureDisabledException.class, ErrorMapper.CLASSES_BY_CODE.get(code), code);
+    }
+    Map<String, String> accessors =
+        Map.of(
+            "feature",
+            "feature",
+            "blocked_by",
+            "blockedBy",
+            "message",
+            "adminMessage",
+            "until",
+            "until");
+    List<String> required =
+        (List<String>) ((Map<String, Object>) error.get("details")).get("required");
+    assertEquals(new TreeSet<>(accessors.keySet()), new TreeSet<>(required));
+    for (String field : required) {
+      FeatureDisabledException.class.getMethod(accessors.get(field));
+    }
   }
 
   @Test

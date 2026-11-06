@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import cd.labyrinthe.connect.exception.AccountSuspendedException;
 import cd.labyrinthe.connect.exception.ApiException;
 import cd.labyrinthe.connect.exception.AuthenticationException;
+import cd.labyrinthe.connect.exception.FeatureDisabledException;
 import cd.labyrinthe.connect.exception.IdempotencyKeyReusedException;
 import cd.labyrinthe.connect.exception.IdempotencyRequestInProgressException;
 import cd.labyrinthe.connect.exception.InsufficientCreditsException;
@@ -24,6 +25,7 @@ import cd.labyrinthe.connect.exception.SenderIdNotApprovedException;
 import cd.labyrinthe.connect.exception.ServiceUnavailableException;
 import cd.labyrinthe.connect.exception.ValidationException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -59,7 +61,8 @@ class ErrorsTest {
     "429, TOO_MANY_REQUESTS, RateLimitException",
     "429, OTP_RESEND_TOO_SOON, OtpResendTooSoonException",
     "429, OTP_RATE_LIMITED, OtpRateLimitedException",
-    "503, OTP_SERVICE_DISABLED, ServiceUnavailableException",
+    "503, OTP_SERVICE_DISABLED, FeatureDisabledException",
+    "503, FEATURE_DISABLED, FeatureDisabledException",
     "418, SOMETHING_NEW, ApiException",
     "500, HTTP_ERROR, ServiceUnavailableException",
     "401, SOMETHING_NEW, AuthenticationException",
@@ -201,6 +204,83 @@ class ErrorsTest {
   }
 
   @Test
+  void featureDisabledExposesItsDetails() {
+    FeatureDisabledException error =
+        (FeatureDisabledException)
+            failWith(
+                MockApi.error(
+                        503,
+                        "FEATURE_DISABLED",
+                        "{\"feature\":\"api.sms_send\",\"blocked_by\":\"api\","
+                            + "\"message\":\"Maintenance jusqu'à 10 h.\","
+                            + "\"until\":\"2026-11-06T10:00:00+00:00\"}")
+                    .header("Retry-After", "1800"));
+    assertTrue(error instanceof ServiceUnavailableException);
+    assertEquals("api.sms_send", error.feature().orElseThrow());
+    assertEquals("api", error.blockedBy().orElseThrow());
+    assertEquals("Maintenance jusqu'à 10 h.", error.adminMessage().orElseThrow());
+    assertEquals(Instant.parse("2026-11-06T10:00:00Z"), error.until().orElseThrow());
+    assertEquals(Duration.ofMinutes(30), error.retryAfter().orElseThrow());
+
+    // Retour inconnu : message et until à null, pas de Retry-After.
+    FeatureDisabledException unknown =
+        (FeatureDisabledException)
+            failWith(
+                MockApi.error(
+                    503,
+                    "FEATURE_DISABLED",
+                    "{\"feature\":\"api\",\"blocked_by\":\"api\",\"message\":null,"
+                        + "\"until\":null}"));
+    assertEquals("api", unknown.feature().orElseThrow());
+    assertFalse(unknown.adminMessage().isPresent());
+    assertFalse(unknown.until().isPresent());
+    assertFalse(unknown.retryAfter().isPresent());
+
+    // Code historique de POST /otp/send, mêmes détails.
+    FeatureDisabledException otp =
+        (FeatureDisabledException)
+            failWith(
+                MockApi.error(
+                    503,
+                    "OTP_SERVICE_DISABLED",
+                    "{\"feature\":\"otp\",\"blocked_by\":\"otp\",\"message\":null,"
+                        + "\"until\":null}"));
+    assertEquals("otp", otp.feature().orElseThrow());
+    assertEquals("otp", otp.blockedBy().orElseThrow());
+  }
+
+  @Test
+  void featureDisabledToleratesMissingOrMalformedDetails() {
+    FeatureDisabledException empty =
+        (FeatureDisabledException) failWith(MockApi.error(503, "FEATURE_DISABLED"));
+    assertFalse(empty.feature().isPresent());
+    assertFalse(empty.blockedBy().isPresent());
+    assertFalse(empty.adminMessage().isPresent());
+    assertFalse(empty.until().isPresent());
+    assertFalse(empty.retryAfter().isPresent());
+
+    FeatureDisabledException legacy =
+        (FeatureDisabledException) failWith(MockApi.error(503, "OTP_SERVICE_DISABLED", "[]"));
+    assertFalse(legacy.feature().isPresent());
+
+    FeatureDisabledException malformed =
+        (FeatureDisabledException)
+            failWith(
+                MockApi.error(
+                        503,
+                        "FEATURE_DISABLED",
+                        "{\"feature\":12,\"blocked_by\":[\"api\"],\"message\":\"\","
+                            + "\"until\":\"demain\"}")
+                    .header("Retry-After", "plus tard"));
+    assertFalse(malformed.feature().isPresent());
+    assertFalse(malformed.blockedBy().isPresent());
+    assertFalse(malformed.adminMessage().isPresent());
+    assertFalse(malformed.until().isPresent());
+    assertFalse(malformed.retryAfter().isPresent());
+    assertEquals("Message de l'API.", malformed.getMessage());
+  }
+
+  @Test
   void exposesHeadersAndRequestId() {
     ApiException error =
         (ApiException) failWith(MockApi.error(404, "NOT_FOUND").header("X-Request-Id", "req-123"));
@@ -239,6 +319,9 @@ class ErrorsTest {
     assertTrue(new SenderIdNotApprovedException("m", "c", 422, null, null) instanceof ApiException);
     assertTrue(
         new IdempotencyKeyReusedException("m", "c", 409, null, null) instanceof ApiException);
+    assertTrue(
+        new FeatureDisabledException("m", "c", 503, null, null)
+            instanceof ServiceUnavailableException);
     assertTrue(new ApiException("m", "c", 400, null, null) instanceof RuntimeException);
   }
 }

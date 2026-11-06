@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import cd.labyrinthe.connect.exception.ApiConnectionException;
 import cd.labyrinthe.connect.exception.ApiTimeoutException;
+import cd.labyrinthe.connect.exception.FeatureDisabledException;
 import cd.labyrinthe.connect.exception.IdempotencyKeyReusedException;
 import cd.labyrinthe.connect.exception.IdempotencyKeyUnresolvedException;
 import cd.labyrinthe.connect.exception.IdempotencyRequestInProgressException;
@@ -299,6 +300,91 @@ class RetryTest {
       assertEquals("otp-1", client.otp().send("0812345678").otpId());
       assertThrows(ServiceUnavailableException.class, () -> client.otp().verify("otp-1", "123456"));
       assertEquals(3, api.requests.size());
+    }
+  }
+
+  static final String FEATURE_OFF =
+      "{\"feature\":\"api.sms_send\",\"blocked_by\":\"api\",\"message\":null," + "\"until\":null}";
+
+  @Test
+  void featureDisabledWithoutRetryAfterIsNeverRetried() {
+    try (MockApi api = new MockApi()) {
+      api.enqueue(
+          MockApi.error(503, "FEATURE_DISABLED", FEATURE_OFF),
+          MockApi.error(503, "FEATURE_DISABLED", FEATURE_OFF),
+          MockApi.error(503, "OTP_SERVICE_DISABLED"),
+          MockApi.error(503, "FEATURE_DISABLED", FEATURE_OFF),
+          MockApi.balance());
+      LabyrintheClient client = api.builder().maxRetries(3).build();
+      assertThrows(FeatureDisabledException.class, () -> client.balance().get());
+      assertThrows(FeatureDisabledException.class, () -> client.sms().send("0812345678", "Hello"));
+      assertThrows(FeatureDisabledException.class, () -> client.otp().send("0812345678"));
+      assertThrows(FeatureDisabledException.class, () -> client.otp().verify("otp-1", "123456"));
+      assertEquals(4, api.requests.size());
+      assertTrue(api.scheduler.sleeps.isEmpty());
+    }
+  }
+
+  @Test
+  void featureDisabledIsRetriedAfterRetryAfterInEveryMode() {
+    try (MockApi api = new MockApi()) {
+      api.enqueue(
+          MockApi.error(503, "FEATURE_DISABLED", FEATURE_OFF).header("Retry-After", "2"),
+          MockApi.balance(),
+          MockApi.error(503, "FEATURE_DISABLED", FEATURE_OFF).header("Retry-After", "3"),
+          MockApi.data(202, "[" + MockApi.message() + "]"),
+          MockApi.error(503, "OTP_SERVICE_DISABLED").header("Retry-After", "4"),
+          MockApi.data(201, OTP_SENT),
+          MockApi.error(503, "FEATURE_DISABLED", FEATURE_OFF).header("Retry-After", "5"),
+          MockApi.data(200, VERIFIED));
+      LabyrintheClient client = api.client();
+      assertEquals(5, client.balance().get().balance());
+      client.sms().send("0812345678", "Hello");
+      assertEquals("otp-1", client.otp().send("0812345678").otpId());
+      assertTrue(client.otp().verify("otp-1", "123456").isVerified());
+      assertEquals(8, api.requests.size());
+      assertEquals(
+          List.of(
+              Duration.ofSeconds(2),
+              Duration.ofSeconds(3),
+              Duration.ofSeconds(4),
+              Duration.ofSeconds(5)),
+          api.scheduler.sleeps);
+      // Rejeu de l'envoi avec la même Idempotency-Key.
+      assertEquals(
+          api.requests.get(2).header("Idempotency-Key"),
+          api.requests.get(3).header("Idempotency-Key"));
+    }
+  }
+
+  @Test
+  void featureDisabledIsThrownWhenRetryAfterExceedsMaxRetryWait() {
+    try (MockApi api = new MockApi()) {
+      api.enqueue(
+          MockApi.error(503, "FEATURE_DISABLED", FEATURE_OFF).header("Retry-After", "45"),
+          MockApi.error(503, "FEATURE_DISABLED", FEATURE_OFF).header("Retry-After", "45"),
+          MockApi.balance());
+      LabyrintheClient client = api.builder().maxRetryWait(Duration.ofSeconds(10)).build();
+      FeatureDisabledException error =
+          assertThrows(FeatureDisabledException.class, () -> client.balance().get());
+      assertEquals(Duration.ofSeconds(45), error.retryAfter().orElseThrow());
+      assertThrows(FeatureDisabledException.class, () -> client.otp().verify("otp-1", "123456"));
+      assertEquals(2, api.requests.size());
+      assertTrue(api.scheduler.sleeps.isEmpty());
+    }
+  }
+
+  @Test
+  void featureDisabledStopsAfterMaxRetries() {
+    try (MockApi api = new MockApi()) {
+      for (int i = 0; i < 3; i++) {
+        api.enqueue(MockApi.error(503, "FEATURE_DISABLED", FEATURE_OFF).header("Retry-After", "1"));
+      }
+      assertThrows(
+          FeatureDisabledException.class,
+          () -> api.builder().maxRetries(1).build().balance().get());
+      assertEquals(2, api.requests.size());
+      assertEquals(List.of(Duration.ofSeconds(1)), api.scheduler.sleeps);
     }
   }
 
