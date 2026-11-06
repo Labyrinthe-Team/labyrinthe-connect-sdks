@@ -50,7 +50,7 @@ navigateur ni dans une application mobile.
 ```csharp
 var message = await client.Sms.SendAsync(new SendSmsRequest
 {
-    To = "+243 81 234 5678",        // +243…, 00243…, 243…, 0812…, 812… sont tous acceptés
+    To = "+243 81 234 5678",        // +243…, 00243…, 243…, 0812…, 812…, 33612345678 sont tous acceptés
     Body = "Votre commande 1042 est prete.",
     Sender = "MABOUTIQUE",          // facultatif : un Sender ID approuvé (client.SenderIds.ListAsync())
     Reference = "commande-1042",    // facultatif : votre référence, 64 caractères au plus
@@ -91,6 +91,14 @@ estimate.Encoding      // SmsEncoding.Ucs2
 estimate.TotalCredits  // 2
 estimate.IsAffordable  // le solde couvre-t-il l'envoi ?
 ```
+
+`StripAccents = true` (sur `SendSmsRequest`, `SendManySmsRequest`, `EstimateSmsRequest` et `SendOtpRequest`) fait
+remplacer par le serveur accents et caractères typographiques par leur équivalent ASCII : le message passe en GSM-7,
+souvent deux fois moins cher. La translittération dépend du serveur : n'en dépendez pas pour un texte exact.
+
+Numéros : sans `+`, 11 chiffres ou plus ne commençant pas par 0 sont déjà internationaux (`33612345678` reste
+`33612345678`) ; sinon le numéro est local et reçoit l'indicatif par défaut (`0812345678` → `243812345678`). Pour un
+numéro étranger court (10 chiffres ou moins), utilisez toujours le `+`.
 
 ### Plusieurs destinataires : tout ou rien
 
@@ -135,7 +143,28 @@ var batch = await client.Sms.SendManyAsync(new SendManySmsRequest
 batch.Replayed   // true pour un rejeu
 ```
 
-La même clé avec un autre contenu est refusée : `IdempotencyKeyReusedException` (409).
+La même clé avec un autre contenu est refusée : `IdempotencyKeyReusedException` (409). Tant que la requête d'origine
+est en cours, l'API répond `409 IDEMPOTENCY_REQUEST_IN_PROGRESS` : le SDK attend `Retry-After` et relance avec la même
+clé (`IdempotencyRequestInProgressException` si c'est toujours le cas après ses relances).
+
+`IdempotencyKeyUnresolvedException` (409 `IDEMPOTENCY_KEY_UNRESOLVED`, `SendAsync`, `SendManyAsync` et
+`Otp.SendAsync`) signifie que la requête d'origine avec cette clé a échoué de façon inattendue côté API : son
+résultat est inconnu et **un SMS a pu partir**. Le SDK ne la relance jamais, et vous ne devez pas la relancer
+automatiquement non plus. Vérifiez d'abord : `client.Sms.ListAsync(new ListSmsOptions { Reference = "commande-1042" })`
+pour un SMS envoyé avec une `Reference`, ou demandez à l'utilisateur s'il a reçu le code pour un OTP. Puis, seulement
+si rien n'est parti, renvoyez avec une **nouvelle** `Idempotency-Key` (l'ancienne reste non résolue). Journalisez
+`RequestId` pour le support.
+
+```csharp
+try
+{
+    await client.Sms.SendAsync(new SendSmsRequest { To = "0812345678", Body = "…", Reference = "commande-1042", IdempotencyKey = cle });
+}
+catch (IdempotencyKeyUnresolvedException e)
+{
+    logger.LogWarning("Résultat inconnu (requête {RequestId}) : vérifier GET /sms?reference=commande-1042 avant de renvoyer avec une nouvelle clé.", e.RequestId);
+}
+```
 
 ### Lister les messages
 
@@ -174,6 +203,8 @@ de test) et le SDK ne le journalise jamais.
 // 1. Envoyer le code. Gardez OtpId CÔTÉ SERVEUR (session, cache, base), jamais dans le navigateur.
 var otp = await client.Otp.SendAsync("0812345678");
 HttpContext.Session.SetString("otp_id", otp.OtpId);
+// otp.CodeLength (4 à 8), otp.CodeType (Numeric / Alphanumeric) : taille du champ et clavier.
+// otp.ResendAfterSeconds : compte à rebours du bouton « Renvoyer le code ».
 
 // 2. L'utilisateur saisit le code reçu par SMS.
 
@@ -185,7 +216,7 @@ if (result.Verified)
 }
 else if (result.Reason == OtpFailureReason.InvalidCode)
 {
-    // code faux : une tentative consommée, l'utilisateur peut réessayer
+    // code faux : une tentative consommée, il en reste result.AttemptsRemaining
 }
 else
 {
@@ -198,12 +229,19 @@ else
 - Longueur, validité, tentatives, Sender ID et modèle viennent des paramètres OTP du compte. Vous pouvez imposer le
   modèle (`new SendOtpRequest { Phone = …, Template = "Votre code MaBoutique : {code}" }`, avec `{code}` obligatoire ;
   `{app_name}` et `{minutes}` facultatifs) et la langue (`Locale = OtpLocale.Fr` ou `En`).
-- Limites : `OtpResendTooSoonException` (attendre `RetryAfter`) et `OtpRateLimitedException` (`Scope`, `Limit`).
+- `WebOtpDomain = "app.exemple.com"` ajoute la ligne `@app.exemple.com #123456` au SMS pour le remplissage
+  automatique ([Web OTP API](https://developer.mozilla.org/docs/Web/API/WebOTP_API), Chrome, Android).
+- Limites : `OtpResendTooSoonException` et `OtpRateLimitedException` (`Scope`, `Limit`), toutes deux avec
+  `RetryAfter` (en-tête `Retry-After`). Jamais relancées par le SDK.
 - **Mode test** : avec une clé `lsk_test_`, aucun SMS n'est envoyé et `otp.TestCode` contient le code, pour tester
   tout le parcours. Toujours `null` avec une clé live ; jamais affiché par `ToString()`.
 
-`Otp.SendAsync` n'est jamais relancé après une erreur réseau ou une 5xx (le SMS a pu partir) : affichez une erreur et
-laissez l'utilisateur redemander un code.
+`Otp.SendAsync` porte toujours un `Idempotency-Key` (`SendOtpRequest.IdempotencyKey`, ou un `Guid` généré et réutilisé
+par ses relances) : il est relancé sans risque après une erreur réseau, une 5xx ou un 409
+`IDEMPOTENCY_REQUEST_IN_PROGRESS`, et un rejeu renvoie le même `OtpId` sans second SMS (`otp.Replayed`). `VerifyAsync`
+n'est relancé que sur 429 `TOO_MANY_REQUESTS` (sinon une tentative a pu être consommée).
+
+L'issue de chaque vérification est aussi notifiée par les webhooks `otp.verified` et `otp.failed`.
 
 ## Webhooks
 
@@ -237,7 +275,9 @@ Chaque événement a `Id` (dédoublonnez dessus : jusqu'à 5 tentatives de livra
 
 | Type | `Type` | `Data` |
 |---|---|---|
-| `MessageStatusChanged` | `message.status_changed` | `MessageId`, `Recipient`, `Status`, `ProviderMessageId`, `CampaignId` |
+| `MessageStatusChanged` | `message.status_changed` | `MessageId`, `Recipient`, `Status`, `ProviderMessageId`, `CampaignId`, `Reference`, `ErrorCode`, `ErrorMessage` |
+| `OtpVerified` | `otp.verified` | `OtpId`, `Phone`, `Status` (`Verified`), `Reason` (`null`), `VerifiedAt` |
+| `OtpFailed` | `otp.failed` | `OtpId`, `Phone`, `Status` (`Failed` / `Expired`), `Reason` (`MaxAttemptsReached` / `Expired`) |
 | `CampaignCompleted` | `campaign.completed` | `CampaignId`, `Name`, `RecipientsCount`, `MessagesByStatus`, `CreditsCharged`, `CompletedAt` |
 | `BalanceLow` | `balance.low` | `Balance`, `Threshold` |
 | `TestPing` | `test.ping` | `JsonElement` (`{}`) |
@@ -283,12 +323,22 @@ Voir [`examples/WebhookMinimalApi`](examples/WebhookMinimalApi).
 
 Toutes les exceptions héritent de `LabyrintheException` et exposent `Code` (stable, pour votre code), `Message`,
 `StatusCode` (statut HTTP, ou `null` sans réponse) et `Details` (`IReadOnlyDictionary<string, JsonElement>`). Les
-erreurs de l'API héritent d'`ApiException` et exposent aussi `Headers` et `RequestId`.
+erreurs de l'API héritent d'`ApiException` et exposent aussi `Headers`, `RequestId` (`X-Request-Id`, à communiquer au
+support) et `ApiVersion`.
+
+Les résultats (`MessageBatch`, `Estimate`, `Balance`, `OtpSendResult`, `OtpVerifyResult`, `Page<T>`) exposent aussi
+`RequestId`. Pour fournir votre propre identifiant (trace, numéro de commande), passez par une vue légère du client :
+
+```csharp
+var batch = await client.WithRequestId("commande-1042").Sms.SendManyAsync(request);   // 1 à 128 car. : A-Z a-z 0-9 . _ : -
+batch.RequestId   // "commande-1042"
+```
 
 | Exception | Cas |
 |---|---|
 | `AuthenticationException` | 401 — clé absente, invalide ou révoquée |
 | `PermissionException` | 403 — IP non autorisée (`FORBIDDEN`), OTP désactivé pour le compte (`OTP_DISABLED_FOR_ACCOUNT`) |
+| `AccountSuspendedException` | 403 `ACCOUNT_SUSPENDED` — hérite de `PermissionException` ; toute l'API est fermée |
 | `NotFoundException` | 404 — message ou `otp_id` inconnu |
 | `ValidationException` | 422 `VALIDATION_ERROR` — `FieldErrors` |
 | `RecipientNotSendableException` | 422 — `Rejected`, `Reason` ; rien n'a été envoyé |
@@ -296,6 +346,8 @@ erreurs de l'API héritent d'`ApiException` et exposent aussi `Headers` et `Requ
 | `InvalidPhoneException` | 422 `INVALID_PHONE` (OTP) |
 | `InsufficientCreditsException` | 409 — `Available`, `Required` ; rien n'a été envoyé |
 | `IdempotencyKeyReusedException` | 409 — même clé, requête différente |
+| `IdempotencyRequestInProgressException` | 409 — requête d'origine encore en cours (`RetryAfter`) ; déjà relancée |
+| `IdempotencyKeyUnresolvedException` | 409 — requête d'origine en échec inattendu, résultat inconnu (un SMS a pu partir) ; jamais relancée : vérifier, puis renvoyer avec une nouvelle clé |
 | `RateLimitException` | 429 `TOO_MANY_REQUESTS` — `RetryAfter` |
 | `OtpResendTooSoonException`, `OtpRateLimitedException` | 429 — héritent de `RateLimitException` ; `Scope`, `Limit` |
 | `ServiceUnavailableException` | 5xx, dont 503 `OTP_SERVICE_DISABLED` |
@@ -312,13 +364,13 @@ message). Annuler votre `CancellationToken` lève `OperationCanceledException`, 
 Le SDK relance automatiquement (par défaut 2 relances, backoff exponentiel 0,5 s → 1 s → 2 s avec jitter)
 **seulement quand un rejeu ne peut pas produire deux fois un effet** :
 
-| Requête | Erreur réseau / délai | 5xx | 429 `TOO_MANY_REQUESTS` |
-|---|---|---|---|
-| `GetAsync`, `ListAsync`, `Balance`, `SenderIds`, `EstimateAsync` | relancée | relancée | relancée après `Retry-After` |
-| `SendAsync` / `SendManyAsync` (toujours avec `Idempotency-Key`) | relancée, même clé | relancée, même clé | relancée après `Retry-After` |
-| `Otp.SendAsync`, `Otp.VerifyAsync` | **jamais** | **jamais** | relancée (refusée avant traitement) |
+| Requête | Erreur réseau / délai | 5xx | 429 `TOO_MANY_REQUESTS` | 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` |
+|---|---|---|---|---|
+| `GetAsync`, `ListAsync`, `Balance`, `SenderIds`, `EstimateAsync` | relancée | relancée | relancée après `Retry-After` | — |
+| `SendAsync` / `SendManyAsync` / `Otp.SendAsync` (toujours avec `Idempotency-Key`) | relancée, même clé | relancée, même clé | relancée après `Retry-After` | relancée après `Retry-After`, même clé |
+| `Otp.VerifyAsync` | **jamais** | **jamais** | relancée (refusée avant traitement) | **jamais** |
 
-Les erreurs métier (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`) ne sont jamais relancées. Si l'API demande
+Les erreurs métier (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`, `IDEMPOTENCY_KEY_UNRESOLVED`) ne sont jamais relancées. Si l'API demande
 d'attendre plus que `MaxRetryWait` (10 s par défaut), le SDK lève `RateLimitException` au lieu d'attendre. Les
 redirections ne sont jamais suivies. `Timeout` s'applique à chaque tentative ; votre `CancellationToken` borne
 l'appel entier (relances comprises).
@@ -345,7 +397,8 @@ var client = new LabyrintheClient(new LabyrintheClientOptions
 - `client.ToString()` affiche `lsk_test_****` ; `OtpSendResult.ToString()` masque `TestCode` ; `Message.ToString()`
   masque le destinataire.
 - `PhoneNumber.Normalize("0812345678")` renvoie `"243812345678"` (ou `null`) avec les règles de l'API ; `IsValid()`
-  et `Mask()` existent aussi. Les numéros internationaux ne sont jamais bloqués.
+  et `Mask()` existent aussi. Les numéros internationaux ne sont jamais bloqués. Les requêtes envoient toujours le
+  numéro au format E.164 avec « + » (`+243812345678`) : un numéro étranger court garde son indicatif.
 - Avec votre propre `HttpClient`, configurez son handler avec `AllowAutoRedirect = false` et laissez son `Timeout`
   au-dessus de celui du SDK.
 - `User-Agent: labyrinthe-dotnet/<version> .NET/<version du runtime>`.
