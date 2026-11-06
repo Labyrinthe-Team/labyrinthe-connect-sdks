@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
@@ -53,6 +54,8 @@ public final class Transport {
   private static final Duration BASE_DELAY = Duration.ofMillis(500);
   private static final Duration MAX_BACKOFF = Duration.ofSeconds(8);
   private static final String IN_PROGRESS = "IDEMPOTENCY_REQUEST_IN_PROGRESS";
+  private static final Set<String> FEATURE_DISABLED =
+      Set.of("FEATURE_DISABLED", "OTP_SERVICE_DISABLED");
 
   /**
    * Quand une requête peut être renvoyée automatiquement.
@@ -65,6 +68,10 @@ public final class Transport {
    *       (refusée avant traitement), jamais sur erreur réseau ni 5xx (risque d'une tentative
    *       consommée).
    * </ul>
+   *
+   * <p>Dans les deux modes, 503 FEATURE_DISABLED / OTP_SERVICE_DISABLED (refusée avant traitement)
+   * n'est relancée que si {@code Retry-After} est présent et ne dépasse pas {@code maxRetryWait},
+   * après exactement ce délai ; jamais avec un backoff à l'aveugle.
    */
   public enum RetryMode {
     /** Rejeu sans effet de bord. */
@@ -593,6 +600,11 @@ public final class Transport {
     if (error.statusCode() == 429) {
       return "TOO_MANY_REQUESTS".equals(error.code());
     }
+    // Fonctionnalité coupée : refusée avant traitement, relançable dans tous les modes, mais
+    // seulement après le Retry-After annoncé (voir retryDelay).
+    if (FEATURE_DISABLED.contains(error.code())) {
+      return true;
+    }
     // La requête d'origine (même Idempotency-Key) est encore en cours : la relance est un rejeu.
     if (IN_PROGRESS.equals(error.code())) {
       return mode == RetryMode.SAFE;
@@ -602,6 +614,13 @@ public final class Transport {
 
   /** Délai avant la prochaine tentative ; vide pour abandonner (attente demandée trop longue). */
   private Optional<Duration> retryDelay(ApiException error, int attempt) {
+    if (FEATURE_DISABLED.contains(error.code())) {
+      // Seulement l'en-tête Retry-After (réactivation programmée), jamais de backoff à l'aveugle.
+      Optional<Duration> retryAfter = RetryAfter.of(error.headers(), Collections.emptyMap());
+      return retryAfter.isPresent() && retryAfter.get().compareTo(maxRetryWait) <= 0
+          ? retryAfter
+          : Optional.empty();
+    }
     if (error.statusCode() == 429 || IN_PROGRESS.equals(error.code())) {
       Optional<Duration> retryAfter = RetryAfter.of(error.headers(), error.details());
       if (retryAfter.isPresent()) {

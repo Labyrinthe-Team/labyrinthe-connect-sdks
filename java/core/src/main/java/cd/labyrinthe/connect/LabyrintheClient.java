@@ -289,7 +289,9 @@ public final class LabyrintheClient {
     /**
      * Longest wait accepted before a retry (default 10 s). When the API asks to wait longer ({@code
      * Retry-After}), the SDK throws a {@link cd.labyrinthe.connect.exception.RateLimitException}
-     * instead of waiting.
+     * (or {@link cd.labyrinthe.connect.exception.FeatureDisabledException}…) instead of waiting. A
+     * 503 {@code FEATURE_DISABLED} is retried only after its {@code Retry-After}, never with a
+     * blind backoff.
      *
      * @param maxRetryWait zero or more
      * @return this builder
