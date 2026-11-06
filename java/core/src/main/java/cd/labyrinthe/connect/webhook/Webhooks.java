@@ -1,6 +1,7 @@
 package cd.labyrinthe.connect.webhook;
 
 import cd.labyrinthe.connect.MessageStatus;
+import cd.labyrinthe.connect.OtpFailureReason;
 import cd.labyrinthe.connect.exception.InvalidArgumentException;
 import cd.labyrinthe.connect.exception.InvalidWebhookPayloadException;
 import cd.labyrinthe.connect.exception.SignatureVerificationException;
@@ -28,6 +29,8 @@ import javax.crypto.spec.SecretKeySpec;
  * if (event instanceof MessageStatusChanged) {
  *   MessageStatusChanged changed = (MessageStatusChanged) event;
  *   updateMessage(changed.data().messageId(), changed.data().status());
+ * } else if (event instanceof OtpVerified) {
+ *   markVerified(((OtpVerified) event).data().otpId());
  * }
  * }</pre>
  *
@@ -257,7 +260,11 @@ public final class Webhooks {
                 READER.string(data, "recipient"),
                 MessageStatus.fromValue(READER.string(data, "status")),
                 READER.nullableString(data, "provider_message_id"),
-                READER.nullableString(data, "campaign_id")));
+                READER.nullableString(data, "campaign_id"),
+                // Champs de l'API 1.2.0 : absents d'une livraison plus ancienne.
+                READER.nullableString(data, "reference"),
+                READER.nullableString(data, "error_code"),
+                READER.nullableString(data, "error_message")));
       case CAMPAIGN_COMPLETED:
         Map<String, Object> counts = READER.optionalObject(data, "messages_by_status");
         Map<String, Long> byStatus = new LinkedHashMap<>();
@@ -287,10 +294,24 @@ public final class Webhooks {
             envelope,
             new BalanceLow.Data(
                 READER.longValue(data, "balance"), READER.longValue(data, "threshold")));
+      case OTP_VERIFIED:
+        return new OtpVerified(id, name, sentAt, envelope, otpData(data));
+      case OTP_FAILED:
+        return new OtpFailed(id, name, sentAt, envelope, otpData(data));
       case TEST_PING:
         return new TestPing(id, name, sentAt, envelope, data);
       default:
         return new UnknownEvent(id, name, sentAt, envelope, data);
     }
+  }
+
+  private static OtpEventData otpData(Map<String, Object> data) {
+    String reason = READER.nullableString(data, "reason");
+    return new OtpEventData(
+        READER.string(data, "otp_id"),
+        READER.string(data, "phone"),
+        OtpEventStatus.fromValue(READER.string(data, "status")),
+        reason == null ? null : OtpFailureReason.fromValue(reason),
+        READER.nullableInstant(data, "verified_at"));
   }
 }

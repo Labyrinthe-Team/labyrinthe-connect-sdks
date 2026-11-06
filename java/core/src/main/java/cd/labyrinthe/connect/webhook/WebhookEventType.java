@@ -12,6 +12,10 @@ public enum WebhookEventType {
   CAMPAIGN_COMPLETED("campaign.completed"),
   /** {@code balance.low}: the balance went below the account's low-balance threshold. */
   BALANCE_LOW("balance.low"),
+  /** {@code otp.verified}: an OTP code was verified. */
+  OTP_VERIFIED("otp.verified"),
+  /** {@code otp.failed}: an OTP verification failed for good (attempts used, or expired). */
+  OTP_FAILED("otp.failed"),
   /** {@code test.ping}: sent by the Test button of the client area. */
   TEST_PING("test.ping"),
   /** An event type this SDK version does not know yet. */

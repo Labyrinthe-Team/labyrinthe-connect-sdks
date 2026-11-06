@@ -39,18 +39,27 @@ public final class MessageStatusChanged extends WebhookEvent {
     private final MessageStatus status;
     private final String providerMessageId;
     private final String campaignId;
+    private final String reference;
+    private final String errorCode;
+    private final String errorMessage;
 
     Data(
         String messageId,
         String recipient,
         MessageStatus status,
         String providerMessageId,
-        String campaignId) {
+        String campaignId,
+        String reference,
+        String errorCode,
+        String errorMessage) {
       this.messageId = Objects.requireNonNull(messageId, "messageId");
       this.recipient = Objects.requireNonNull(recipient, "recipient");
       this.status = Objects.requireNonNull(status, "status");
       this.providerMessageId = providerMessageId;
       this.campaignId = campaignId;
+      this.reference = reference;
+      this.errorCode = errorCode;
+      this.errorMessage = errorMessage;
     }
 
     /**
@@ -96,6 +105,33 @@ public final class MessageStatusChanged extends WebhookEvent {
      */
     public Optional<String> campaignId() {
       return Optional.ofNullable(campaignId);
+    }
+
+    /**
+     * Your reference, given to {@code sms().send()} (API 1.2.0).
+     *
+     * @return the reference, if any
+     */
+    public Optional<String> reference() {
+      return Optional.ofNullable(reference);
+    }
+
+    /**
+     * Error code of the provider or the platform, on failure (API 1.2.0).
+     *
+     * @return the code, if any
+     */
+    public Optional<String> errorCode() {
+      return Optional.ofNullable(errorCode);
+    }
+
+    /**
+     * Error message, on failure (API 1.2.0).
+     *
+     * @return the message, if any
+     */
+    public Optional<String> errorMessage() {
+      return Optional.ofNullable(errorMessage);
     }
 
     /** The recipient is masked. */

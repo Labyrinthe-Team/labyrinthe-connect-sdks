@@ -5,8 +5,9 @@ import java.util.Map;
 
 /**
  * A verified webhook event. The hierarchy is closed: an event is one of {@link
- * MessageStatusChanged}, {@link CampaignCompleted}, {@link BalanceLow}, {@link TestPing} or {@link
- * UnknownEvent}.
+ * MessageStatusChanged}, {@link CampaignCompleted}, {@link BalanceLow}, {@link OtpVerified}, {@link
+ * OtpFailed}, {@link TestPing} or {@link UnknownEvent} (an event added to the API later: answer 2xx
+ * and ignore it).
  *
  * <pre>{@code
  * if (event instanceof MessageStatusChanged) {
