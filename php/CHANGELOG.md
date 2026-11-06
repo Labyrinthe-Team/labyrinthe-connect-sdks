@@ -92,6 +92,6 @@ First stable release, built against the API specification 1.1.0.
 - Optional PSR-3 logging with masked phone numbers; the API key, OTP codes and message bodies are never logged,
   dumped or serialised.
 
-[Unreleased]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/php-v1.1.0...HEAD
-[1.1.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/compare/php-v1.0.0...php-v1.1.0
-[1.0.0]: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/releases/tag/php-v1.0.0
+[Unreleased]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/php-v1.1.0...HEAD
+[1.1.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/php-v1.0.0...php-v1.1.0
+[1.0.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/releases/tag/php-v1.0.0
