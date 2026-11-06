@@ -102,9 +102,29 @@ abstract class TestCase extends \PHPUnit\Framework\TestCase
             'provider_message_id' => null,
             'error_code' => null,
             'error_message' => null,
-            'created_at' => '2026-11-05T10:00:00.000000Z',
+            'created_at' => '2026-11-05T10:00:00+00:00',
             'submitted_at' => null,
             'delivered_at' => null,
+        ];
+    }
+
+    /**
+     * An OtpSendResult as returned by the API with a test key (every field of the spec).
+     *
+     * @param array<string, mixed> $overrides
+     *
+     * @return array<string, mixed>
+     */
+    protected static function otpSendData(array $overrides = []): array
+    {
+        return $overrides + [
+            'otp_id' => 'otp-1',
+            'expires_at' => '2026-11-05T10:05:00+00:00',
+            'max_attempts' => 3,
+            'code_length' => 6,
+            'code_type' => 'numeric',
+            'resend_after_seconds' => 60,
+            'test_code' => '482913',
         ];
     }
 
