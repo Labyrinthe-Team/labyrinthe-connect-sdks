@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Labyrinthe\Connect\Exception;
 
 /**
- * 5xx: server error or service temporarily disabled (e.g. 503 OTP_SERVICE_DISABLED).
+ * 5xx: server error or service temporarily unavailable. A feature shut down
+ * by the platform (503 FEATURE_DISABLED / OTP_SERVICE_DISABLED) is thrown as
+ * the FeatureDisabledException subclass.
  */
-final class ServiceUnavailableException extends ApiException
+class ServiceUnavailableException extends ApiException
 {
 }

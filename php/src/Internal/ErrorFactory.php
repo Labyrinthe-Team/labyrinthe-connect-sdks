@@ -7,6 +7,7 @@ namespace Labyrinthe\Connect\Internal;
 use Labyrinthe\Connect\Exception\AccountSuspendedException;
 use Labyrinthe\Connect\Exception\ApiException;
 use Labyrinthe\Connect\Exception\AuthenticationException;
+use Labyrinthe\Connect\Exception\FeatureDisabledException;
 use Labyrinthe\Connect\Exception\IdempotencyKeyReusedException;
 use Labyrinthe\Connect\Exception\IdempotencyKeyUnresolvedException;
 use Labyrinthe\Connect\Exception\IdempotencyRequestInProgressException;
@@ -48,7 +49,8 @@ final class ErrorFactory
         'TOO_MANY_REQUESTS' => RateLimitException::class,
         'OTP_RESEND_TOO_SOON' => OtpResendTooSoonException::class,
         'OTP_RATE_LIMITED' => OtpRateLimitedException::class,
-        'OTP_SERVICE_DISABLED' => ServiceUnavailableException::class,
+        'OTP_SERVICE_DISABLED' => FeatureDisabledException::class,
+        'FEATURE_DISABLED' => FeatureDisabledException::class,
     ];
 
     private function __construct()
