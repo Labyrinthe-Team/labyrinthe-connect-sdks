@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import uuid
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Union
 from urllib.parse import quote
 
 from .._data import api, to_estimate, to_message
-from .._transport import ApiResponse, Json, RetryMode
+from .._transport import MAX_IDEMPOTENCY_KEY_LENGTH, ApiResponse, Json, RetryMode, idempotency_key_or_new
 from ..errors import InvalidArgumentError, UnexpectedResponseError
 from ..pagination import AsyncPage, AsyncPaginator, SyncPage
-from ..phone import normalize, normalize_or_raise
+from ..phone import _to_e164, normalize, normalize_or_raise
 from ..types import Estimate, Message, MessageBatch, MessageStatus
 
 if TYPE_CHECKING:
@@ -32,7 +31,6 @@ MAX_BODY_LENGTH = 1600
 MAX_RECIPIENTS = 1000
 MAX_SENDER_LENGTH = 11
 MAX_REFERENCE_LENGTH = 64
-MAX_IDEMPOTENCY_KEY_LENGTH = 255
 MAX_PER_PAGE = 100
 DEFAULT_PER_PAGE = 15
 
@@ -46,8 +44,13 @@ class _SmsCore:
         self._default_country_code = default_country_code
         self._default_sender = default_sender or None
 
+    def _wire(self, raw: str) -> str:
+        """Numéro tel qu'envoyé à l'API : E.164 avec « + » s'il est valide, sinon transmis tel quel."""
+        number = normalize(raw, self._default_country_code)
+        return raw if number is None else _to_e164(number)
+
     def _single(self, to: str) -> Json:
-        return {"recipient": normalize_or_raise(to, self._default_country_code, "to")}
+        return {"recipient": _to_e164(normalize_or_raise(to, self._default_country_code, "to"))}
 
     def _many(self, recipients: Sequence[str]) -> Json:
         if isinstance(recipients, (str, bytes)) or not isinstance(recipients, Sequence):
@@ -63,7 +66,7 @@ class _SmsCore:
             if number is None:
                 invalid.append(index)
             else:
-                normalized.append(number)
+                normalized.append(_to_e164(number))
         if invalid:
             shown = ", ".join(str(i) for i in invalid[:20]) + ("…" if len(invalid) > 20 else "")
             # Les numéros eux-mêmes ne figurent jamais dans le message (seulement leur position).
@@ -76,6 +79,7 @@ class _SmsCore:
         body: str,
         sender: Optional[str],
         reference: Optional[str],
+        strip_accents: bool,
         idempotency_key: Optional[str],
     ) -> tuple[Json, Dict[str, str], str]:
         _assert_body(body)
@@ -84,28 +88,25 @@ class _SmsCore:
             raise InvalidArgumentError(f"sender must be 1 to {MAX_SENDER_LENGTH} characters.")
         if reference is not None and (not isinstance(reference, str) or len(reference) > MAX_REFERENCE_LENGTH):
             raise InvalidArgumentError(f"reference must be at most {MAX_REFERENCE_LENGTH} characters.")
-        if idempotency_key is not None and (
-            not isinstance(idempotency_key, str)
-            or not idempotency_key
-            or len(idempotency_key) > MAX_IDEMPOTENCY_KEY_LENGTH
-        ):
-            raise InvalidArgumentError(f"idempotency_key must be 1 to {MAX_IDEMPOTENCY_KEY_LENGTH} characters.")
-
+        _assert_strip_accents(strip_accents)
         # Générée une fois et réutilisée par chaque relance de cet appel.
-        key = idempotency_key if idempotency_key is not None else str(uuid.uuid4())
+        key = idempotency_key_or_new(idempotency_key)
         payload: Json = {**target, "body": body}
         if sender is not None:
             payload["sender"] = sender
         if reference:
             payload["reference"] = reference
+        if strip_accents:
+            payload["strip_accents"] = True
         return payload, {"Idempotency-Key": key}, key
 
     @staticmethod
     def _batch(response: ApiResponse, idempotency_key: str) -> MessageBatch:
         return MessageBatch(
-            messages=tuple(to_message(item) for item in api.objects(response.body, "data")),
+            messages=tuple(to_message(item, response.request_id) for item in api.objects(response.body, "data")),
             idempotency_key=idempotency_key,
-            replayed=response.headers.get("idempotent-replayed") == "true",
+            replayed=response.replayed,
+            request_id=response.request_id,
         )
 
     @staticmethod
@@ -114,16 +115,18 @@ class _SmsCore:
             raise UnexpectedResponseError("Unexpected API response: no message was returned.")
         return batch.messages[0]
 
-    def _estimate_body(self, body: str, recipients: Union[str, Sequence[str]]) -> Json:
+    def _estimate_body(self, body: str, recipients: Union[str, Sequence[str]], strip_accents: bool) -> Json:
         _assert_body(body)
+        _assert_strip_accents(strip_accents)
         items = [recipients] if isinstance(recipients, str) else list(recipients)
         if not items:
             raise InvalidArgumentError("At least one recipient is required.")
-        # Les numéros invalides sont transmis tels quels : l'API les ignore dans le décompte.
-        return {
-            "body": body,
-            "recipients": [normalize(r, self._default_country_code) or r for r in items if isinstance(r, str)],
-        }
+        # Les numéros invalides sont transmis tels quels : l'API les ignore dans le décompte
+        # (et fusionne les doublons, comme à l'envoi). Les numéros valides partent en E.164 avec « + ».
+        payload: Json = {"body": body, "recipients": [self._wire(r) for r in items if isinstance(r, str)]}
+        if strip_accents:
+            payload["strip_accents"] = True
+        return payload
 
     @staticmethod
     def _message_path(message_id: str) -> str:
@@ -153,7 +156,7 @@ class _SmsCore:
             status_value = parsed.value
         return {
             "status": status_value,
-            "recipient": None if recipient is None else (normalize(recipient, self._default_country_code) or recipient),
+            "recipient": None if recipient is None else self._wire(recipient),
             "reference": reference,
             "from": _format_date(from_),
             "to": _format_date(to),
@@ -163,7 +166,7 @@ class _SmsCore:
     @staticmethod
     def _page_values(response: ApiResponse, page: int) -> tuple[List[Message], int, int, int, int]:
         meta = api.optional_obj(response.body, "meta")
-        data = [to_message(item) for item in api.objects(response.body, "data")]
+        data = [to_message(item, response.request_id) for item in api.objects(response.body, "data")]
         current = api.nullable_integer(meta, "current_page")
         last = api.nullable_integer(meta, "last_page")
         per = api.nullable_integer(meta, "per_page")
@@ -191,16 +194,27 @@ class Sms(_SmsCore):
         body: str,
         sender: Optional[str] = None,
         reference: Optional[str] = None,
+        strip_accents: bool = False,
         idempotency_key: Optional[str] = None,
+        request_id: Optional[str] = None,
         timeout: Optional[float] = None,
     ) -> Message:
         """Sends one SMS. Asynchronous: the returned message is ``queued``.
 
         Follow its status with webhooks (``message.status_changed``) or ``get()``.
         An ``Idempotency-Key`` is always sent (a UUID4 when you give none), so
-        network errors are retried safely: the SMS is never sent twice.
+        network errors, 5xx, ``TOO_MANY_REQUESTS`` and ``IDEMPOTENCY_REQUEST_IN_PROGRESS``
+        are retried safely: the SMS is never sent twice. ``IdempotencyKeyUnresolvedError``
+        (outcome of the original request unknown) is never retried.
+
+        ``strip_accents=True`` replaces accents and typographic characters with ASCII
+        (GSM-7, often half the price). ``request_id`` is sent as ``X-Request-Id``.
         """
-        return self._first(self._dispatch(self._single(to), body, sender, reference, idempotency_key, timeout))
+        return self._first(
+            self._dispatch(
+                self._single(to), body, sender, reference, strip_accents, idempotency_key, request_id, timeout
+            )
+        )
 
     def send_many(
         self,
@@ -209,7 +223,9 @@ class Sms(_SmsCore):
         body: str,
         sender: Optional[str] = None,
         reference: Optional[str] = None,
+        strip_accents: bool = False,
         idempotency_key: Optional[str] = None,
+        request_id: Optional[str] = None,
         timeout: Optional[float] = None,
     ) -> MessageBatch:
         """Sends the same SMS to up to 1000 recipients, all or nothing.
@@ -218,21 +234,42 @@ class Sms(_SmsCore):
         :class:`~labyrinthe_connect.RecipientNotSendableError` lists every refused
         number. Duplicates are merged by the API (one message per distinct number).
         """
-        return self._dispatch(self._many(recipients), body, sender, reference, idempotency_key, timeout)
+        return self._dispatch(
+            self._many(recipients), body, sender, reference, strip_accents, idempotency_key, request_id, timeout
+        )
 
     def estimate(
-        self, *, body: str, recipients: Union[str, Sequence[str]], timeout: Optional[float] = None
+        self,
+        *,
+        body: str,
+        recipients: Union[str, Sequence[str]],
+        strip_accents: bool = False,
+        request_id: Optional[str] = None,
+        timeout: Optional[float] = None,
     ) -> Estimate:
-        """Computes encoding, segments and credits without sending anything."""
+        """Computes encoding, segments and credits without sending anything (duplicates merged, as when sending)."""
         response = self._transport.request(
-            "POST", "/sms/estimate", RetryMode.SAFE, body=self._estimate_body(body, recipients), timeout=timeout
+            "POST",
+            "/sms/estimate",
+            RetryMode.SAFE,
+            body=self._estimate_body(body, recipients, strip_accents),
+            timeout=timeout,
+            request_id=request_id,
         )
-        return to_estimate(api.obj(response.body, "data"))
+        return to_estimate(api.obj(response.body, "data"), response.request_id)
 
-    def get(self, id: str, *, timeout: Optional[float] = None) -> Message:  # noqa: A002 - API name
+    def get(
+        self,
+        id: str,  # noqa: A002 - API name
+        *,
+        request_id: Optional[str] = None,
+        timeout: Optional[float] = None,
+    ) -> Message:
         """One message of the account, by id. Raises :class:`~labyrinthe_connect.NotFoundError` when unknown."""
-        response = self._transport.request("GET", self._message_path(id), RetryMode.SAFE, timeout=timeout)
-        return to_message(api.obj(response.body, "data"))
+        response = self._transport.request(
+            "GET", self._message_path(id), RetryMode.SAFE, timeout=timeout, request_id=request_id
+        )
+        return to_message(api.obj(response.body, "data"), response.request_id)
 
     def list(
         self,
@@ -244,20 +281,21 @@ class Sms(_SmsCore):
         to: Optional[DateFilter] = None,
         page: int = 1,
         per_page: int = DEFAULT_PER_PAGE,
+        request_id: Optional[str] = None,
         timeout: Optional[float] = None,
     ) -> SyncPage[Message]:
         """Messages sent with this API key, newest first (one page; iterate it for every page).
 
         ``from_`` / ``to`` are inclusive: a ``date`` (or ``"2026-11-01"``) covers the
-        whole day; a ``datetime`` must be timezone-aware.
+        whole day; a ``datetime`` must be timezone-aware. ``request_id`` is sent with every page request.
         """
         query = self._list_query(status, recipient, reference, from_, to, page, per_page)
 
         def fetch(number: int) -> SyncPage[Message]:
             response = self._transport.request(
-                "GET", "/sms", RetryMode.SAFE, query={**query, "page": number}, timeout=timeout
+                "GET", "/sms", RetryMode.SAFE, query={**query, "page": number}, timeout=timeout, request_id=request_id
             )
-            return SyncPage(*self._page_values(response, number), fetch_page=fetch)
+            return SyncPage(*self._page_values(response, number), fetch_page=fetch, request_id=response.request_id)
 
         return fetch(page)
 
@@ -267,12 +305,14 @@ class Sms(_SmsCore):
         body: str,
         sender: Optional[str],
         reference: Optional[str],
+        strip_accents: bool,
         idempotency_key: Optional[str],
+        request_id: Optional[str],
         timeout: Optional[float],
     ) -> MessageBatch:
-        payload, headers, key = self._dispatch_request(target, body, sender, reference, idempotency_key)
+        payload, headers, key = self._dispatch_request(target, body, sender, reference, strip_accents, idempotency_key)
         response = self._transport.request(
-            "POST", "/sms", RetryMode.SAFE, body=payload, headers=headers, timeout=timeout
+            "POST", "/sms", RetryMode.SAFE, body=payload, headers=headers, timeout=timeout, request_id=request_id
         )
         return self._batch(response, key)
 
@@ -294,11 +334,17 @@ class AsyncSms(_SmsCore):
         body: str,
         sender: Optional[str] = None,
         reference: Optional[str] = None,
+        strip_accents: bool = False,
         idempotency_key: Optional[str] = None,
+        request_id: Optional[str] = None,
         timeout: Optional[float] = None,
     ) -> Message:
         """Sends one SMS. See :meth:`Sms.send`."""
-        return self._first(await self._dispatch(self._single(to), body, sender, reference, idempotency_key, timeout))
+        return self._first(
+            await self._dispatch(
+                self._single(to), body, sender, reference, strip_accents, idempotency_key, request_id, timeout
+            )
+        )
 
     async def send_many(
         self,
@@ -307,25 +353,48 @@ class AsyncSms(_SmsCore):
         body: str,
         sender: Optional[str] = None,
         reference: Optional[str] = None,
+        strip_accents: bool = False,
         idempotency_key: Optional[str] = None,
+        request_id: Optional[str] = None,
         timeout: Optional[float] = None,
     ) -> MessageBatch:
         """Sends the same SMS to up to 1000 recipients, all or nothing. See :meth:`Sms.send_many`."""
-        return await self._dispatch(self._many(recipients), body, sender, reference, idempotency_key, timeout)
+        return await self._dispatch(
+            self._many(recipients), body, sender, reference, strip_accents, idempotency_key, request_id, timeout
+        )
 
     async def estimate(
-        self, *, body: str, recipients: Union[str, Sequence[str]], timeout: Optional[float] = None
+        self,
+        *,
+        body: str,
+        recipients: Union[str, Sequence[str]],
+        strip_accents: bool = False,
+        request_id: Optional[str] = None,
+        timeout: Optional[float] = None,
     ) -> Estimate:
-        """Computes encoding, segments and credits without sending anything."""
+        """Computes encoding, segments and credits without sending anything. See :meth:`Sms.estimate`."""
         response = await self._transport.request(
-            "POST", "/sms/estimate", RetryMode.SAFE, body=self._estimate_body(body, recipients), timeout=timeout
+            "POST",
+            "/sms/estimate",
+            RetryMode.SAFE,
+            body=self._estimate_body(body, recipients, strip_accents),
+            timeout=timeout,
+            request_id=request_id,
         )
-        return to_estimate(api.obj(response.body, "data"))
+        return to_estimate(api.obj(response.body, "data"), response.request_id)
 
-    async def get(self, id: str, *, timeout: Optional[float] = None) -> Message:  # noqa: A002 - API name
+    async def get(
+        self,
+        id: str,  # noqa: A002 - API name
+        *,
+        request_id: Optional[str] = None,
+        timeout: Optional[float] = None,
+    ) -> Message:
         """One message of the account, by id."""
-        response = await self._transport.request("GET", self._message_path(id), RetryMode.SAFE, timeout=timeout)
-        return to_message(api.obj(response.body, "data"))
+        response = await self._transport.request(
+            "GET", self._message_path(id), RetryMode.SAFE, timeout=timeout, request_id=request_id
+        )
+        return to_message(api.obj(response.body, "data"), response.request_id)
 
     def list(
         self,
@@ -337,6 +406,7 @@ class AsyncSms(_SmsCore):
         to: Optional[DateFilter] = None,
         page: int = 1,
         per_page: int = DEFAULT_PER_PAGE,
+        request_id: Optional[str] = None,
         timeout: Optional[float] = None,
     ) -> AsyncPaginator[Message]:
         """Messages sent with this API key: ``await`` it for one page, ``async for`` for every page."""
@@ -344,9 +414,9 @@ class AsyncSms(_SmsCore):
 
         async def fetch(number: int) -> AsyncPage[Message]:
             response = await self._transport.request(
-                "GET", "/sms", RetryMode.SAFE, query={**query, "page": number}, timeout=timeout
+                "GET", "/sms", RetryMode.SAFE, query={**query, "page": number}, timeout=timeout, request_id=request_id
             )
-            return AsyncPage(*self._page_values(response, number), fetch_page=fetch)
+            return AsyncPage(*self._page_values(response, number), fetch_page=fetch, request_id=response.request_id)
 
         return AsyncPaginator(lambda: fetch(page))
 
@@ -356,12 +426,14 @@ class AsyncSms(_SmsCore):
         body: str,
         sender: Optional[str],
         reference: Optional[str],
+        strip_accents: bool,
         idempotency_key: Optional[str],
+        request_id: Optional[str],
         timeout: Optional[float],
     ) -> MessageBatch:
-        payload, headers, key = self._dispatch_request(target, body, sender, reference, idempotency_key)
+        payload, headers, key = self._dispatch_request(target, body, sender, reference, strip_accents, idempotency_key)
         response = await self._transport.request(
-            "POST", "/sms", RetryMode.SAFE, body=payload, headers=headers, timeout=timeout
+            "POST", "/sms", RetryMode.SAFE, body=payload, headers=headers, timeout=timeout, request_id=request_id
         )
         return self._batch(response, key)
 
@@ -374,6 +446,11 @@ def _assert_body(body: Any) -> None:
         raise InvalidArgumentError("The SMS body cannot be empty.")
     if len(body) > MAX_BODY_LENGTH:
         raise InvalidArgumentError(f"The SMS body must be at most {MAX_BODY_LENGTH} characters.")
+
+
+def _assert_strip_accents(strip_accents: Any) -> None:
+    if not isinstance(strip_accents, bool):
+        raise InvalidArgumentError("strip_accents must be a boolean.")
 
 
 def _format_date(value: Optional[DateFilter]) -> Optional[str]:

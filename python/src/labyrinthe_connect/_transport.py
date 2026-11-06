@@ -13,7 +13,9 @@ import json
 import logging
 import platform
 import random
+import re
 import time
+import uuid
 from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
 from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional, Tuple, Union
@@ -43,6 +45,15 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_MAX_RETRY_WAIT = 10.0
 MAX_RETRIES_LIMIT = 10
 
+#: Longueur maximale d'une ``Idempotency-Key`` (spec : ``components.parameters.IdempotencyKey``).
+MAX_IDEMPOTENCY_KEY_LENGTH = 255
+#: Forme d'un ``X-Request-Id`` réutilisé par l'API (spec : ``components.parameters.RequestId``).
+REQUEST_ID_PATTERN = r"^[A-Za-z0-9._:-]{1,128}$"
+_REQUEST_ID = re.compile(r"[A-Za-z0-9._:-]{1,128}")
+
+#: Requête d'origine encore en cours : relancée après Retry-After en mode SAFE (même Idempotency-Key).
+_IN_PROGRESS = "IDEMPOTENCY_REQUEST_IN_PROGRESS"
+
 _BASE_DELAY = 0.5
 _MAX_BACKOFF = 8.0
 
@@ -54,10 +65,10 @@ class RetryMode(enum.Enum):
     """Quand une requête peut être renvoyée automatiquement.
 
     - ``SAFE`` : le rejeu ne peut pas produire deux fois un effet (GET, estimate,
-      POST /sms avec Idempotency-Key). Relancée sur erreur réseau, 5xx et 429 TOO_MANY_REQUESTS.
-    - ``THROTTLED_ONLY`` : POST /otp/send et /otp/verify. Relancée seulement sur
-      429 TOO_MANY_REQUESTS (refusée avant traitement), jamais sur erreur réseau ni 5xx
-      (risque d'un second SMS ou d'une tentative consommée).
+      POST /sms et POST /otp/send avec Idempotency-Key). Relancée sur erreur réseau, 5xx,
+      429 TOO_MANY_REQUESTS et 409 IDEMPOTENCY_REQUEST_IN_PROGRESS (après Retry-After).
+    - ``THROTTLED_ONLY`` : POST /otp/verify. Relancée seulement sur 429 TOO_MANY_REQUESTS
+      (refusée avant traitement), jamais sur erreur réseau ni 5xx (risque d'une tentative consommée).
     """
 
     SAFE = "safe"
@@ -71,6 +82,16 @@ class ApiResponse:
     #: En-têtes, noms en minuscules.
     headers: Dict[str, str]
 
+    @property
+    def request_id(self) -> Optional[str]:
+        """``X-Request-Id`` de la réponse."""
+        return self.headers.get("x-request-id")
+
+    @property
+    def replayed(self) -> bool:
+        """``Idempotent-Replayed: true`` : rejeu d'une requête précédente."""
+        return self.headers.get("idempotent-replayed", "").strip().lower() == "true"
+
 
 @dataclass(frozen=True)
 class _Call:
@@ -82,6 +103,7 @@ class _Call:
     headers: Dict[str, str]
     timeout: float
     params: List[Tuple[str, str]]
+    request_id: Optional[str]
 
 
 @dataclass(frozen=True)
@@ -104,6 +126,24 @@ def normalize_base_url(base_url: str) -> str:
         )
     # Un hôte seul ("http://localhost:8000") désigne la racine du backend.
     return trimmed + API_PATH if parts.path in ("", "/") else trimmed
+
+
+def validate_request_id(request_id: Optional[str]) -> Optional[str]:
+    """Un ``X-Request-Id`` fourni par l'appelant, tel quel ; refusé s'il serait remplacé par l'API."""
+    if request_id is None:
+        return None
+    if not isinstance(request_id, str) or not _REQUEST_ID.fullmatch(request_id):
+        raise InvalidArgumentError("request_id must be 1 to 128 characters among A-Z a-z 0-9 . _ : -")
+    return request_id
+
+
+def idempotency_key_or_new(idempotency_key: Optional[str]) -> str:
+    """La clé fournie (validée) ou un UUID4 : générée une fois, réutilisée par chaque relance de l'appel."""
+    if idempotency_key is None:
+        return str(uuid.uuid4())
+    if not isinstance(idempotency_key, str) or not idempotency_key or len(idempotency_key) > MAX_IDEMPOTENCY_KEY_LENGTH:
+        raise InvalidArgumentError(f"idempotency_key must be 1 to {MAX_IDEMPOTENCY_KEY_LENGTH} characters.")
+    return idempotency_key
 
 
 def validate_options(timeout: float, max_retries: int, max_retry_wait: float) -> None:
@@ -143,7 +183,9 @@ class _BaseTransport:
         body: Optional[Json],
         headers: Optional[Mapping[str, str]],
         timeout: Optional[float],
+        request_id: Optional[str],
     ) -> _Call:
+        request_id = validate_request_id(request_id)
         params: List[Tuple[str, str]] = [(k, str(v)) for k, v in (query or {}).items() if v is not None]
         if timeout is not None:
             validate_options(timeout, self.max_retries, self.max_retry_wait)
@@ -153,6 +195,9 @@ class _BaseTransport:
             "User-Agent": user_agent(),
             **(headers or {}),
         }
+        if request_id is not None:
+            # Même identifiant pour chaque tentative de cet appel.
+            all_headers["X-Request-Id"] = request_id
         content: Optional[bytes] = None
         if body is not None:
             # Sérialisé une seule fois : chaque relance renvoie exactement les mêmes octets.
@@ -167,6 +212,7 @@ class _BaseTransport:
             headers=all_headers,
             timeout=float(timeout) if timeout is not None else self.timeout,
             params=params,
+            request_id=request_id,
         )
 
     def _build_request(self, client: Union[httpx.Client, httpx.AsyncClient], call: _Call) -> httpx.Request:
@@ -197,18 +243,22 @@ class _BaseTransport:
         logger.error(
             "Labyrinthe Connect network error on %s %s (timeout=%s)", call.method, call.log_path, failure.timeout
         )
-        suffix = (
-            " The request may have been processed; it was not retried automatically."
-            if call.mode is RetryMode.THROTTLED_ONLY
-            else ""
-        )
+        if call.mode is RetryMode.THROTTLED_ONLY:
+            suffix = " The request may have been processed; it was not retried automatically."
+        elif "Idempotency-Key" in call.headers:
+            # POST /sms, /otp/send : un nouvel essai avec la même clé ne renvoie jamais rien en double.
+            suffix = " Retrying with the same idempotency_key is safe: nothing is sent twice."
+        else:
+            suffix = ""
         path = call.log_path
         if failure.timeout:
             raise APITimeoutError(
-                f"The Labyrinthe Connect API did not answer within {call.timeout:g} s ({call.method} {path}).{suffix}"
+                f"The Labyrinthe Connect API did not answer within {call.timeout:g} s ({call.method} {path}).{suffix}",
+                request_id=call.request_id,
             )
         raise APIConnectionError(
-            f"Could not reach the Labyrinthe Connect API ({call.method} {path}): {failure.reason}.{suffix}"
+            f"Could not reach the Labyrinthe Connect API ({call.method} {path}): {failure.reason}.{suffix}",
+            request_id=call.request_id,
         )
 
     def _after_response(
@@ -223,12 +273,13 @@ class _BaseTransport:
         """La réponse décodée, ou le délai avant une relance ; lève l'erreur API sinon."""
         headers = {k.lower(): v for k, v in raw_headers.items()}
         logger.debug(
-            "Labyrinthe Connect response %s %s: HTTP %d in %d ms%s",
+            "Labyrinthe Connect response %s %s: HTTP %d in %d ms%s (request %s)",
             call.method,
             call.log_path,
             status,
             round((time.monotonic() - started) * 1000),
             " (idempotent replay)" if headers.get("idempotent-replayed") == "true" else "",
+            headers.get("x-request-id", "-"),
         )
         if 200 <= status < 300:
             return ApiResponse(status=status, body=_decode(content, status), headers=headers)
@@ -238,21 +289,29 @@ class _BaseTransport:
             delay = self._retry_delay(error, attempt)
             if delay is not None:
                 logger.warning(
-                    "Labyrinthe Connect request failed, retrying %s %s: HTTP %d %s (attempt %d, in %.2f s)",
+                    "Labyrinthe Connect request failed, retrying %s %s: HTTP %d %s (attempt %d, in %.2f s, request %s)",
                     call.method,
                     call.log_path,
                     status,
                     error.code,
                     attempt + 1,
                     delay,
+                    error.request_id or "-",
                 )
                 return delay
-        logger.info("Labyrinthe Connect API error on %s %s: HTTP %d %s", call.method, call.log_path, status, error.code)
+        logger.info(
+            "Labyrinthe Connect API error on %s %s: HTTP %d %s (request %s)",
+            call.method,
+            call.log_path,
+            status,
+            error.code,
+            error.request_id or "-",
+        )
         raise error
 
     def _retry_delay(self, error: ApiError, attempt: int) -> Optional[float]:
         """Délai avant la prochaine tentative ; ``None`` pour abandonner (attente demandée trop longue)."""
-        if error.status == 429:
+        if error.status == 429 or error.code == _IN_PROGRESS:
             retry_after = _retry_after_seconds(error)
             if retry_after is not None:
                 return retry_after if retry_after <= self.max_retry_wait else None
@@ -307,8 +366,9 @@ class SyncTransport(_BaseTransport):
         body: Optional[Json] = None,
         headers: Optional[Mapping[str, str]] = None,
         timeout: Optional[float] = None,
+        request_id: Optional[str] = None,
     ) -> ApiResponse:
-        call = self._prepare(method, path, mode, query, body, headers, timeout)
+        call = self._prepare(method, path, mode, query, body, headers, timeout, request_id)
         attempt = 0
         while True:
             self._log_attempt(call, attempt)
@@ -368,8 +428,9 @@ class AsyncTransport(_BaseTransport):
         body: Optional[Json] = None,
         headers: Optional[Mapping[str, str]] = None,
         timeout: Optional[float] = None,
+        request_id: Optional[str] = None,
     ) -> ApiResponse:
-        call = self._prepare(method, path, mode, query, body, headers, timeout)
+        call = self._prepare(method, path, mode, query, body, headers, timeout, request_id)
         attempt = 0
         while True:
             self._log_attempt(call, attempt)
@@ -403,7 +464,10 @@ def _is_retryable(mode: RetryMode, error: ApiError) -> bool:
     # Seulement la limite générique : OTP_RESEND_TOO_SOON / OTP_RATE_LIMITED sont des limites métier.
     if error.status == 429:
         return error.code == "TOO_MANY_REQUESTS"
-    return mode is RetryMode.SAFE and error.status >= 500
+    if mode is not RetryMode.SAFE:
+        return False
+    # Requête d'origine encore en cours (même Idempotency-Key) : relancer après Retry-After est sans risque.
+    return error.code == _IN_PROGRESS or error.status >= 500
 
 
 def _retry_after_seconds(error: ApiError) -> Optional[float]:

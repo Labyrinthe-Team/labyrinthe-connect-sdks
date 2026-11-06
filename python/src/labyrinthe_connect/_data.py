@@ -122,14 +122,14 @@ class Reader:
 api = Reader()
 
 
-def to_message(data: Json) -> Message:
+def to_message(data: Json, request_id: Optional[str] = None) -> Message:
     encoding = api.nullable_string(data, "encoding")
     return Message(
         id=api.string(data, "id"),
         reference=api.nullable_string(data, "reference"),
         recipient=api.string(data, "recipient"),
         sender=api.nullable_string(data, "sender"),
-        # Nullable dans le backend malgré la spec (BACKEND-TODO n° 9).
+        # Jamais null depuis l'API 1.2.0 (BACKEND-TODO n° 9) ; tolérance gardée.
         encoding=None if encoding is None else Encoding.parse(encoding),
         status=MessageStatus.parse(api.string(data, "status")),
         segments=api.nullable_integer(data, "segments") or 0,
@@ -141,10 +141,11 @@ def to_message(data: Json) -> Message:
         created_at=api.nullable_date_time(data, "created_at"),
         submitted_at=api.nullable_date_time(data, "submitted_at"),
         delivered_at=api.nullable_date_time(data, "delivered_at"),
+        request_id=request_id,
     )
 
 
-def to_estimate(data: Json) -> Estimate:
+def to_estimate(data: Json, request_id: Optional[str] = None) -> Estimate:
     return Estimate(
         encoding=Encoding.parse(api.string(data, "encoding")),
         characters=api.integer(data, "characters"),
@@ -152,14 +153,15 @@ def to_estimate(data: Json) -> Estimate:
         recipients_count=api.integer(data, "recipients_count"),
         total_credits=api.integer(data, "total_credits"),
         balance_after=api.nullable_integer(data, "balance_after"),
+        request_id=request_id,
     )
 
 
-def to_balance(data: Json) -> Balance:
-    return Balance(balance=api.integer(data, "balance"), held=api.integer(data, "held"))
+def to_balance(data: Json, request_id: Optional[str] = None) -> Balance:
+    return Balance(balance=api.integer(data, "balance"), held=api.integer(data, "held"), request_id=request_id)
 
 
-def to_sender_id(data: Json) -> SenderId:
+def to_sender_id(data: Json, request_id: Optional[str] = None) -> SenderId:
     return SenderId(
         id=api.string(data, "id"),
         value=api.string(data, "value"),
@@ -168,10 +170,18 @@ def to_sender_id(data: Json) -> SenderId:
         rejection_reason=api.nullable_string(data, "rejection_reason"),
         is_default=data.get("is_default") is not None and api.boolean(data, "is_default"),
         created_at=api.nullable_date_time(data, "created_at"),
+        request_id=request_id,
     )
 
 
-def to_otp_verify_result(data: Json) -> OtpVerifyResult:
+def to_otp_verify_result(data: Json, request_id: Optional[str] = None) -> OtpVerifyResult:
+    # attempts_remaining : absent avant l'API 1.2.0 → None.
+    remaining = api.nullable_integer(data, "attempts_remaining")
     if api.boolean(data, "verified"):
-        return OtpVerifyResult(verified=True, reason=None)
-    return OtpVerifyResult(verified=False, reason=OtpFailureReason.parse(api.nullable_string(data, "reason")))
+        return OtpVerifyResult(verified=True, reason=None, attempts_remaining=remaining, request_id=request_id)
+    return OtpVerifyResult(
+        verified=False,
+        reason=OtpFailureReason.parse(api.nullable_string(data, "reason")),
+        attempts_remaining=remaining,
+        request_id=request_id,
+    )

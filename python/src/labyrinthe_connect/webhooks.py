@@ -7,6 +7,8 @@
     event = webhooks.construct_event(request_body_bytes, request.headers.get("X-Signature"), secret)
     if isinstance(event, webhooks.MessageStatusChanged):
         update_message(event.data.message_id, event.data.status)
+    elif isinstance(event, webhooks.OtpVerified):
+        mark_phone_verified(event.data.otp_id)
 
 The signature (``X-Signature: sha256=<hex HMAC-SHA256 of the raw body>``) is
 checked in constant time (:func:`hmac.compare_digest`) on the RAW body, before
@@ -31,7 +33,7 @@ from .errors import (
     InvalidWebhookPayloadError,
     SignatureVerificationError,
 )
-from .types import MessageStatus, WebhookEventType
+from .types import MessageStatus, OtpFailureReason, OtpVerificationStatus, WebhookEventType
 
 __all__ = [
     "DEFAULT_TOLERANCE",
@@ -42,6 +44,9 @@ __all__ = [
     "CampaignCompletedData",
     "MessageStatusChanged",
     "MessageStatusChangedData",
+    "OtpFailed",
+    "OtpVerified",
+    "OtpWebhookData",
     "RawBody",
     "TestPing",
     "UnknownEvent",
@@ -84,6 +89,11 @@ class MessageStatusChangedData:
     status: MessageStatus
     provider_message_id: Optional[str]
     campaign_id: Optional[str]
+    #: ``reference`` given at send time (``sms.send(reference=...)``).
+    reference: Optional[str] = None
+    #: Provider or platform error code when the message failed.
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -129,6 +139,37 @@ class BalanceLow(_Event):
 
 
 @dataclass(frozen=True)
+class OtpWebhookData:
+    """Outcome of an OTP verification. Never contains the code."""
+
+    otp_id: str
+    #: Normalised number (international, without "+"). Personal data: mask it in your logs.
+    phone: str
+    #: ``verified`` with ``otp.verified``; ``failed`` or ``expired`` with ``otp.failed``.
+    status: OtpVerificationStatus
+    #: ``None`` when verified; ``max_attempts_reached`` (``failed``) or ``expired`` (``expired``).
+    reason: Optional[OtpFailureReason]
+    #: Verification time; ``None`` for ``otp.failed``.
+    verified_at: Optional[datetime]
+
+
+@dataclass(frozen=True)
+class OtpVerified(_Event):
+    """``otp.verified``: ``otp.verify()`` received the right code (sent once)."""
+
+    event: ClassVar[WebhookEventType] = WebhookEventType.OTP_VERIFIED
+    data: OtpWebhookData
+
+
+@dataclass(frozen=True)
+class OtpFailed(_Event):
+    """``otp.failed``: attempts exhausted or code found expired at verification (sent once)."""
+
+    event: ClassVar[WebhookEventType] = WebhookEventType.OTP_FAILED
+    data: OtpWebhookData
+
+
+@dataclass(frozen=True)
 class TestPing(_Event):
     """``test.ping``: sent by the *Test* button of the client area."""
 
@@ -150,7 +191,9 @@ class UnknownEvent(_Event):
 
 
 #: A verified webhook event; use ``isinstance`` (or ``match``) to get the typed ``data``.
-WebhookEvent = Union[MessageStatusChanged, CampaignCompleted, BalanceLow, TestPing, UnknownEvent]
+WebhookEvent = Union[
+    MessageStatusChanged, CampaignCompleted, BalanceLow, OtpVerified, OtpFailed, TestPing, UnknownEvent
+]
 
 
 def construct_event(
@@ -240,6 +283,10 @@ def _build_event(envelope: Json, timestamp: int) -> WebhookEvent:
                 status=MessageStatus.parse(_reader.string(data, "status")),
                 provider_message_id=_reader.nullable_string(data, "provider_message_id"),
                 campaign_id=_reader.nullable_string(data, "campaign_id"),
+                # Ajoutés par l'API 1.2.0 : absents d'une ancienne livraison → None.
+                reference=_reader.nullable_string(data, "reference"),
+                error_code=_reader.nullable_string(data, "error_code"),
+                error_message=_reader.nullable_string(data, "error_message"),
             ),
         )
     if name == WebhookEventType.CAMPAIGN_COMPLETED.value:
@@ -260,6 +307,21 @@ def _build_event(envelope: Json, timestamp: int) -> WebhookEvent:
             **base,
             data=BalanceLowData(balance=_reader.integer(data, "balance"), threshold=_reader.integer(data, "threshold")),
         )
+    if name == WebhookEventType.OTP_VERIFIED.value:
+        return OtpVerified(**base, data=_otp_data(data))
+    if name == WebhookEventType.OTP_FAILED.value:
+        return OtpFailed(**base, data=_otp_data(data))
     if name == WebhookEventType.TEST_PING.value:
         return TestPing(**base, data=data)
     return UnknownEvent(**base, data=data)
+
+
+def _otp_data(data: Json) -> OtpWebhookData:
+    reason = _reader.nullable_string(data, "reason")
+    return OtpWebhookData(
+        otp_id=_reader.string(data, "otp_id"),
+        phone=_reader.string(data, "phone"),
+        status=OtpVerificationStatus.parse(_reader.string(data, "status")),
+        reason=None if reason is None else OtpFailureReason.parse(reason),
+        verified_at=_reader.nullable_date_time(data, "verified_at"),
+    )

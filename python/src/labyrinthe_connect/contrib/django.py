@@ -13,11 +13,15 @@ environment variable of the same name, or ``WebhookView.as_view(secret=...)``).
 Receivers (e.g. imported from ``AppConfig.ready()``)::
 
     from django.dispatch import receiver
-    from labyrinthe_connect.contrib.django import message_status_changed
+    from labyrinthe_connect.contrib.django import message_status_changed, otp_verified
 
     @receiver(message_status_changed)
     def on_status(sender, event, **kwargs):
         Order.objects.filter(sms_id=event.data.message_id).update(sms_status=event.data.status)
+
+    @receiver(otp_verified)
+    def on_otp_verified(sender, event, **kwargs):
+        PhoneCheck.objects.filter(otp_id=event.data.otp_id).update(verified=True)
 
 The view verifies the signature on the raw body (``request.body``), answers
 400 for an invalid signature or payload, sends :data:`webhook_received` and
@@ -47,6 +51,8 @@ __all__ = [
     "balance_low",
     "campaign_completed",
     "message_status_changed",
+    "otp_failed",
+    "otp_verified",
     "test_ping",
     "unknown_event",
     "webhook_received",
@@ -60,6 +66,10 @@ message_status_changed = Signal()
 campaign_completed = Signal()
 #: ``balance.low`` events.
 balance_low = Signal()
+#: ``otp.verified`` events.
+otp_verified = Signal()
+#: ``otp.failed`` events.
+otp_failed = Signal()
 #: ``test.ping`` events.
 test_ping = Signal()
 #: Event types added to the API after this SDK version.
@@ -69,6 +79,8 @@ _SIGNALS: Dict[WebhookEventType, Signal] = {
     WebhookEventType.MESSAGE_STATUS_CHANGED: message_status_changed,
     WebhookEventType.CAMPAIGN_COMPLETED: campaign_completed,
     WebhookEventType.BALANCE_LOW: balance_low,
+    WebhookEventType.OTP_VERIFIED: otp_verified,
+    WebhookEventType.OTP_FAILED: otp_failed,
     WebhookEventType.TEST_PING: test_ping,
     WebhookEventType.UNKNOWN: unknown_event,
 }

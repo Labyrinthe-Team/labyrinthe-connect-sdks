@@ -1,15 +1,21 @@
 """Phone number helpers, consistent with the API's own normalisation.
 
-The API expects international numbers without "+" (e.g. ``"243812345678"``).
+:func:`normalize` returns international numbers without "+" (e.g. ``"243812345678"``), the format
+of the API responses. Requests always send the normalised number in E.164 with its "+"
+(``"+243812345678"``): without it, the API reads a short foreign number (10 digits or fewer, e.g.
+``"+2481234567"``) as a local DR Congo number.
 Accepted input formats (with the default country code 243, DR Congo):
 
 - ``"+243 81 234 5678"``, ``"00243812345678"`` → ``"243812345678"`` (explicit international prefix kept)
 - ``"243812345678"`` → ``"243812345678"``
+- ``"33612345678"`` → ``"33612345678"``: without "+", 11 digits or more not starting with 0 are already
+  international (another country)
 - ``"0812345678"``, ``"812345678"`` → ``"243812345678"`` (local format, default country code added)
 - ``"+33 6 12 34 56 78"`` → ``"33612345678"`` (other countries are never blocked)
 
-Validation is deliberately light (8 to 15 digits, E.164): the API remains the
-authority on whether a number can receive SMS.
+For a short foreign number (10 digits or fewer), always use the "+". Validation
+is deliberately light (8 to 15 digits, E.164): the API remains the authority on
+whether a number can receive SMS. Normalising a normalised number never changes it.
 """
 
 from __future__ import annotations
@@ -41,7 +47,11 @@ def normalize(raw: str, default_country_code: str = DEFAULT_COUNTRY_CODE) -> Opt
     if explicit_international:
         if value.startswith("00"):
             digits = digits[2:]
-    elif not (digits.startswith(default_country_code) and len(digits) > 10):
+    elif digits.startswith(default_country_code) and len(digits) > 10:
+        pass  # déjà préfixé de l'indicatif par défaut, sans « + » (243812345678)
+    elif len(digits) >= 11 and not digits.startswith("0"):
+        pass  # déjà international, autre indicatif, sans « + » (33612345678) — comme le backend (PhoneNumber)
+    else:
         # Format local : on retire le « 0 » de tête et on ajoute l'indicatif par défaut.
         digits = default_country_code + digits.lstrip("0")
 
@@ -57,6 +67,11 @@ def normalize_or_raise(raw: str, default_country_code: str = DEFAULT_COUNTRY_COD
             "(e.g. 243812345678) or a local number."
         )
     return normalized
+
+
+def _to_e164(normalized: str) -> str:
+    """Format envoyé à l'API : ``"+"`` suivi des chiffres déjà normalisés (``"2481234567"`` → ``"+2481234567"``)."""
+    return "+" + normalized
 
 
 def is_valid(raw: str, default_country_code: str = DEFAULT_COUNTRY_CODE) -> bool:

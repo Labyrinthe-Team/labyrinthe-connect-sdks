@@ -35,7 +35,17 @@ T = TypeVar("T")
 
 
 class _PageBase(Generic[T]):
-    def __init__(self, data: Sequence[T], current_page: int, last_page: int, per_page: int, total: int) -> None:
+    def __init__(
+        self,
+        data: Sequence[T],
+        current_page: int,
+        last_page: int,
+        per_page: int,
+        total: int,
+        request_id: Optional[str] = None,
+    ) -> None:
+        #: ``X-Request-Id`` of the response that delivered this page (for support).
+        self.request_id = request_id
         #: Items of this page only.
         self.data: tuple[T, ...] = tuple(data)
         self.current_page = current_page
@@ -66,8 +76,9 @@ class SyncPage(_PageBase[T]):
         per_page: int,
         total: int,
         fetch_page: Callable[[int], SyncPage[T]],
+        request_id: Optional[str] = None,
     ) -> None:
-        super().__init__(data, current_page, last_page, per_page, total)
+        super().__init__(data, current_page, last_page, per_page, total, request_id)
         self._fetch_page = fetch_page
 
     def next_page(self) -> Optional[SyncPage[T]]:
@@ -96,8 +107,9 @@ class AsyncPage(_PageBase[T]):
         per_page: int,
         total: int,
         fetch_page: Callable[[int], Awaitable[AsyncPage[T]]],
+        request_id: Optional[str] = None,
     ) -> None:
-        super().__init__(data, current_page, last_page, per_page, total)
+        super().__init__(data, current_page, last_page, per_page, total, request_id)
         self._fetch_page = fetch_page
 
     async def next_page(self) -> Optional[AsyncPage[T]]:

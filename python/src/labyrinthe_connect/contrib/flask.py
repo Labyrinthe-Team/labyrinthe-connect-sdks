@@ -3,12 +3,14 @@
 ::
 
     from flask import Flask
-    from labyrinthe_connect import MessageStatusChanged
+    from labyrinthe_connect import MessageStatusChanged, OtpVerified
     from labyrinthe_connect.contrib.flask import create_webhook_blueprint
 
     def handle_event(event):
         if isinstance(event, MessageStatusChanged):
             update_message(event.data.message_id, event.data.status)
+        elif isinstance(event, OtpVerified):
+            mark_phone_verified(event.data.otp_id)
 
     app = Flask(__name__)
     app.config["LABYRINTHE_WEBHOOK_SECRET"] = "…"   # or the environment variable

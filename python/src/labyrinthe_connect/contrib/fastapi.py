@@ -3,7 +3,7 @@
 Dependency::
 
     from fastapi import Depends, FastAPI
-    from labyrinthe_connect import MessageStatusChanged, WebhookEvent
+    from labyrinthe_connect import MessageStatusChanged, OtpFailed, OtpVerified, WebhookEvent
     from labyrinthe_connect.contrib.fastapi import WebhookVerifier
 
     app = FastAPI()
@@ -13,6 +13,8 @@ Dependency::
     async def labyrinthe_webhook(event: WebhookEvent = Depends(verify_webhook)) -> dict:
         if isinstance(event, MessageStatusChanged):
             await update_message(event.data.message_id, event.data.status)
+        elif isinstance(event, (OtpVerified, OtpFailed)):
+            await record_otp_outcome(event.data.otp_id, event.data.status)
         return {"received": True}
 
 Ready-made route::

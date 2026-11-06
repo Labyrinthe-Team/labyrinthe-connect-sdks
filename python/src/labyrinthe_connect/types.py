@@ -4,14 +4,18 @@ Models are frozen dataclasses, dates are timezone-aware ``datetime`` objects
 and statuses are ``str`` enums. Each enum has an ``UNKNOWN`` member, never sent
 by the API: the SDK uses it when the API returns a value this version does
 not know yet.
+
+Every object returned by an API call carries the ``request_id`` of the response
+that delivered it (``X-Request-Id``, to give to support). It is left out of
+equality and ``repr()``.
 """
 
 from __future__ import annotations
 
 import enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional, Tuple, Type, TypeVar
+from typing import Any, Dict, Optional, Tuple, Type, TypeVar
 
 __all__ = [
     "Balance",
@@ -20,10 +24,12 @@ __all__ = [
     "Message",
     "MessageBatch",
     "MessageStatus",
+    "OtpCodeType",
     "OtpFailureReason",
     "OtpLocale",
     "OtpRateLimitScope",
     "OtpSendResult",
+    "OtpVerificationStatus",
     "OtpVerifyResult",
     "RejectedRecipient",
     "RejectionReason",
@@ -152,12 +158,34 @@ class OtpLocale(_StrEnum):
     EN = "en"
 
 
+class OtpCodeType(_StrEnum):
+    """Alphabet of an OTP code (account's OTP settings)."""
+
+    NUMERIC = "numeric"
+    """Digits 0-9."""
+    ALPHANUMERIC = "alphanumeric"
+    """Upper-case letters and digits without ambiguous characters; typing is case-insensitive."""
+    UNKNOWN = "unknown"
+
+
+class OtpVerificationStatus(_StrEnum):
+    """Outcome of an OTP verification (``otp.verified`` / ``otp.failed`` webhooks)."""
+
+    VERIFIED = "verified"
+    FAILED = "failed"
+    """Attempts exhausted (``max_attempts_reached``)."""
+    EXPIRED = "expired"
+    UNKNOWN = "unknown"
+
+
 class WebhookEventType(_StrEnum):
     """Webhook event types emitted by the API."""
 
     MESSAGE_STATUS_CHANGED = "message.status_changed"
     CAMPAIGN_COMPLETED = "campaign.completed"
     BALANCE_LOW = "balance.low"
+    OTP_VERIFIED = "otp.verified"
+    OTP_FAILED = "otp.failed"
     TEST_PING = "test.ping"
     UNKNOWN = "unknown"
 
@@ -188,6 +216,8 @@ class Message:
     submitted_at: Optional[datetime]
     #: Delivery receipt.
     delivered_at: Optional[datetime]
+    #: ``X-Request-Id`` of the response (for support); not compared.
+    request_id: Optional[str] = field(default=None, compare=False, repr=False)
 
 
 @dataclass(frozen=True)
@@ -199,6 +229,8 @@ class MessageBatch:
     idempotency_key: str
     #: True when the API replayed an earlier identical request: nothing was sent or billed again.
     replayed: bool
+    #: ``X-Request-Id`` of the response (for support); not compared.
+    request_id: Optional[str] = field(default=None, compare=False, repr=False)
 
     def __len__(self) -> int:
         return len(self.messages)
@@ -216,6 +248,8 @@ class Estimate:
     total_credits: int
     #: Balance after the send (negative when insufficient); ``None`` if the account never had credits.
     balance_after: Optional[int]
+    #: ``X-Request-Id`` of the response (for support); not compared.
+    request_id: Optional[str] = field(default=None, compare=False, repr=False)
 
     @property
     def is_affordable(self) -> bool:
@@ -231,6 +265,8 @@ class Balance:
     balance: int
     #: Credits held by running campaigns.
     held: int
+    #: ``X-Request-Id`` of the response (for support); not compared.
+    request_id: Optional[str] = field(default=None, compare=False, repr=False)
 
 
 @dataclass(frozen=True)
@@ -245,6 +281,8 @@ class SenderId:
     rejection_reason: Optional[str]
     is_default: bool
     created_at: Optional[datetime]
+    #: ``X-Request-Id`` of the response (for support); not compared.
+    request_id: Optional[str] = field(default=None, compare=False, repr=False)
 
 
 @dataclass(frozen=True)
@@ -263,6 +301,11 @@ class OtpVerifyResult:
     verified: bool
     #: ``None`` when ``verified`` is true.
     reason: Optional[OtpFailureReason]
+    #: Attempts left: an integer after ``invalid_code``, ``0`` with ``max_attempts_reached``, ``None`` when the
+    #: code is verified, already used or expired (and with an API older than 1.2.0).
+    attempts_remaining: Optional[int] = None
+    #: ``X-Request-Id`` of the response (for support); not compared.
+    request_id: Optional[str] = field(default=None, compare=False, repr=False)
 
 
 class OtpSendResult:
@@ -270,19 +313,58 @@ class OtpSendResult:
 
     Store ``otp_id`` server-side (session, cache…) and pass it to
     ``otp.verify()`` with the code typed by the user. Immutable.
+
+    Equality and hashing use the API data only (not ``test_code``, ``replayed``,
+    ``idempotency_key`` nor ``request_id``): a replay equals the original send.
     """
 
-    __slots__ = ("_expires_at", "_max_attempts", "_otp_id", "_test_code")
+    __slots__ = (
+        "_code_length",
+        "_code_type",
+        "_expires_at",
+        "_idempotency_key",
+        "_max_attempts",
+        "_otp_id",
+        "_replayed",
+        "_request_id",
+        "_resend_after_seconds",
+        "_test_code",
+    )
     _otp_id: str
     _expires_at: datetime
     _max_attempts: int
     _test_code: Optional[str]
+    _code_length: Optional[int]
+    _code_type: OtpCodeType
+    _resend_after_seconds: Optional[int]
+    _replayed: bool
+    _idempotency_key: Optional[str]
+    _request_id: Optional[str]
 
-    def __init__(self, otp_id: str, expires_at: datetime, max_attempts: int, test_code: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        otp_id: str,
+        expires_at: datetime,
+        max_attempts: int,
+        test_code: Optional[str] = None,
+        *,
+        code_length: Optional[int] = None,
+        code_type: OtpCodeType = OtpCodeType.UNKNOWN,
+        resend_after_seconds: Optional[int] = None,
+        replayed: bool = False,
+        idempotency_key: Optional[str] = None,
+        request_id: Optional[str] = None,
+    ) -> None:
         object.__setattr__(self, "_otp_id", otp_id)
         object.__setattr__(self, "_expires_at", expires_at)
         object.__setattr__(self, "_max_attempts", max_attempts)
         object.__setattr__(self, "_test_code", test_code)
+        object.__setattr__(self, "_code_length", code_length)
+        object.__setattr__(self, "_code_type", code_type)
+        object.__setattr__(self, "_resend_after_seconds", resend_after_seconds)
+        object.__setattr__(self, "_replayed", replayed)
+        object.__setattr__(self, "_idempotency_key", idempotency_key)
+        object.__setattr__(self, "_request_id", request_id)
 
     @property
     def otp_id(self) -> str:
@@ -295,6 +377,39 @@ class OtpSendResult:
     @property
     def max_attempts(self) -> int:
         return self._max_attempts
+
+    @property
+    def code_length(self) -> Optional[int]:
+        """Number of characters of the code (4 to 8); ``None`` only with an API older than 1.2.0."""
+        return self._code_length
+
+    @property
+    def code_type(self) -> OtpCodeType:
+        """Alphabet of the code (``numeric`` or ``alphanumeric``): pick the right input field."""
+        return self._code_type
+
+    @property
+    def resend_after_seconds(self) -> Optional[int]:
+        """Seconds before a new send to the same number is accepted (while this code is not verified).
+
+        Use it for a "Resend the code" countdown. ``None`` only with an API older than 1.2.0.
+        """
+        return self._resend_after_seconds
+
+    @property
+    def replayed(self) -> bool:
+        """True when the API replayed an earlier identical request: no new SMS, nothing billed again."""
+        return self._replayed
+
+    @property
+    def idempotency_key(self) -> Optional[str]:
+        """The ``Idempotency-Key`` used for this send (yours, or the one generated by the SDK)."""
+        return self._idempotency_key
+
+    @property
+    def request_id(self) -> Optional[str]:
+        """``X-Request-Id`` of the response (for support)."""
+        return self._request_id
 
     @property
     def test_code(self) -> Optional[str]:
@@ -312,21 +427,50 @@ class OtpSendResult:
     def __delattr__(self, name: str) -> None:
         raise AttributeError(f"{type(self).__name__} is immutable")
 
+    def _key(self) -> Tuple[Any, ...]:
+        return (
+            self.otp_id,
+            self.expires_at,
+            self.max_attempts,
+            self.code_length,
+            self.code_type,
+            self.resend_after_seconds,
+        )
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, OtpSendResult):
             return NotImplemented
-        return (self.otp_id, self.expires_at, self.max_attempts) == (other.otp_id, other.expires_at, other.max_attempts)
+        return self._key() == other._key()
 
     def __hash__(self) -> int:
-        return hash((self.otp_id, self.expires_at, self.max_attempts))
+        return hash(self._key())
 
     def __repr__(self) -> str:
         code = "None" if self.test_code is None else "'[redacted]'"
         return (
             f"OtpSendResult(otp_id={self.otp_id!r}, expires_at={self.expires_at!r}, "
-            f"max_attempts={self.max_attempts!r}, test_code={code})"
+            f"max_attempts={self.max_attempts!r}, code_length={self.code_length!r}, "
+            f"code_type={self.code_type.value!r}, resend_after_seconds={self.resend_after_seconds!r}, "
+            f"replayed={self.replayed!r}, test_code={code})"
         )
 
     def __reduce__(self) -> Tuple[Any, ...]:
         # Le code de test ne quitte jamais le processus (cache, file de tâches…).
-        return (OtpSendResult, (self.otp_id, self.expires_at, self.max_attempts, None))
+        return (_restore_otp_send_result, (self.otp_id, self.expires_at, self.max_attempts, self._state()))
+
+    def _state(self) -> Dict[str, Any]:
+        return {
+            "code_length": self.code_length,
+            "code_type": self.code_type,
+            "resend_after_seconds": self.resend_after_seconds,
+            "replayed": self.replayed,
+            "idempotency_key": self.idempotency_key,
+            "request_id": self.request_id,
+        }
+
+
+def _restore_otp_send_result(
+    otp_id: str, expires_at: datetime, max_attempts: int, state: Dict[str, Any]
+) -> OtpSendResult:
+    """Reconstruction après ``pickle`` / ``copy`` : toujours sans ``test_code``."""
+    return OtpSendResult(otp_id, expires_at, max_attempts, None, **state)

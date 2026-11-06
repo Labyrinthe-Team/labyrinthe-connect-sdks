@@ -20,9 +20,9 @@ class BalanceResource:
     def __init__(self, transport: SyncTransport) -> None:
         self._transport = transport
 
-    def get(self, *, timeout: Optional[float] = None) -> Balance:
-        response = self._transport.request("GET", "/balance", RetryMode.SAFE, timeout=timeout)
-        return to_balance(api.obj(response.body, "data"))
+    def get(self, *, request_id: Optional[str] = None, timeout: Optional[float] = None) -> Balance:
+        response = self._transport.request("GET", "/balance", RetryMode.SAFE, timeout=timeout, request_id=request_id)
+        return to_balance(api.obj(response.body, "data"), response.request_id)
 
     def __repr__(self) -> str:
         return f"BalanceResource({self._transport!r})"
@@ -34,9 +34,11 @@ class AsyncBalanceResource:
     def __init__(self, transport: AsyncTransport) -> None:
         self._transport = transport
 
-    async def get(self, *, timeout: Optional[float] = None) -> Balance:
-        response = await self._transport.request("GET", "/balance", RetryMode.SAFE, timeout=timeout)
-        return to_balance(api.obj(response.body, "data"))
+    async def get(self, *, request_id: Optional[str] = None, timeout: Optional[float] = None) -> Balance:
+        response = await self._transport.request(
+            "GET", "/balance", RetryMode.SAFE, timeout=timeout, request_id=request_id
+        )
+        return to_balance(api.obj(response.body, "data"), response.request_id)
 
     def __repr__(self) -> str:
         return f"AsyncBalanceResource({self._transport!r})"
@@ -48,10 +50,10 @@ class SenderIds:
     def __init__(self, transport: SyncTransport) -> None:
         self._transport = transport
 
-    def list(self, *, timeout: Optional[float] = None) -> List[SenderId]:
+    def list(self, *, request_id: Optional[str] = None, timeout: Optional[float] = None) -> List[SenderId]:
         """Sender IDs with the ``approved`` status, usable as ``sender``."""
-        response = self._transport.request("GET", "/sender-ids", RetryMode.SAFE, timeout=timeout)
-        return [to_sender_id(item) for item in api.objects(response.body, "data")]
+        response = self._transport.request("GET", "/sender-ids", RetryMode.SAFE, timeout=timeout, request_id=request_id)
+        return [to_sender_id(item, response.request_id) for item in api.objects(response.body, "data")]
 
     def __repr__(self) -> str:
         return f"SenderIds({self._transport!r})"
@@ -63,10 +65,12 @@ class AsyncSenderIds:
     def __init__(self, transport: AsyncTransport) -> None:
         self._transport = transport
 
-    async def list(self, *, timeout: Optional[float] = None) -> List[SenderId]:
+    async def list(self, *, request_id: Optional[str] = None, timeout: Optional[float] = None) -> List[SenderId]:
         """Sender IDs with the ``approved`` status, usable as ``sender``."""
-        response = await self._transport.request("GET", "/sender-ids", RetryMode.SAFE, timeout=timeout)
-        return [to_sender_id(item) for item in api.objects(response.body, "data")]
+        response = await self._transport.request(
+            "GET", "/sender-ids", RetryMode.SAFE, timeout=timeout, request_id=request_id
+        )
+        return [to_sender_id(item, response.request_id) for item in api.objects(response.body, "data")]
 
     def __repr__(self) -> str:
         return f"AsyncSenderIds({self._transport!r})"

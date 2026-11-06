@@ -1,8 +1,8 @@
 """Exceptions raised by the SDK.
 
 Every exception extends :class:`LabyrintheError` and carries a stable ``code``,
-a ``message``, the HTTP ``status`` (``None`` without a response) and
-``details``. Switch on ``code`` or on the class, never on ``message`` (API
+a ``message``, the HTTP ``status`` (``None`` without a response),
+``details`` and the ``request_id`` to give to support. Switch on ``code`` or on the class, never on ``message`` (API
 messages are in French, for humans).
 
 Exceptions never contain the API key, OTP codes or the original ``httpx``
@@ -21,9 +21,11 @@ from .types import OtpRateLimitScope, RejectedRecipient, RejectionReason
 __all__ = [
     "APIConnectionError",
     "APITimeoutError",
+    "AccountSuspendedError",
     "ApiError",
     "AuthenticationError",
     "IdempotencyKeyReusedError",
+    "IdempotencyRequestInProgressError",
     "InsufficientCreditsError",
     "InvalidArgumentError",
     "InvalidPhoneError",
@@ -68,6 +70,7 @@ class LabyrintheError(Exception):
         code: Optional[str] = None,
         status: Optional[int] = None,
         details: Optional[Mapping[str, Any]] = None,
+        request_id: Optional[str] = None,
     ) -> None:
         super().__init__(message)
         self.message: str = message
@@ -77,12 +80,16 @@ class LabyrintheError(Exception):
         self.status: Optional[int] = status
         #: Error details, depending on the code (``{}`` when there are none).
         self.details: ErrorDetails = dict(details) if details is not None else {}
+        #: Request identifier to give to support: the ``X-Request-Id`` of the response for an API error,
+        #: the ``request_id`` you passed for a network error; ``None`` when unknown.
+        self.request_id: Optional[str] = request_id
 
     def __str__(self) -> str:
         return self.message
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}(code={self.code!r}, status={self.status!r}, message={self.message!r})"
+        request = f", request_id={self.request_id!r}" if self.request_id is not None else ""
+        return f"{type(self).__name__}(code={self.code!r}, status={self.status!r}, message={self.message!r}{request})"
 
     def __reduce__(self) -> Tuple[Any, ...]:
         state = {k: v for k, v in self.__dict__.items() if not k.startswith("__")}
@@ -108,17 +115,32 @@ class ApiError(LabyrintheError):
         details: Optional[Mapping[str, Any]] = None,
         headers: Optional[Mapping[str, str]] = None,
     ) -> None:
-        super().__init__(message, code=code, status=status, details=details)
+        lowered = {k.lower(): v for k, v in (headers or {}).items()}
+        # request_id : en-tête X-Request-Id de la réponse (toujours présent depuis l'API 1.2.0).
+        super().__init__(message, code=code, status=status, details=details, request_id=lowered.get("x-request-id"))
         #: Response headers (lower-case names).
-        self.headers: Dict[str, str] = {k.lower(): v for k, v in (headers or {}).items()}
+        self.headers: Dict[str, str] = lowered
 
     @property
-    def request_id(self) -> Optional[str]:
-        """Request identifier for support (``X-Request-Id``), when the API provides one."""
-        return self.headers.get("x-request-id")
+    def api_version(self) -> Optional[str]:
+        """Major API version that answered (``X-Api-Version``, e.g. ``"1"``), when the API provides it."""
+        return self.headers.get("x-api-version")
 
     def _detail_int(self, key: str) -> Optional[int]:
         return _to_int(self.details.get(key))
+
+    def _retry_after(self) -> Optional[float]:
+        """Secondes à attendre : en-tête ``Retry-After`` (secondes), sinon ``details.retry_after_seconds``."""
+        header = self.headers.get("retry-after", "").strip()
+        if header:
+            try:
+                value = float(header)
+            except ValueError:
+                value = -1.0
+            if value >= 0:
+                return value
+        seconds = self._detail_int("retry_after_seconds")
+        return float(seconds) if seconds is not None else None
 
 
 class AuthenticationError(ApiError):
@@ -126,10 +148,18 @@ class AuthenticationError(ApiError):
 
 
 class PermissionError(ApiError):  # noqa: A001 - same name as in the other SDKs
-    """403: IP not allowed for this key (``FORBIDDEN``) or OTP disabled for the account (``OTP_DISABLED_FOR_ACCOUNT``).
+    """403: IP not allowed for this key (``FORBIDDEN``), account suspended (``ACCOUNT_SUSPENDED``,
+    :class:`AccountSuspendedError`) or OTP disabled for the account (``OTP_DISABLED_FOR_ACCOUNT``).
 
     Shadows the built-in ``PermissionError`` when imported by name: prefer
     ``from labyrinthe_connect import errors`` then ``errors.PermissionError``.
+    """
+
+
+class AccountSuspendedError(PermissionError):
+    """403 ``ACCOUNT_SUSPENDED``: the account was suspended by the platform.
+
+    The whole API is closed until the account is reactivated: contact support with ``request_id``.
     """
 
 
@@ -201,6 +231,28 @@ class IdempotencyKeyReusedError(ApiError):
     """409 ``IDEMPOTENCY_KEY_REUSED``: the same ``Idempotency-Key`` was used for a different request."""
 
 
+class IdempotencyKeyUnresolvedError(ApiError):
+    """409 ``IDEMPOTENCY_KEY_UNRESOLVED``: the original request with this ``Idempotency-Key`` failed unexpectedly.
+
+    Its outcome is unknown: an SMS (or an OTP code) may have been sent. The SDK never retries it, and you must
+    not retry it automatically either. Check first (``sms.list(reference=...)`` for ``sms.send``, or ask the
+    user whether a code arrived for ``otp.send``), then send again only if needed, with a NEW ``Idempotency-Key``.
+    """
+
+
+class IdempotencyRequestInProgressError(ApiError):
+    """409 ``IDEMPOTENCY_REQUEST_IN_PROGRESS``: the original request with this ``Idempotency-Key`` is still running.
+
+    The SDK already retried after ``Retry-After`` with the same key (``sms.send``, ``otp.send``) within
+    ``max_retries`` / ``max_retry_wait``. Retrying again with the same key is safe: nothing is sent twice.
+    """
+
+    @property
+    def retry_after(self) -> Optional[float]:
+        """Seconds to wait before retrying with the same key; ``None`` when unknown."""
+        return self._retry_after()
+
+
 class RateLimitError(ApiError):
     """429: too many requests.
 
@@ -211,27 +263,21 @@ class RateLimitError(ApiError):
     @property
     def retry_after(self) -> Optional[float]:
         """Seconds to wait, from ``Retry-After`` or ``details.retry_after_seconds``; ``None`` when unknown."""
-        header = self.headers.get("retry-after", "").strip()
-        if header:
-            try:
-                value = float(header)
-            except ValueError:
-                value = -1.0
-            if value >= 0:
-                return value
-        seconds = self._detail_int("retry_after_seconds")
-        return float(seconds) if seconds is not None else None
+        return self._retry_after()
 
 
 class OtpResendTooSoonError(RateLimitError):
-    """429 ``OTP_RESEND_TOO_SOON``: a code was sent to this number too recently.
+    """429 ``OTP_RESEND_TOO_SOON``: a code was sent to this number too recently (and not verified yet).
 
     Never retried; show a countdown of ``retry_after`` seconds.
     """
 
 
 class OtpRateLimitedError(RateLimitError):
-    """429 ``OTP_RATE_LIMITED``: hourly cap reached for this phone number or the whole account. Never retried."""
+    """429 ``OTP_RATE_LIMITED``: hourly cap reached for this phone number or the whole account. Never retried.
+
+    ``retry_after``: seconds before the sliding one-hour window goes back under the limit.
+    """
 
     @property
     def scope(self) -> OtpRateLimitScope:
@@ -291,6 +337,7 @@ class InvalidWebhookPayloadError(LabyrintheError):
 ERROR_CLASSES_BY_CODE: Mapping[str, Type[ApiError]] = {
     "UNAUTHENTICATED": AuthenticationError,
     "FORBIDDEN": PermissionError,
+    "ACCOUNT_SUSPENDED": AccountSuspendedError,
     "OTP_DISABLED_FOR_ACCOUNT": PermissionError,
     "NOT_FOUND": NotFoundError,
     "VALIDATION_ERROR": ValidationError,
@@ -299,6 +346,8 @@ ERROR_CLASSES_BY_CODE: Mapping[str, Type[ApiError]] = {
     "INVALID_PHONE": InvalidPhoneError,
     "INSUFFICIENT_CREDITS": InsufficientCreditsError,
     "IDEMPOTENCY_KEY_REUSED": IdempotencyKeyReusedError,
+    "IDEMPOTENCY_KEY_UNRESOLVED": IdempotencyKeyUnresolvedError,
+    "IDEMPOTENCY_REQUEST_IN_PROGRESS": IdempotencyRequestInProgressError,
     "TOO_MANY_REQUESTS": RateLimitError,
     "OTP_RESEND_TOO_SOON": OtpResendTooSoonError,
     "OTP_RATE_LIMITED": OtpRateLimitedError,
@@ -319,7 +368,7 @@ def error_from_response(status: int, raw_body: bytes, headers: Mapping[str, str]
         error = decoded["error"]
         code = error["code"] if isinstance(error.get("code"), str) else None
         message = error["message"] if isinstance(error.get("message"), str) else None
-        # L'API renvoie parfois [] au lieu de {} (BACKEND-TODO n° 4) : les deux donnent {}.
+        # Toujours un objet depuis l'API 1.2.0 ; tolérance gardée pour [] (anciens backends, proxys).
         details = error["details"] if isinstance(error.get("details"), dict) else {}
 
     if code is None:
