@@ -16,7 +16,7 @@ describe('sms.send', () => {
     expect(requests[0]!.url).toBe('https://api.test/api/public/v1/sms');
     expect(requests[0]!.headers['Content-Type']).toBe('application/json');
     expect(requests[0]!.json).toEqual({
-      recipient: '243812345678',
+      recipient: '+243812345678',
       body: 'Your order 1042 is ready.',
       reference: 'order-1042',
     });
@@ -116,7 +116,7 @@ describe('sms.sendMany', () => {
       idempotencyKey: 'meeting-2026-11-06',
     });
 
-    expect(requests[0]!.json).toEqual({ recipients: ['243812345678', '243899999999'], body: 'Meeting tomorrow at 9am.' });
+    expect(requests[0]!.json).toEqual({ recipients: ['+243812345678', '+243899999999'], body: 'Meeting tomorrow at 9am.' });
     expect(batch.messages).toHaveLength(2);
     expect(batch.messages[1]!.recipient).toBe('243899999999');
     expect(batch.replayed).toBe(true);
@@ -169,7 +169,7 @@ describe('sms.estimate', () => {
     const estimate = await client.sms.estimate({ body: 'Réunion demain à 9h', recipients: ['0812345678', 'x'] });
 
     expect(requests[0]!.url).toBe('https://api.test/api/public/v1/sms/estimate');
-    expect(requests[0]!.json).toEqual({ body: 'Réunion demain à 9h', recipients: ['243812345678', 'x'] });
+    expect(requests[0]!.json).toEqual({ body: 'Réunion demain à 9h', recipients: ['+243812345678', 'x'] });
     expect(estimate).toEqual({
       encoding: 'ucs2',
       characters: 19,
@@ -190,7 +190,7 @@ describe('sms.estimate', () => {
 
     expect((await client.sms.estimate({ body: 'Hello', recipients: '0812345678' })).isAffordable).toBe(false);
     expect((await client.sms.estimate({ body: 'Hello', recipients: '0812345678' })).balanceAfter).toBe(-3);
-    expect((requests[0]!.json as { recipients: string[] }).recipients).toEqual(['243812345678']);
+    expect((requests[0]!.json as { recipients: string[] }).recipients).toEqual(['+243812345678']);
   });
 });
 

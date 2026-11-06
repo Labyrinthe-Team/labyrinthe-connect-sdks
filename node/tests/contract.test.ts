@@ -13,7 +13,9 @@ import {
   DEFAULT_BASE_URL,
   Encoding,
   MessageStatus,
+  OtpCodeType,
   OtpFailureReason,
+  OtpVerificationStatus,
   OtpRateLimitScope,
   RejectionReason,
   SenderIdStatus,
@@ -21,6 +23,7 @@ import {
   Webhooks,
 } from '../src/index.js';
 import { ERROR_CLASSES_BY_CODE } from '../src/errors.js';
+import { REQUEST_ID_PATTERN } from '../src/internal/transport.js';
 import * as otpLimits from '../src/resources/otp.js';
 import * as smsLimits from '../src/resources/sms.js';
 import { harness, json, message, page, type RecordedRequest } from './helpers.js';
@@ -71,8 +74,8 @@ const responseSchema = (pathKey: string, method: string, status: string) => [
 const requestSchema = (pathKey: string) => ['paths', pathKey, 'post', 'requestBody', 'content', 'application/json', 'schema'];
 
 describe.skipIf(!available)('OpenAPI contract', () => {
-  it('targets spec 1.1.0', () => {
-    expect(dotted('info.version')).toBe('1.1.0');
+  it('targets spec 1.2.0', () => {
+    expect(dotted('info.version')).toBe('1.2.0');
   });
 
   it('implements every operation of the spec, and only those', () => {
@@ -96,8 +99,12 @@ describe.skipIf(!available)('OpenAPI contract', () => {
     expect(known(MessageStatus)).toEqual(strings('components.schemas.MessageStatus.enum'));
     expect(known(SenderIdStatus)).toEqual(strings('components.schemas.SenderIdStatus.enum'));
     expect(known(RejectionReason)).toEqual(strings('components.schemas.RejectionReason.enum'));
-    expect(known(Encoding)).toEqual(strings('components.schemas.Message.properties.encoding.enum'));
-    expect(known(Encoding)).toEqual(strings('components.schemas.Estimate.properties.encoding.enum'));
+    expect(known(Encoding)).toEqual(strings('components.schemas.Encoding.enum'));
+    expect(dotted('components.schemas.Message.properties.encoding.$ref')).toBe('#/components/schemas/Encoding');
+    expect(dotted('components.schemas.Estimate.properties.encoding.$ref')).toBe('#/components/schemas/Encoding');
+    expect(known(OtpCodeType)).toEqual(strings('components.schemas.OtpSendResult.properties.code_type.enum'));
+    expect(known(OtpVerificationStatus)).toEqual(strings('components.schemas.OtpWebhookData.properties.status.enum'));
+    expect(['max_attempts_reached', 'expired']).toEqual(strings('components.schemas.OtpWebhookData.properties.reason.oneOf.1.enum'));
     expect(known(OtpFailureReason)).toEqual(strings('components.schemas.OtpVerifyResult.properties.reason.oneOf.1.enum'));
     expect(known(OtpRateLimitScope)).toEqual(
       strings('components.schemas.OtpRateLimitedError.allOf.1.properties.error.properties.details.properties.scope.enum'),
@@ -124,6 +131,29 @@ describe.skipIf(!available)('OpenAPI contract', () => {
     expect(smsLimits.MAX_PER_PAGE).toBe(at(['paths', '/sms', 'get', 'parameters', '1', 'schema', 'maximum']));
     expect(otpLimits.MAX_TEMPLATE_LENGTH).toBe(dotted('components.schemas.SendOtpRequest.properties.template.maxLength'));
     expect(otpLimits.MAX_CODE_LENGTH).toBe(dotted('components.schemas.VerifyOtpRequest.properties.code.maxLength'));
+    expect(otpLimits.MAX_WEB_OTP_DOMAIN_LENGTH).toBe(dotted('components.schemas.SendOtpRequest.properties.web_otp_domain.maxLength'));
+    expect(otpLimits.WEB_OTP_DOMAIN_PATTERN.source).toBe(dotted('components.schemas.SendOtpRequest.properties.web_otp_domain.pattern'));
+    expect(REQUEST_ID_PATTERN.source).toBe(dotted('components.parameters.RequestId.schema.pattern'));
+  });
+
+  it('sends the headers of the spec and reads the documented response headers', () => {
+    const parameters = (pathKey: string) =>
+      (at(['paths', pathKey, 'post', 'parameters']) as { $ref: string }[]).map((p) => p.$ref.split('/').pop());
+    // Idempotency-Key sur les deux envois (le SDK en génère toujours une).
+    expect(parameters('/sms')).toContain('IdempotencyKey');
+    expect(parameters('/otp/send')).toContain('IdempotencyKey');
+    expect(parameters('/otp/verify')).not.toContain('IdempotencyKey');
+    expect(dotted('components.parameters.IdempotencyKey.name')).toBe('Idempotency-Key');
+    expect(dotted('components.parameters.RequestId.name')).toBe('X-Request-Id');
+    for (const pathKey of ['/sms', '/otp/send']) {
+      const headers = at(['paths', pathKey, 'post', 'responses', pathKey === '/sms' ? '202' : '201', 'headers']) as Node;
+      expect(Object.keys(headers)).toEqual(
+        expect.arrayContaining(['X-Request-Id', 'X-Api-Version', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'Idempotent-Replayed']),
+      );
+      expect(Object.keys(at(['paths', pathKey, 'post', 'responses', '409', 'headers']) as Node)).toContain('Retry-After');
+    }
+    expect(Object.keys(at(['paths', '/otp/send', 'post', 'responses', '429', 'headers']) as Node)).toContain('Retry-After');
+    expect(Object.keys(dotted('components.responses.Unauthenticated.headers') as Node)).toContain('X-Request-Id');
   });
 
   it('uses a Message fixture with exactly the required fields of the spec', () => {
@@ -149,15 +179,35 @@ describe.skipIf(!available)('OpenAPI contract', () => {
       ],
       [
         responseSchema('/otp/send', 'post', '201'),
-        { data: { otp_id: '9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10', expires_at: '2026-11-05T10:05:00+00:00', max_attempts: 3, test_code: '482913' } },
+        {
+          data: {
+            otp_id: '9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10',
+            expires_at: '2026-11-05T10:05:00+00:00',
+            max_attempts: 3,
+            code_length: 6,
+            code_type: 'numeric',
+            resend_after_seconds: 60,
+            test_code: '482913',
+          },
+        },
       ],
-      [responseSchema('/otp/verify', 'post', '200'), { data: { verified: false, reason: 'max_attempts_reached' } }],
+      [responseSchema('/otp/verify', 'post', '200'), { data: { verified: false, reason: 'max_attempts_reached', attempts_remaining: 0 } }],
+      [responseSchema('/otp/verify', 'post', '200'), { data: { verified: false, reason: 'invalid_code', attempts_remaining: 4 } }],
+      [responseSchema('/otp/verify', 'post', '200'), { data: { verified: true, reason: null, attempts_remaining: null } }],
       [['components', 'schemas', 'InsufficientCreditsError'], { error: { code: 'INSUFFICIENT_CREDITS', message: 'x', details: { available: 3, required: 12 } } }],
       [
         ['components', 'schemas', 'RecipientNotSendableError'],
         { error: { code: 'RECIPIENT_NOT_SENDABLE', message: 'x', details: { reason: 'blacklisted', rejected: [{ recipient: '243812345678', reason: 'blacklisted' }] } } },
       ],
-      [['components', 'schemas', 'OtpRateLimitedError'], { error: { code: 'OTP_RATE_LIMITED', message: 'x', details: { scope: 'phone', limit: 5 } } }],
+      [
+        ['components', 'schemas', 'OtpRateLimitedError'],
+        { error: { code: 'OTP_RATE_LIMITED', message: 'x', details: { retry_after_seconds: 1800, scope: 'phone', limit: 5 } } },
+      ],
+      [
+        ['components', 'schemas', 'IdempotencyInProgressError'],
+        { error: { code: 'IDEMPOTENCY_REQUEST_IN_PROGRESS', message: 'x', details: { retry_after_seconds: 5 } } },
+      ],
+      [['components', 'schemas', 'Error'], { error: { code: 'ACCOUNT_SUSPENDED', message: 'x', details: {} } }],
       [['components', 'schemas', 'OtpResendTooSoonError'], { error: { code: 'OTP_RESEND_TOO_SOON', message: 'x', details: { retry_after_seconds: 30 } } }],
       [['components', 'schemas', 'ValidationError'], { error: { code: 'VALIDATION_ERROR', message: 'x', details: { body: ['Le champ body est obligatoire.'] } } }],
     ];
@@ -170,30 +220,48 @@ describe.skipIf(!available)('OpenAPI contract', () => {
     const validate = ajv.compile({ $ref: `spec#/${pointer(responseSchema('/balance', 'get', '200'))}` });
     expect(validate({ data: { balance: 'x', held: 0 } })).toBe(false);
     expect(validate({ data: { balance: 1 } })).toBe(false);
+    // `details` est toujours un objet depuis la 1.2.0 (le SDK tolère encore `[]`).
+    const error = ajv.compile({ $ref: 'spec#/components/schemas/Error' });
+    expect(error({ error: { code: 'X', message: 'x', details: [] } })).toBe(false);
+    expect(error({ error: { code: 'X', message: 'x', details: {} } })).toBe(true);
   });
 
   it('every request sent by the SDK is valid for the spec', async () => {
-    const otpSent = json(201, { data: { otp_id: 'otp-1', expires_at: '2026-11-05T10:05:00+00:00', max_attempts: 3 } });
+    const otpSent = () =>
+      json(201, {
+        data: { otp_id: 'otp-1', expires_at: '2026-11-05T10:05:00+00:00', max_attempts: 3, code_length: 6, code_type: 'numeric', resend_after_seconds: 60 },
+      });
+    const estimate = () =>
+      json(200, { data: { encoding: 'gsm7', characters: 5, segments_per_message: 1, recipients_count: 1, total_credits: 1, balance_after: 1 } });
     const { client, requests } = harness([
       json(202, { data: [message()] }),
       json(202, { data: [message()] }),
-      json(200, { data: { encoding: 'gsm7', characters: 5, segments_per_message: 1, recipients_count: 1, total_credits: 1, balance_after: 1 } }),
-      otpSent,
-      json(200, { data: { verified: true, reason: null } }),
+      estimate(),
+      estimate(),
+      otpSent(),
+      otpSent(),
+      json(200, { data: { verified: true, reason: null, attempts_remaining: null } }),
     ]);
 
-    await client.sms.send({ to: '0812345678', body: 'Hello', sender: 'MYSHOP', reference: 'order-1042' });
-    await client.sms.sendMany({ recipients: ['0812345678', '+33612345678'], body: 'Hello' });
+    await client.sms.send({ to: '0812345678', body: 'Hello', sender: 'MYSHOP', reference: 'order-1042', stripAccents: true });
+    await client.sms.sendMany({ recipients: ['0812345678', '+33612345678', '447911123456'], body: 'Hello' }, { requestId: 'req-1' });
     await client.sms.estimate({ body: 'Hello', recipients: ['0812345678'] });
+    await client.sms.estimate({ body: 'Réunion', recipients: ['0812345678'], stripAccents: true });
     await client.otp.send({ phone: '0812345678', template: 'Code: {code}', locale: 'fr' });
+    await client.otp.send({ phone: '+33612345678', webOtpDomain: 'app.exemple.com', stripAccents: true });
     await client.otp.verify({ otpId: 'otp-1', code: '482913' });
 
     const byPath = (r: RecordedRequest) => new URL(r.url).pathname.replace('/api/public/v1', '');
     for (const request of requests) {
       expectValid(requestSchema(byPath(request)), request.json);
     }
-    const idempotencyKey = requests[0]!.headers['Idempotency-Key']!;
-    expect(idempotencyKey.length).toBeLessThanOrEqual(smsLimits.MAX_IDEMPOTENCY_KEY_LENGTH);
+    const headerSchema = (name: string) => ajv.compile({ $ref: `spec#/components/parameters/${name}/schema` });
+    const validKey = headerSchema('IdempotencyKey');
+    const validRequestId = headerSchema('RequestId');
+    for (const index of [0, 1, 4, 5]) {
+      expect(validKey(requests[index]!.headers['Idempotency-Key']), `request ${String(index)}`).toBe(true);
+    }
+    expect(validRequestId(requests[1]!.headers['X-Request-Id'])).toBe(true);
   });
 
   it('parses the OTP verify examples of the spec', async () => {
@@ -201,9 +269,57 @@ describe.skipIf(!available)('OpenAPI contract', () => {
     const values = Object.values(examples).map((e) => e.value);
     const { client } = harness(values.map((v) => json(200, v)));
 
-    expect(await client.otp.verify({ otpId: 'otp-1', code: '1' })).toEqual({ verified: true, reason: null });
-    expect(await client.otp.verify({ otpId: 'otp-1', code: '1' })).toEqual({ verified: false, reason: 'invalid_code' });
+    const results = [];
+    for (const _value of values) results.push(await client.otp.verify({ otpId: 'otp-1', code: '1' }));
+    expect(results).toEqual([
+      { verified: true, reason: null, attemptsRemaining: null },
+      { verified: false, reason: 'invalid_code', attemptsRemaining: 4 },
+      { verified: false, reason: 'max_attempts_reached', attemptsRemaining: 0 },
+      { verified: false, reason: 'expired', attemptsRemaining: null },
+    ]);
   });
+
+  it('parses the OTP send examples of the spec', async () => {
+    const examples = at(responseSchema('/otp/send', 'post', '201').slice(0, -1).concat('examples')) as Record<string, { value: unknown }>;
+    const values = Object.values(examples).map((e) => e.value);
+    const { client } = harness(values.map((v) => json(201, v)));
+
+    for (const value of values) {
+      expectValid(responseSchema('/otp/send', 'post', '201'), value);
+      const otp = await client.otp.send({ phone: '243812345678' });
+      expect(otp).toMatchObject({ codeLength: 6, codeType: 'numeric', resendAfterSeconds: 60, maxAttempts: 5 });
+    }
+  });
+
+  it('maps every error example of the spec to its class', async () => {
+    const examples: { status: number; value: unknown }[] = [];
+    for (const [pathKey, methods] of Object.entries(dotted('paths') as Record<string, Node>)) {
+      for (const operation of Object.values(methods) as Node[]) {
+        for (const [status, item] of Object.entries((operation['responses'] ?? {}) as Record<string, Node>)) {
+          const content = (item['content'] as Node | undefined)?.['application/json'] as Node | undefined;
+          for (const example of Object.values((content?.['examples'] ?? {}) as Record<string, { value: unknown }>)) {
+            if (Number(status) >= 400) examples.push({ status: Number(status), value: example.value });
+          }
+        }
+        expect(pathKey).toBeTruthy();
+      }
+    }
+    const common = dotted('x-common-responses') as Record<string, Node>;
+    for (const [status, item] of Object.entries(common)) {
+      examples.push({ status: Number(status), value: ((item['content'] as Node)['application/json'] as Node)['example'] });
+    }
+    expect(examples.length).toBeGreaterThan(10);
+
+    const { client } = harness(examples.map((e) => json(e.status, e.value)), { maxRetries: 0 });
+    for (const { status, value } of examples) {
+      const code = (value as { error: { code: string } }).error.code;
+      const error = (await client.balance.get().catch((e: unknown) => e)) as { code: string; status: number; constructor: unknown };
+      expect(error.code).toBe(code);
+      expect(error.status).toBe(status);
+      if (code in ERROR_CLASSES_BY_CODE) expect(error.constructor, code).toBe(ERROR_CLASSES_BY_CODE[code]);
+    }
+  });
+
 
   it('maps the error example of the spec', async () => {
     const example = dotted('components.responses.Unauthenticated.content') as Node;

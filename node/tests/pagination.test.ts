@@ -22,7 +22,7 @@ describe('sms.list', () => {
     expect(url.pathname).toBe('/api/public/v1/sms');
     expect(Object.fromEntries(url.searchParams)).toEqual({
       status: 'failed',
-      recipient: '243812345678',
+      recipient: '+243812345678',
       reference: 'order-1042',
       from: '2026-11-01',
       to: '2026-11-30T23:59:59Z',

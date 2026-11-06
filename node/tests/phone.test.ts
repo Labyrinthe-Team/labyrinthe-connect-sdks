@@ -14,6 +14,21 @@ describe('PhoneNumber', () => {
     ['other country with plus', '+33 6 12 34 56 78', '33612345678'],
     ['other country with 00', '0033612345678', '33612345678'],
     ['us number', '+1 415 555 2671', '14155552671'],
+    // Spec 1.2.0 (BACKEND-TODO n° 23) : sans « + », 11 chiffres ou plus ne commençant pas par 0 = déjà international.
+    ['France without plus', '33612345678', '33612345678'],
+    ['Belgium without plus', '32470123456', '32470123456'],
+    ['US without plus', '14155550123', '14155550123'],
+    ['UK without plus', '447911123456', '447911123456'],
+    ['Congo-Brazzaville without plus', '242061234567', '242061234567'],
+    ['foreign with separators', '33 6 12-34-56-78', '33612345678'],
+    ['15 digits', '123456789012345', '123456789012345'],
+    ['local with spaces', '081 234 5678', '243812345678'],
+    ['00 with spaces', '00 243 812 345 678', '243812345678'],
+    ['spaces around', '  0812345678  ', '243812345678'],
+    ['243 + 8 digits', '24381234567', '24381234567'],
+    ['16 digits', '1234567890123456', null],
+    ['local of 14 digits (16 with the country code)', '08123456789012', null],
+    ['plus alone', '+', null],
     ['empty', '', null],
     ['blank', '   ', null],
     ['letters', 'abc', null],
@@ -27,6 +42,23 @@ describe('PhoneNumber', () => {
   it('uses a configurable default country code', () => {
     expect(PhoneNumber.normalize('061234567', '242')).toBe('24261234567');
     expect(PhoneNumber.normalize('+243812345678', '242')).toBe('243812345678');
+  });
+
+  // Mêmes cas que PhoneNumberTest du backend (« est idempotente »).
+  it.each(['0812345678', '812345678', '243812345678', '+243812345678', '00243812345678', '33612345678', '+33612345678', '447911123456', '14155550123', '24381234567'])(
+    'is idempotent: normalising %s again does not change it',
+    (input) => {
+      const once = PhoneNumber.normalize(input);
+      expect(once).not.toBeNull();
+      expect(PhoneNumber.normalize(once!)).toBe(once);
+      expect(PhoneNumber.normalize(`+${once!}`)).toBe(once);
+    },
+  );
+
+  it('stays idempotent with another default country code', () => {
+    expect(PhoneNumber.normalize('612345678', '33')).toBe('33612345678');
+    expect(PhoneNumber.normalize('33612345678', '33')).toBe('33612345678');
+    expect(PhoneNumber.normalize('243812345678', '33')).toBe('243812345678');
   });
 
   it('normalizeOrThrow', () => {

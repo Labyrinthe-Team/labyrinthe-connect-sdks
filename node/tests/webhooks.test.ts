@@ -41,6 +41,9 @@ describe('Webhooks.constructEvent', () => {
         status: 'delivered',
         provider_message_id: 'DD-88231',
         campaign_id: null,
+        reference: 'CMD-1042',
+        error_code: null,
+        error_message: null,
       }),
     );
 
@@ -54,8 +57,72 @@ describe('Webhooks.constructEvent', () => {
       status: 'delivered',
       providerMessageId: 'DD-88231',
       campaignId: null,
+      reference: 'CMD-1042',
+      errorCode: null,
+      errorMessage: null,
     });
     expect(event.raw['event']).toBe('message.status_changed');
+  });
+
+  it('reads the failure of message.status_changed, and tolerates a payload without the 1.2.0 fields', async () => {
+    const failed = await construct(
+      envelope('message.status_changed', {
+        message_id: 'm-1',
+        recipient: '243812345678',
+        status: 'failed',
+        provider_message_id: null,
+        campaign_id: null,
+        reference: null,
+        error_code: 'IP_NOT_WHITELISTED',
+        error_message: 'IP not Whitelisted',
+      }),
+    );
+    expect(failed.data).toMatchObject({ status: 'failed', errorCode: 'IP_NOT_WHITELISTED', errorMessage: 'IP not Whitelisted' });
+
+    const old = await construct(
+      envelope('message.status_changed', { message_id: 'm-1', recipient: '243812345678', status: 'sent', provider_message_id: null, campaign_id: null }),
+    );
+    expect(old.data).toMatchObject({ reference: null, errorCode: null, errorMessage: null });
+  });
+
+  it('parses otp.verified', async () => {
+    const event = await construct(
+      envelope('otp.verified', {
+        otp_id: '9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10',
+        phone: '243812345678',
+        status: 'verified',
+        reason: null,
+        verified_at: '2026-11-06T09:41:02+00:00',
+      }),
+    );
+
+    expect(event.event).toBe('otp.verified');
+    expect(event.data).toEqual({
+      otpId: '9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10',
+      phone: '243812345678',
+      status: 'verified',
+      reason: null,
+      verifiedAt: new Date('2026-11-06T09:41:02Z'),
+    });
+  });
+
+  it.each([
+    ['failed', 'max_attempts_reached'],
+    ['expired', 'expired'],
+  ] as const)('parses otp.failed (status %s, reason %s)', async (status, reason) => {
+    const event = await construct(
+      envelope('otp.failed', { otp_id: 'otp-1', phone: '243812345678', status, reason, verified_at: null }),
+    );
+
+    expect(event.event).toBe('otp.failed');
+    expect(event.data).toEqual({ otpId: 'otp-1', phone: '243812345678', status, reason, verifiedAt: null });
+  });
+
+  it('maps an unknown OTP status or reason to "unknown"', async () => {
+    const event = await construct(
+      envelope('otp.failed', { otp_id: 'otp-1', phone: '243812345678', status: 'revoked', reason: 'admin', verified_at: null }),
+    );
+    expect(event.data).toMatchObject({ status: 'unknown', reason: 'unknown' });
   });
 
   it('parses campaign.completed', async () => {
@@ -91,11 +158,11 @@ describe('Webhooks.constructEvent', () => {
   });
 
   it('returns an UnknownEvent for a type added later (never rejected)', async () => {
-    const event = await construct(envelope('otp.verified', { otp_id: 'otp-1' }));
+    const event = await construct(envelope('sms.received', { message_id: 'm-1' }));
 
     expect(event.event).toBe('unknown');
-    expect(event.type).toBe('otp.verified');
-    expect(event.data).toEqual({ otp_id: 'otp-1' });
+    expect(event.type).toBe('sms.received');
+    expect(event.data).toEqual({ message_id: 'm-1' });
   });
 
   it('narrows data on the event discriminant', () => {
@@ -110,7 +177,14 @@ describe('Webhooks.constructEvent', () => {
         case 'balance.low':
           expectTypeOf(event.data.threshold).toEqualTypeOf<number>();
           return String(event.data.balance);
+        case 'otp.verified':
+          expectTypeOf(event.data.verifiedAt).toEqualTypeOf<Date | null>();
+          return event.data.phone;
+        case 'otp.failed':
+          expectTypeOf(event.data.reason).toEqualTypeOf<'max_attempts_reached' | 'expired' | 'unknown' | null>();
+          return event.data.status;
         case 'test.ping':
+
           return 'ping';
         case 'unknown':
           expectTypeOf(event.data).toEqualTypeOf<Record<string, unknown>>();

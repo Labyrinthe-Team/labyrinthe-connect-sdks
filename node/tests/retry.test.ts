@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   ConnectionError,
   IdempotencyKeyReusedError,
+  IdempotencyKeyUnresolvedError,
+  IdempotencyRequestInProgressError,
   Labyrinthe,
   OtpRateLimitedError,
   OtpResendTooSoonError,
@@ -15,8 +17,20 @@ import type { FetchInit, FetchResponse } from '../src/internal/transport.js';
 import { TEST_KEY, apiError, harness, json, message, networkError, rejection } from './helpers.js';
 
 const balance = () => json(200, { data: { balance: 5, held: 0 } });
-const otpSent = () => json(201, { data: { otp_id: 'otp-1', expires_at: '2026-11-05T10:05:00+00:00', max_attempts: 3 } });
-const verified = () => json(200, { data: { verified: true, reason: null } });
+const otpSent = () =>
+  json(201, {
+    data: {
+      otp_id: 'otp-1',
+      expires_at: '2026-11-05T10:05:00+00:00',
+      max_attempts: 3,
+      code_length: 6,
+      code_type: 'numeric',
+      resend_after_seconds: 60,
+    },
+  });
+const verified = () => json(200, { data: { verified: true, reason: null, attempts_remaining: null } });
+const inProgress = (seconds = 5) =>
+  apiError(409, 'IDEMPOTENCY_REQUEST_IN_PROGRESS', { retry_after_seconds: seconds }, { 'Retry-After': String(seconds) });
 
 /** A fetch that never answers until its signal aborts (like a real hanging request). */
 function hangingFetch(calls: { count: number }) {
@@ -154,22 +168,81 @@ describe('retries', () => {
     expect(sleeps).toEqual([]);
   });
 
-  it('never retries otp.send() on 5xx', async () => {
-    const { client, requests } = harness([apiError(500, 'HTTP_ERROR'), otpSent()]);
+  it('retries otp.send() on 5xx and network errors with the same Idempotency-Key and body', async () => {
+    const { client, requests } = harness([apiError(500, 'HTTP_ERROR'), networkError(), otpSent()]);
 
-    await expect(client.otp.send({ phone: '0812345678' })).rejects.toBeInstanceOf(ServiceUnavailableError);
-    expect(requests).toHaveLength(1);
+    expect((await client.otp.send({ phone: '0812345678' })).otpId).toBe('otp-1');
+
+    expect(requests).toHaveLength(3);
+    const keys = requests.map((r) => r.headers['Idempotency-Key']);
+    expect(keys[0]).toBeTruthy();
+    expect(keys).toEqual([keys[0], keys[0], keys[0]]);
+    expect(requests[2]!.body).toBe(requests[0]!.body);
   });
 
-  it('never retries otp.send() on network errors, and says the SMS may have left', async () => {
-    const { client, requests } = harness([networkError(), otpSent()]);
+  it('after the last retry of otp.send(), says that calling again with the same key is safe', async () => {
+    const { client, requests } = harness([networkError(), networkError(), networkError()]);
 
-    const error = (await rejection(client.otp.send({ phone: '0812345678' }))) as ConnectionError;
+    const error = (await rejection(client.otp.send({ phone: '0812345678', idempotencyKey: 'login-42' }))) as ConnectionError;
     expect(error).toBeInstanceOf(ConnectionError);
     expect(error.code).toBe('CONNECTION_ERROR');
     expect(error.status).toBeNull();
     expect(error.message).toContain('ECONNREFUSED');
-    expect(error.message).toContain('may have been processed');
+    expect(error.message).toContain('same idempotencyKey is safe');
+    expect(requests).toHaveLength(3);
+    expect(requests.every((r) => r.headers['Idempotency-Key'] === 'login-42')).toBe(true);
+  });
+
+  it.each([
+    ['sms.send()', (c: Labyrinthe) => c.sms.send({ to: '0812345678', body: 'Hello' }), () => json(202, { data: [message()] })],
+    ['otp.send()', (c: Labyrinthe) => c.otp.send({ phone: '0812345678' }), otpSent],
+  ])('retries %s on 409 IDEMPOTENCY_REQUEST_IN_PROGRESS after Retry-After, with the same key', async (_label, call, ok) => {
+    const { client, requests, sleeps } = harness([inProgress(5), ok()]);
+
+    await call(client);
+
+    expect(sleeps).toEqual([5000]);
+    expect(requests).toHaveLength(2);
+    expect(requests[1]!.headers['Idempotency-Key']).toBe(requests[0]!.headers['Idempotency-Key']);
+  });
+
+  it('throws IdempotencyRequestInProgressError when it lasts, or when Retry-After exceeds maxRetryWaitMs', async () => {
+    const lasting = harness([inProgress(), inProgress(), inProgress()]);
+    const error = (await rejection(lasting.client.otp.send({ phone: '0812345678' }))) as IdempotencyRequestInProgressError;
+    expect(error).toBeInstanceOf(IdempotencyRequestInProgressError);
+    expect(error.status).toBe(409);
+    expect(error.retryAfterMs).toBe(5000);
+    expect(lasting.requests).toHaveLength(3);
+
+    const tooLong = harness([inProgress(30)], { maxRetryWaitMs: 10_000 });
+    await expect(tooLong.client.sms.send({ to: '0812345678', body: 'Hello' })).rejects.toBeInstanceOf(
+      IdempotencyRequestInProgressError,
+    );
+    expect(tooLong.requests).toHaveLength(1);
+    expect(tooLong.sleeps).toEqual([]);
+  });
+
+  it.each([
+    ['sms.send()', (c: Labyrinthe) => c.sms.send({ to: '0812345678', body: 'Hello', idempotencyKey: 'order-42' })],
+    ['otp.send()', (c: Labyrinthe) => c.otp.send({ phone: '0812345678', idempotencyKey: 'order-42' })],
+  ])('never retries %s on 409 IDEMPOTENCY_KEY_UNRESOLVED (an SMS may have been sent)', async (_label, call) => {
+    const unresolved = () =>
+      apiError(409, 'IDEMPOTENCY_KEY_UNRESOLVED', {}, { 'Retry-After': '1' });
+    const { client, requests, sleeps } = harness([unresolved(), unresolved(), unresolved()]);
+
+    const error = (await rejection(call(client))) as IdempotencyKeyUnresolvedError;
+    expect(error).toBeInstanceOf(IdempotencyKeyUnresolvedError);
+    expect(error.code).toBe('IDEMPOTENCY_KEY_UNRESOLVED');
+    expect(error.status).toBe(409);
+    expect(requests).toHaveLength(1);
+    expect(sleeps).toEqual([]);
+  });
+
+  it('never retries otp.verify() on 409 IDEMPOTENCY_REQUEST_IN_PROGRESS', async () => {
+    const { client, requests } = harness([inProgress(), verified()]);
+    await expect(client.otp.verify({ otpId: 'otp-1', code: '123456' })).rejects.toBeInstanceOf(
+      IdempotencyRequestInProgressError,
+    );
     expect(requests).toHaveLength(1);
   });
 
@@ -246,15 +319,28 @@ describe('timeouts and cancellation', () => {
     expect(sleeps).toHaveLength(1);
   });
 
-  it('never retries otp.send() after a timeout', async () => {
+  it('retries otp.send() after a timeout (Idempotency-Key), but never otp.verify()', async () => {
     const calls = { count: 0 };
-    const client = new Labyrinthe({ apiKey: TEST_KEY, baseUrl: 'https://api.test', fetch: hangingFetch(calls), timeoutMs: 20 });
+    const client = new Labyrinthe({
+      apiKey: TEST_KEY,
+      baseUrl: 'https://api.test',
+      fetch: hangingFetch(calls),
+      timeoutMs: 20,
+      maxRetries: 1,
+      sleep: () => Promise.resolve(),
+    });
 
-    const error = (await rejection(client.otp.send({ phone: '0812345678' }))) as TimeoutError;
-    expect(error).toBeInstanceOf(TimeoutError);
-    expect(error.message).toContain('may have been processed');
-    expect(calls.count).toBe(1);
+    const sendError = (await rejection(client.otp.send({ phone: '0812345678' }))) as TimeoutError;
+    expect(sendError).toBeInstanceOf(TimeoutError);
+    expect(sendError.message).toContain('same idempotencyKey is safe');
+    expect(calls.count).toBe(2);
+
+    const verifyError = (await rejection(client.otp.verify({ otpId: 'otp-1', code: '123456' }))) as TimeoutError;
+    expect(verifyError).toBeInstanceOf(TimeoutError);
+    expect(verifyError.message).toContain('may have been processed');
+    expect(calls.count).toBe(3);
   });
+
 
   it('accepts a per-call timeout', async () => {
     const calls = { count: 0 };

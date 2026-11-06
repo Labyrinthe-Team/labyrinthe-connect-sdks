@@ -30,7 +30,21 @@ describe('secrets never leak', () => {
 
   it('the test code is hidden from inspect() and JSON.stringify()', async () => {
     const { client } = harness([
-      json(201, { data: { otp_id: 'otp-1', expires_at: '2026-11-05T10:05:00Z', max_attempts: 3, test_code: '482913' } }),
+      json(
+        201,
+        {
+          data: {
+            otp_id: 'otp-1',
+            expires_at: '2026-11-05T10:05:00Z',
+            max_attempts: 3,
+            code_length: 6,
+            code_type: 'numeric',
+            resend_after_seconds: 60,
+            test_code: '482913',
+          },
+        },
+        { 'X-Request-Id': 'req-1' },
+      ),
     ]);
 
     const otp = await client.otp.send({ phone: '0812345678' });
@@ -42,6 +56,11 @@ describe('secrets never leak', () => {
       otpId: 'otp-1',
       expiresAt: '2026-11-05T10:05:00.000Z',
       maxAttempts: 3,
+      codeLength: 6,
+      codeType: 'numeric',
+      resendAfterSeconds: 60,
+      replayed: false,
+      requestId: 'req-1',
     });
     expect(Object.keys(otp)).not.toContain('testCode');
   });

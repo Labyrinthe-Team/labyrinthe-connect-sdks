@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AccountSuspendedError,
   ApiError,
   AuthenticationError,
   IdempotencyKeyReusedError,
+  IdempotencyKeyUnresolvedError,
+  IdempotencyRequestInProgressError,
   InsufficientCreditsError,
   InvalidPhoneError,
   LabyrintheError,
@@ -29,6 +32,7 @@ describe('error mapping', () => {
     [401, 'UNAUTHENTICATED', AuthenticationError],
     [403, 'FORBIDDEN', PermissionError],
     [403, 'OTP_DISABLED_FOR_ACCOUNT', PermissionError],
+    [403, 'ACCOUNT_SUSPENDED', AccountSuspendedError],
     [404, 'NOT_FOUND', NotFoundError],
     [422, 'VALIDATION_ERROR', ValidationError],
     [422, 'RECIPIENT_NOT_SENDABLE', RecipientNotSendableError],
@@ -37,6 +41,8 @@ describe('error mapping', () => {
     [422, 'INVALID_OTP_TEMPLATE', ApiError],
     [409, 'INSUFFICIENT_CREDITS', InsufficientCreditsError],
     [409, 'IDEMPOTENCY_KEY_REUSED', IdempotencyKeyReusedError],
+    [409, 'IDEMPOTENCY_KEY_UNRESOLVED', IdempotencyKeyUnresolvedError],
+    [409, 'IDEMPOTENCY_REQUEST_IN_PROGRESS', IdempotencyRequestInProgressError],
     [429, 'TOO_MANY_REQUESTS', RateLimitError],
     [429, 'OTP_RESEND_TOO_SOON', OtpResendTooSoonError],
     [429, 'OTP_RATE_LIMITED', OtpRateLimitedError],
@@ -132,6 +138,40 @@ describe('error mapping', () => {
     expect(none.retryAfterMs).toBeNull();
   });
 
+  it('AccountSuspendedError is a PermissionError and is never retried', async () => {
+    const { client, requests } = harness([apiError(403, 'ACCOUNT_SUSPENDED', {}, { 'X-Request-Id': 'req-s' })]);
+
+    const error = (await rejection(client.sms.send({ to: '0812345678', body: 'Hello' }))) as AccountSuspendedError;
+
+    expect(error).toBeInstanceOf(AccountSuspendedError);
+    expect(error).toBeInstanceOf(PermissionError);
+    expect(error.status).toBe(403);
+    expect(error.requestId).toBe('req-s');
+    expect(requests).toHaveLength(1);
+  });
+
+  it('exposes retryAfterMs on the OTP limits from the Retry-After header (spec 1.2.0)', async () => {
+    const resend = (await errorFor(
+      apiError(429, 'OTP_RESEND_TOO_SOON', { retry_after_seconds: 42 }, { 'Retry-After': '42' }),
+    )) as OtpResendTooSoonError;
+    const capped = (await errorFor(
+      apiError(429, 'OTP_RATE_LIMITED', { retry_after_seconds: 1800, scope: 'phone', limit: 5 }, { 'Retry-After': '1800' }),
+    )) as OtpRateLimitedError;
+    const headerOnly = (await errorFor(apiError(429, 'OTP_RATE_LIMITED', { scope: 'account', limit: 100 }, { 'Retry-After': '90' }))) as OtpRateLimitedError;
+
+    expect(resend.retryAfterMs).toBe(42_000);
+    expect(capped.retryAfterMs).toBe(1_800_000);
+    expect(capped.scope).toBe('phone');
+    expect(headerOnly.retryAfterMs).toBe(90_000);
+  });
+
+  it('exposes retryAfterMs on IdempotencyRequestInProgressError', async () => {
+    const error = (await errorFor(
+      apiError(409, 'IDEMPOTENCY_REQUEST_IN_PROGRESS', { retry_after_seconds: 5 }),
+    )) as IdempotencyRequestInProgressError;
+    expect(error.retryAfterMs).toBe(5000);
+  });
+
   it('exposes the OTP rate limit scope and limit', async () => {
     const error = (await errorFor(apiError(429, 'OTP_RATE_LIMITED', { scope: 'phone', limit: 5 }))) as OtpRateLimitedError;
     const unknown = (await errorFor(apiError(429, 'OTP_RATE_LIMITED', { scope: 'planet' }))) as OtpRateLimitedError;
@@ -151,6 +191,32 @@ describe('error mapping', () => {
     expect(error.headers['x-request-id']).toBe('req-42');
     expect(without.requestId).toBeNull();
   });
+
+  it('exposes the request id and the API version on every error class', async () => {
+    const headers = { 'X-Request-Id': 'req-7', 'X-Api-Version': '1' };
+    for (const [status, code] of [
+      [401, 'UNAUTHENTICATED'],
+      [422, 'VALIDATION_ERROR'],
+      [429, 'OTP_RATE_LIMITED'],
+      [405, 'HTTP_ERROR'],
+      [503, 'OTP_SERVICE_DISABLED'],
+    ] as const) {
+      const error = (await errorFor(apiError(status, code, {}, headers))) as ApiError;
+      expect(error.requestId, code).toBe('req-7');
+      expect(error.apiVersion, code).toBe('1');
+    }
+    expect(((await errorFor(apiError(404, 'NOT_FOUND'))) as ApiError).apiVersion).toBeNull();
+  });
+
+  it('reads the 405 of the spec (HTTP_ERROR with details.allowed_methods)', async () => {
+    const error = (await errorFor(
+      apiError(405, 'HTTP_ERROR', { allowed_methods: ['GET', 'HEAD'] }, { Allow: 'GET, HEAD' }),
+    )) as ApiError;
+    expect(error.constructor).toBe(ApiError);
+    expect(error.details).toEqual({ allowed_methods: ['GET', 'HEAD'] });
+    expect(error.headers['allow']).toBe('GET, HEAD');
+  });
+
 
   it('refuses a successful response that is not a JSON object', async () => {
     const notJson = (await errorFor(response(200, '<html>'))) as UnexpectedResponseError;
