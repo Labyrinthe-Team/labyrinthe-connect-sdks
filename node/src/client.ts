@@ -22,7 +22,10 @@ export interface LabyrintheOptions {
   timeoutMs?: number;
   /** Automatic retries, only when they are safe (0 disables them). Default 2, max 10. */
   maxRetries?: number;
-  /** Longest wait accepted before a retry (Retry-After), in milliseconds. Default 10000. */
+  /**
+   * Longest wait accepted before a retry (Retry-After), in milliseconds. Default 10000.
+   * A 503 FEATURE_DISABLED is retried only when its Retry-After fits in this wait.
+   */
   maxRetryWaitMs?: number;
   /** Added to local numbers: "0812345678" → "243812345678". Default "243" (DR Congo). */
   defaultCountryCode?: string;
