@@ -9,6 +9,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import cd.labyrinthe.connect.LabyrintheClient;
 import cd.labyrinthe.connect.MessageStatus;
 import cd.labyrinthe.connect.webhook.MessageStatusChanged;
+import cd.labyrinthe.connect.webhook.OtpFailed;
+import cd.labyrinthe.connect.webhook.OtpVerified;
 import cd.labyrinthe.connect.webhook.TestPing;
 import cd.labyrinthe.connect.webhook.WebhookEvent;
 import cd.labyrinthe.connect.webhook.Webhooks;
@@ -50,6 +52,8 @@ class LabyrintheAutoConfigurationTest {
   static class Listener {
     final List<WebhookEvent> all = new CopyOnWriteArrayList<>();
     final List<MessageStatusChanged> statuses = new CopyOnWriteArrayList<>();
+    final List<OtpVerified> verified = new CopyOnWriteArrayList<>();
+    final List<OtpFailed> failed = new CopyOnWriteArrayList<>();
 
     @EventListener
     void any(WebhookEvent event) {
@@ -59,6 +63,16 @@ class LabyrintheAutoConfigurationTest {
     @EventListener
     void status(MessageStatusChanged event) {
       statuses.add(event);
+    }
+
+    @EventListener
+    void otpVerified(OtpVerified event) {
+      verified.add(event);
+    }
+
+    @EventListener
+    void otpFailed(OtpFailed event) {
+      failed.add(event);
     }
   }
 
@@ -174,6 +188,32 @@ class LabyrintheAutoConfigurationTest {
               assertThat(listener.all.get(1)).isInstanceOf(TestPing.class);
               assertThat(listener.statuses).hasSize(1);
 
+              // Événements OTP (API 1.2.0) : publiés avec leur type.
+              String otpOk =
+                  delivery(
+                      "otp.verified",
+                      "{\"otp_id\":\"o1\",\"phone\":\"243812345678\",\"status\":\"verified\","
+                          + "\"reason\":null,\"verified_at\":\"2026-11-06T09:41:02+00:00\"}",
+                      now);
+              String otpKo =
+                  delivery(
+                      "otp.failed",
+                      "{\"otp_id\":\"o2\",\"phone\":\"243812345678\",\"status\":\"failed\","
+                          + "\"reason\":\"max_attempts_reached\",\"verified_at\":null}",
+                      now);
+              for (String otp : List.of(otpOk, otpKo)) {
+                mvc.perform(
+                        post("/hooks/sms")
+                            .contentType("application/json")
+                            .header("X-Signature", Webhooks.sign(otp, SECRET))
+                            .content(otp))
+                    .andExpect(status().isOk());
+              }
+              assertThat(listener.verified).hasSize(1);
+              assertThat(listener.verified.get(0).data().otpId()).isEqualTo("o1");
+              assertThat(listener.failed).hasSize(1);
+              assertThat(listener.all).hasSize(4);
+
               // Signature fausse, absente, corps modifié, horodatage expiré : 400, rien de publié.
               mvc.perform(
                       post("/hooks/sms")
@@ -205,7 +245,7 @@ class LabyrintheAutoConfigurationTest {
                           .content(notEnvelope))
                   .andExpect(status().isBadRequest())
                   .andExpect(content().json("{\"error\":\"INVALID_WEBHOOK_PAYLOAD\"}"));
-              assertThat(listener.all).hasSize(2);
+              assertThat(listener.all).hasSize(4);
             });
   }
 
