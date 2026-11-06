@@ -5,6 +5,23 @@ All notable changes to `@labyrinthe/otp-widget` are documented here. This projec
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-06
+
+Built against the API specification 1.3.0 and `@labyrinthe/connect` 1.2 (peer dependency now `^1.2.0`).
+
+### Added
+- Labyrinthe maintenance: `503 FEATURE_DISABLED` (whole API or OTP functions shut down by the platform) and
+  `OTP_SERVICE_DISABLED` are answered as `service_unavailable` (503) with `admin_message` (the administrator's message,
+  meant for end users, the only upstream text forwarded), `until` (ISO 8601) and, when the end is scheduled,
+  `retry_after_seconds` and a `Retry-After` header. Reported to `onError`. Also read from an older SDK (details and
+  `Retry-After` header of the generic error).
+- The widget shows the administrator's message instead of `errors.service_unavailable` when there is one, followed by
+  the new text `retryIn` ("Réessayez dans {time}." / "Try again in {time}.") when the time left is known. The
+  `labyrinthe-otp:error` event gains `adminMessage` and `until` (`Date`).
+
+### Changed
+- Durations of one hour or more are shown as `h:mm:ss` (`1:30:00`) instead of `90:00`.
+
 ## [1.1.1] - 2026-11-06
 
 ### Added

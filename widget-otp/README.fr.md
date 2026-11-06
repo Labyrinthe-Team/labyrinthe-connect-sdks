@@ -13,8 +13,12 @@ Express et Next.js.
   chaque erreur expliquée.
 - Accessible (libellés, `role="alert"`, région live, clavier, gestion du focus), responsive, clair / sombre,
   thémable par variables CSS et `::part()`, français (par défaut) et anglais, tous les textes surchargeables.
-- Zéro dépendance, Shadow DOM, **7,8 kB min+gzip** (script autonome).
+- Zéro dépendance, Shadow DOM, **8,1 kB min+gzip** (script autonome).
 
+> **Nouveautés 1.2.0** (API 1.3.0, `@labyrinthe/connect` ≥ 1.2.0) : une maintenance Labyrinthe (`FEATURE_DISABLED`,
+> ou service OTP coupé) s'affiche comme `service_unavailable` avec le message de l'administrateur et, si la fin est
+> programmée, le temps restant et un en-tête `Retry-After`. Voir [Maintenance](#maintenance).
+>
 > **Nouveautés 1.1.0** (API 1.2.0, `@labyrinthe/connect` ≥ 1.1.1) : longueur / alphabet du code et délai de renvoi
 > fournis par l'API (plus de configuration manuelle), tentatives restantes réelles, `webOtpDomain` pour la Web OTP
 > API, envois idempotents (une réponse perdue ne déclenche jamais un second SMS), erreur stable `account_suspended`.
@@ -116,7 +120,15 @@ Exemples complets : [`examples/express`](examples/express) (page statique + serv
 - Les messages de l'API ne sont jamais relayés : le navigateur reçoit des codes stables (`invalid_phone`,
   `resend_too_soon`, `rate_limited`, `no_pending_verification`, `service_unavailable`, `account_suspended`…). Une
   erreur de configuration (clé, crédits, Sender ID) apparaît comme `service_unavailable`, un compte Labyrinthe
-  suspendu (`ACCOUNT_SUSPENDED`) comme `account_suspended` (503) ; les deux partent dans votre `onError()`.
+  suspendu (`ACCOUNT_SUSPENDED`) comme `account_suspended` (503) ; les deux partent dans votre `onError()`. Seule
+  exception : le message de maintenance ci-dessous.
+- <a id="maintenance"></a>**Maintenance (`service_unavailable`, 503).** Quand la plateforme Labyrinthe coupe
+  temporairement l'API ou les fonctions OTP (`503 FEATURE_DISABLED` / `OTP_SERVICE_DISABLED`), le helper répond
+  `service_unavailable` avec `admin_message` (le message de l'administrateur de la plateforme, écrit pour les
+  utilisateurs, s'il y en a un), `until` (ISO 8601) et `retry_after_seconds` + un en-tête `Retry-After` quand la fin
+  est programmée, et appelle `onError()`. Le widget affiche le message de l'administrateur (ou
+  `errors.service_unavailable`) suivi de `retryIn` (« Réessayez dans 1:30. ») quand le temps restant est connu ;
+  l'événement d'erreur porte `adminMessage` et `until` (`Date`).
 - **Résultat inconnu : `send_failed` (502).** Quand l'API répond `409 IDEMPOTENCY_KEY_UNRESOLVED` (l'envoi d'origine
   avec cette clé a échoué de façon inattendue de son côté : un code a pu partir), le helper renvoie `send_failed` et
   appelle `onError()` (journalisez le `requestId` de l'erreur). Rien n'est relancé automatiquement. Le widget indique
@@ -167,7 +179,7 @@ Propriétés : `texts` (surcharges), `requestHeaders`, `step` (`phone` · `code`
 |---|---|
 | `labyrinthe-otp:sent` | `{ phone, phoneMasked, expiresAt, maxAttempts, resendAfterSeconds, testCode? }` |
 | `labyrinthe-otp:verified` | `{ phone, data }` |
-| `labyrinthe-otp:error` | `{ code, message, status, retryAfterSeconds?, attemptsLeft? }` — `code` : `invalid_phone`, `invalid_code`, `expired`, `already_used`, `max_attempts_reached`, `resend_too_soon`, `rate_limited`, `no_pending_verification`, `network_error`, `incomplete_code`, `service_unavailable`, `account_suspended`, `send_failed`, `forbidden`, `invalid_request`, `server_error` |
+| `labyrinthe-otp:error` | `{ code, message, status, retryAfterSeconds?, attemptsLeft?, adminMessage?, until? }` — `code` : `invalid_phone`, `invalid_code`, `expired`, `already_used`, `max_attempts_reached`, `resend_too_soon`, `rate_limited`, `no_pending_verification`, `network_error`, `incomplete_code`, `service_unavailable`, `account_suspended`, `send_failed`, `forbidden`, `invalid_request`, `server_error` |
 
 ## Personnalisation
 

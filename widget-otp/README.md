@@ -11,8 +11,12 @@ Drop-in phone verification for [Labyrinthe Connect](https://labyrinthe-rdc.com):
   `autocomplete="one-time-code"`, Web OTP API on Android, resend countdown, attempts left, every error explained.
 - Accessible (labels, `role="alert"`, live region, keyboard, focus management), responsive, light / dark,
   themable with CSS variables and `::part()`, French (default) and English, every text overridable.
-- Zero dependencies, Shadow DOM, **7.8 kB min+gzip** (standalone script).
+- Zero dependencies, Shadow DOM, **8.1 kB min+gzip** (standalone script).
 
+> **New in 1.2.0** (API 1.3.0, `@labyrinthe/connect` ≥ 1.2.0): Labyrinthe maintenance (`FEATURE_DISABLED`, or the
+> OTP service off) is shown as `service_unavailable` with the administrator's message and, when the end is scheduled,
+> the time left and a `Retry-After` header. See [Maintenance](#maintenance).
+>
 > **New in 1.1.0** (API 1.2.0, `@labyrinthe/connect` ≥ 1.1.1): code length / alphabet and resend delay come from the
 > API (no more manual configuration), real attempts left, `webOtpDomain` for the Web OTP API, idempotent sends
 > (a lost response never sends a second SMS), stable `account_suspended` error. See the [CHANGELOG](CHANGELOG.md).
@@ -113,7 +117,13 @@ Complete examples: [`examples/express`](examples/express) (static page + Express
 - Upstream messages are never forwarded: the browser gets stable codes (`invalid_phone`, `resend_too_soon`,
   `rate_limited`, `no_pending_verification`, `service_unavailable`, `account_suspended`…). Misconfiguration (key,
   credits, Sender ID) shows as `service_unavailable`, a suspended Labyrinthe account (`ACCOUNT_SUSPENDED`) as
-  `account_suspended` (503); both go to your `onError()`.
+  `account_suspended` (503); both go to your `onError()`. The one exception is the maintenance message below.
+- <a id="maintenance"></a>**Maintenance (`service_unavailable`, 503).** When the Labyrinthe platform temporarily shuts
+  down the API or the OTP functions (`503 FEATURE_DISABLED` / `OTP_SERVICE_DISABLED`), the helper answers
+  `service_unavailable` with `admin_message` (the platform administrator's message, written for end users, when there
+  is one), `until` (ISO 8601) and `retry_after_seconds` + a `Retry-After` header when the end is scheduled, and calls
+  `onError()`. The widget shows the administrator's message (or `errors.service_unavailable`) followed by `retryIn`
+  ("Try again in 1:30.") when the time left is known; the error event carries `adminMessage` and `until` (`Date`).
 - **Outcome unknown: `send_failed` (502).** When the API answers `409 IDEMPOTENCY_KEY_UNRESOLVED` (the original send
   with this key failed unexpectedly on its side: a code may have been sent), the helper returns `send_failed` and
   calls `onError()` (log the error's `requestId`). Nothing is retried automatically. The widget tells the user it
@@ -164,7 +174,7 @@ Properties: `texts` (overrides), `requestHeaders`, `step` (`phone` · `code` · 
 |---|---|
 | `labyrinthe-otp:sent` | `{ phone, phoneMasked, expiresAt, maxAttempts, resendAfterSeconds, testCode? }` |
 | `labyrinthe-otp:verified` | `{ phone, data }` |
-| `labyrinthe-otp:error` | `{ code, message, status, retryAfterSeconds?, attemptsLeft? }` — `code`: `invalid_phone`, `invalid_code`, `expired`, `already_used`, `max_attempts_reached`, `resend_too_soon`, `rate_limited`, `no_pending_verification`, `network_error`, `incomplete_code`, `service_unavailable`, `account_suspended`, `send_failed`, `forbidden`, `invalid_request`, `server_error` |
+| `labyrinthe-otp:error` | `{ code, message, status, retryAfterSeconds?, attemptsLeft?, adminMessage?, until? }` — `code`: `invalid_phone`, `invalid_code`, `expired`, `already_used`, `max_attempts_reached`, `resend_too_soon`, `rate_limited`, `no_pending_verification`, `network_error`, `incomplete_code`, `service_unavailable`, `account_suspended`, `send_failed`, `forbidden`, `invalid_request`, `server_error` |
 
 ## Customisation
 
