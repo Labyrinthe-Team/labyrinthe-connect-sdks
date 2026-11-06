@@ -8,7 +8,9 @@ use Labyrinthe\Connect\Enum\OtpRateLimitScope;
 
 /**
  * 429 OTP_RATE_LIMITED: hourly cap reached for this phone number or for the
- * whole account. Never retried by the SDK.
+ * whole account. Never retried by the SDK. getRetryAfter() gives the seconds
+ * until the sliding one-hour window falls below the limit (Retry-After header,
+ * equal to `details.retry_after_seconds`).
  */
 final class OtpRateLimitedException extends RateLimitException
 {

@@ -16,11 +16,6 @@ class RateLimitException extends ApiException
      */
     public function getRetryAfter(): ?int
     {
-        $header = $this->getHeader('retry-after');
-        if ($header !== null && preg_match('/^\d+$/', trim($header)) === 1) {
-            return (int) trim($header);
-        }
-
-        return $this->detailInt('retry_after_seconds');
+        return $this->retryAfterSeconds();
     }
 }

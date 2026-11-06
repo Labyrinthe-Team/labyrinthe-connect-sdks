@@ -6,7 +6,8 @@ namespace Labyrinthe\Connect\Exception;
 
 /**
  * 429 OTP_RESEND_TOO_SOON: a code was sent to this number too recently.
- * Never retried by the SDK; show a countdown of getRetryAfter() seconds.
+ * Never retried by the SDK; show a countdown of getRetryAfter() seconds
+ * (Retry-After header, equal to `details.retry_after_seconds`).
  */
 final class OtpResendTooSoonException extends RateLimitException
 {
