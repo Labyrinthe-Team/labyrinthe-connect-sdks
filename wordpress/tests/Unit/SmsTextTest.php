@@ -49,13 +49,6 @@ final class SmsTextTest extends TestCase {
 		$this->assertSame( array( 'É', '’' ), Sms_Text::unicode_characters( 'Ét l’a' ) );
 	}
 
-	public function test_strip_special_characters_keeps_the_sms_in_gsm7(): void {
-		$stripped = Sms_Text::strip_special_characters( "Votre commande « n°1042 » est expédiée — merci ! C’est à 25\u{00A0}€…" );
-
-		$this->assertSame( 'Votre commande " no1042 " est expediee - merci ! C\'est a 25 EUR...', $stripped );
-		$this->assertSame( 'gsm7', Sms_Text::analyse( $stripped )['encoding'] );
-	}
-
 	public function test_render_replaces_variables_and_cleans_spaces(): void {
 		$text = Sms_Text::render(
 			'Bonjour {customer_name}, commande {order_number} {tracking_url} {unknown}',

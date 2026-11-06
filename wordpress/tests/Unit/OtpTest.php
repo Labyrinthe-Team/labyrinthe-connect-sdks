@@ -7,6 +7,7 @@
 
 namespace LabyrintheConnect\Tests\Unit;
 
+use LabyrintheConnect\Account_Status;
 use LabyrintheConnect\Crypto;
 use LabyrintheConnect\Otp\Checkout;
 use LabyrintheConnect\Otp\Login;
@@ -14,6 +15,7 @@ use LabyrintheConnect\Otp\Otp_Service;
 use LabyrintheConnect\Otp\Phone_Users;
 use LabyrintheConnect\Otp\Registration;
 use LabyrintheConnect\Otp\Session;
+use LabyrintheConnect\Otp\Widget;
 use LabyrintheConnect\Settings;
 use LabyrintheConnect\Tests\Support\TestCase;
 
@@ -37,28 +39,51 @@ final class OtpTest extends TestCase {
 		$this->otp      = $this->otp( $this->settings );
 	}
 
-	private function push_sent( ?string $test_code = '482913' ): void {
-		$data = array(
-			'otp_id'       => self::OTP_ID,
-			'expires_at'   => gmdate( 'c', time() + 600 ),
-			'max_attempts' => 3,
+	/**
+	 * Réponse de POST /otp/send.
+	 *
+	 * @param string|null           $test_code Code de test (clé lsk_test_).
+	 * @param array<string, mixed>  $overrides Champs modifiés.
+	 * @param array<string, string> $headers   En-têtes.
+	 */
+	private function push_sent( ?string $test_code = '482913', array $overrides = array(), array $headers = array() ): void {
+		$data = array_merge(
+			array(
+				'otp_id'               => self::OTP_ID,
+				'expires_at'           => gmdate( 'c', time() + 600 ),
+				'max_attempts'         => 3,
+				'code_length'          => 6,
+				'code_type'            => 'numeric',
+				'resend_after_seconds' => 60,
+			),
+			$overrides
 		);
 		if ( null !== $test_code ) {
 			$data['test_code'] = $test_code;
 		}
-		$this->http->push( 201, array( 'data' => $data ) );
+		$this->http->push( 201, array( 'data' => $data ), $headers );
 	}
 
-	private function push_verified( bool $verified, ?string $reason = null ): void {
+	private function push_verified( bool $verified, ?string $reason = null, ?int $attempts_remaining = null ): void {
 		$this->http->push(
 			200,
 			array(
 				'data' => array(
-					'verified' => $verified,
-					'reason'   => $reason,
+					'verified'           => $verified,
+					'reason'             => $reason,
+					'attempts_remaining' => $attempts_remaining,
 				),
 			)
 		);
+	}
+
+	/**
+	 * Idempotency-Key de chaque requête envoyée.
+	 *
+	 * @return list<string>
+	 */
+	private function idempotency_keys(): array {
+		return array_values( array_map( static fn( array $request ): string => $request['headers']['idempotency-key'] ?? '', $this->http->requests ) );
 	}
 
 	public function test_send_keeps_the_otp_id_server_side(): void {
@@ -70,7 +95,7 @@ final class OtpTest extends TestCase {
 		$this->assertStringContainsString( '24381*****78', $result['message'] );
 		$this->assertArrayNotHasKey( 'test_code', $result, 'Only administrators see the test code.' );
 		$this->assertStringNotContainsString( self::OTP_ID, (string) wp_json_encode( $result ) );
-		$this->assertSame( '243812345678', $this->http->last()['body']['phone'] );
+		$this->assertSame( '+243812345678', $this->http->last()['body']['phone'] );
 		$this->assertSame( 'en', $this->http->last()['body']['locale'], 'Language of the site (en_US in the tests).' );
 
 		$cookie = $_COOKIE[ Session::COOKIE ];
@@ -103,6 +128,26 @@ final class OtpTest extends TestCase {
 		$this->assertSame( 'MaBoutique : {code}', $this->http->last()['body']['template'] );
 	}
 
+	public function test_unresolved_idempotency_key_is_a_final_failure_and_the_next_request_uses_a_new_key(): void {
+		$this->http->push_error( 409, 'IDEMPOTENCY_KEY_UNRESOLVED', array(), array( 'x-request-id' => 'req-unresolved' ) );
+
+		$result = $this->otp->send( Otp_Service::CONTEXT_REGISTER, '0812345678' );
+
+		$this->assertFalse( $result['ok'] );
+		$this->assertSame( 'SERVICE_UNAVAILABLE', $result['code'] );
+		$this->assertCount( 1, $this->http->requests, 'Never retried automatically: a code may have been sent.' );
+		$row = $this->log_rows()[0];
+		$this->assertSame( 'IDEMPOTENCY_KEY_UNRESOLVED', $row['error_code'] );
+		$this->assertSame( 'req-unresolved', $row['request_id'] );
+
+		// Le visiteur redemande un code : nouvelle clé, sinon l'API répondrait encore 409.
+		$this->push_sent();
+		$this->assertTrue( $this->otp->send( Otp_Service::CONTEXT_REGISTER, '0812345678' )['ok'] );
+		$keys = $this->idempotency_keys();
+		$this->assertCount( 2, $keys );
+		$this->assertNotSame( $keys[0], $keys[1] );
+	}
+
 	public function test_resend_too_soon_returns_a_countdown(): void {
 		$this->http->push_error( 429, 'OTP_RESEND_TOO_SOON', array( 'retry_after_seconds' => 42 ) );
 
@@ -129,13 +174,151 @@ final class OtpTest extends TestCase {
 		$this->http->push_error( 422, 'RECIPIENT_NOT_SENDABLE', array( 'reason' => 'blacklisted' ) );
 		$this->assertSame( 'RECIPIENT_NOT_SENDABLE', $this->otp->send( Otp_Service::CONTEXT_REGISTER, '0812345678' )['code'] );
 
-		$this->http->push_error( 503, 'OTP_SERVICE_DISABLED' );
+		// 5xx et erreur réseau : une relance automatique, sans risque grâce à l'Idempotency-Key.
+		$this->http->push_error( 503, 'OTP_SERVICE_DISABLED' )->push_error( 503, 'OTP_SERVICE_DISABLED' );
 		$result = $this->otp->send( Otp_Service::CONTEXT_REGISTER, '0812345678' );
 		$this->assertSame( 'SERVICE_UNAVAILABLE', $result['code'] );
 
-		$this->http->push_network_error();
+		$this->http->push_network_error()->push_network_error();
 		$this->assertSame( 'SERVICE_UNAVAILABLE', $this->otp->send( Otp_Service::CONTEXT_REGISTER, '0812345678' )['code'] );
-		$this->assertCount( 4, $this->http->requests, 'No retry after a network error or a 5xx (no double SMS).' );
+		$this->assertCount( 6, $this->http->requests );
+		$this->assertCount( 1, array_unique( $this->idempotency_keys() ), 'No send succeeded: every attempt replays the same key.' );
+	}
+
+	public function test_send_uses_web_otp_strip_accents_and_a_request_id(): void {
+		$this->settings = $this->configure( array( 'strip_accents' => true ) );
+		$this->push_sent();
+
+		$result = $this->otp( $this->settings )->send( Otp_Service::CONTEXT_REGISTER, '0812345678' );
+
+		$request = $this->http->last();
+		$this->assertSame( 'example.org', $request['body']['web_otp_domain'], 'Domain of the site by default.' );
+		$this->assertTrue( $request['body']['strip_accents'] );
+		$this->assertMatchesRegularExpression( '/^wp-otp-[a-f0-9]{8}-[a-f0-9]{32}-1$/', $request['headers']['idempotency-key'] );
+		$this->assertStringNotContainsString( '243812345678', $request['headers']['idempotency-key'], 'The key does not reveal the number.' );
+		$this->assertStringStartsWith( 'wp-', $request['headers']['x-request-id'] );
+		$this->assertSame( $request['headers']['x-request-id'], $this->log_rows()[0]['request_id'] );
+		$this->assertSame( 6, $result['code_length'] );
+		$this->assertSame( 'numeric', $result['code_type'] );
+		$this->assertSame( 60, $result['resend_in'] );
+	}
+
+	public function test_web_otp_domain_setting(): void {
+		$this->settings = $this->configure( array( 'otp_web_otp_domain' => 'shop.example.com' ) );
+		$this->push_sent();
+		$this->otp( $this->settings )->send( Otp_Service::CONTEXT_REGISTER, '0812345678' );
+		$this->assertSame( 'shop.example.com', $this->http->last()['body']['web_otp_domain'] );
+
+		$this->settings = $this->configure( array( 'otp_web_otp' => false ) );
+		$this->push_sent();
+		$this->otp( $this->settings )->send( Otp_Service::CONTEXT_REGISTER, '0812345679' );
+		$this->assertArrayNotHasKey( 'web_otp_domain', $this->http->last()['body'], 'Turned off.' );
+		$this->assertArrayNotHasKey( 'strip_accents', $this->http->last()['body'], 'Off by default.' );
+
+		// Site local : aucun domaine valide, le Web OTP est ignoré (sinon 422).
+		add_filter( 'labyrinthe_connect_web_otp_domain', static fn(): string => 'localhost' );
+		$this->settings = $this->configure();
+		$this->assertNull( $this->settings->web_otp_domain() );
+		remove_all_filters( 'labyrinthe_connect_web_otp_domain' );
+	}
+
+	public function test_idempotency_key_is_stable_until_a_send_succeeds(): void {
+		$this->settings = $this->configure( array( 'otp_ip_send_limit' => 20 ) );
+		$this->otp      = $this->otp( $this->settings );
+		// Première tentative perdue (réseau, deux fois) : rien n'est enregistré côté site.
+		$this->http->push_network_error()->push_network_error();
+		$this->assertFalse( $this->otp->send( Otp_Service::CONTEXT_REGISTER, '0812345678' )['ok'] );
+
+		// Nouveau clic : même clé (l'API rejouerait l'envoi s'il avait abouti), puis succès.
+		$this->push_sent();
+		$this->assertTrue( $this->otp->send( Otp_Service::CONTEXT_REGISTER, '0812345678' )['ok'] );
+
+		// « Renvoyer le code » après un envoi réussi : nouvelle clé, donc nouveau code.
+		$this->push_sent();
+		$this->assertTrue( $this->otp->send( Otp_Service::CONTEXT_REGISTER, '0812345678' )['ok'] );
+
+		// Autre numéro, autre contexte, autre navigateur : autres clés.
+		$this->push_sent();
+		$this->otp->send( Otp_Service::CONTEXT_REGISTER, '0899999999' );
+		$this->push_sent();
+		$this->otp->send( Otp_Service::CONTEXT_CHECKOUT, '0812345678' );
+		$_COOKIE = array();
+		$this->push_sent();
+		$this->otp( $this->settings, new Session() )->send( Otp_Service::CONTEXT_REGISTER, '0812345678' );
+
+		$keys = $this->idempotency_keys();
+		$this->assertCount( 7, $keys );
+		$this->assertSame( $keys[0], $keys[1], 'Same key for the retry of the SDK.' );
+		$this->assertSame( $keys[0], $keys[2], 'Same key for a new click after a failure.' );
+		$this->assertStringEndsWith( '-1', $keys[2] );
+		$this->assertStringEndsWith( '-2', $keys[3] );
+		$this->assertCount( 5, array_unique( array_slice( $keys, 2 ) ) );
+	}
+
+	public function test_replayed_send_keeps_the_same_code_and_is_logged_once(): void {
+		$this->push_sent();
+		$this->otp->send( Otp_Service::CONTEXT_REGISTER, '0812345678' );
+		$this->assertCount( 1, $this->log_rows() );
+
+		// Double requête simultanée : l'API rejoue le premier envoi (même otp_id, aucun SMS).
+		$this->push_sent( '482913', array(), array( 'idempotent-replayed' => 'true' ) );
+		$this->assertTrue( $this->otp( $this->settings, new Session() )->send( Otp_Service::CONTEXT_REGISTER, '0812345678' )['ok'] );
+
+		$this->assertCount( 1, $this->log_rows(), 'A replay sent no SMS: no second log row.' );
+	}
+
+	public function test_alphanumeric_codes_and_their_shape_are_remembered(): void {
+		$this->push_sent(
+			null,
+			array(
+				'code_length'          => 8,
+				'code_type'            => 'alphanumeric',
+				'max_attempts'         => 4,
+				'resend_after_seconds' => 30,
+			)
+		);
+
+		$result = $this->otp->send( Otp_Service::CONTEXT_REGISTER, '0812345678' );
+
+		$this->assertSame( 8, $result['code_length'] );
+		$this->assertSame( 'alphanumeric', $result['code_type'] );
+		$this->assertSame( 30, $result['resend_in'] );
+		$this->assertSame(
+			array(
+				'code_length'  => 8,
+				'code_type'    => 'alphanumeric',
+				'max_attempts' => 4,
+				'resend_after' => 30,
+			),
+			Otp_Service::shape()
+		);
+
+		// Le formulaire suit la forme : clavier texte, 8 caractères.
+		$html = Widget::render( Otp_Service::CONTEXT_REGISTER );
+		$this->assertStringContainsString( 'autocomplete="one-time-code"', $html );
+		$this->assertStringContainsString( 'inputmode="text" maxlength="8"', $html );
+		$this->assertStringContainsString( 'data-code-type="alphanumeric"', $html );
+		$this->assertStringNotContainsString( 'pattern=', $html, 'No HTML validation that would block the enclosing form.' );
+	}
+
+	public function test_numeric_code_field_by_default(): void {
+		$html = Widget::render( Otp_Service::CONTEXT_REGISTER );
+
+		$this->assertStringContainsString( 'inputmode="numeric" maxlength="6"', $html );
+		$this->assertStringContainsString( 'autocomplete="one-time-code"', $html );
+	}
+
+	public function test_account_suspended_is_logged_with_the_request_id(): void {
+		$this->http->push_error( 403, 'ACCOUNT_SUSPENDED', array(), array( 'x-request-id' => 'req-abc-123' ) );
+
+		$result = $this->otp->send( Otp_Service::CONTEXT_REGISTER, '0812345678' );
+
+		$this->assertSame( 'SERVICE_UNAVAILABLE', $result['code'], 'Visitors get a neutral message.' );
+		$this->assertCount( 1, $this->http->requests, 'Never retried.' );
+		$row = $this->log_rows()[0];
+		$this->assertSame( 'ACCOUNT_SUSPENDED', $row['error_code'] );
+		$this->assertSame( 'req-abc-123', $row['request_id'] );
+		$this->assertSame( 'req-abc-123', Account_Status::suspended()['request_id'] ?? null );
 	}
 
 	public function test_invalid_phone_is_refused_without_any_request(): void {
@@ -189,14 +372,22 @@ final class OtpTest extends TestCase {
 		$this->push_sent();
 		$this->otp->send( Otp_Service::CONTEXT_REGISTER, '0812345678' );
 
-		$this->push_verified( false, 'invalid_code' );
-		$this->assertSame( 'invalid_code', $this->otp->verify( Otp_Service::CONTEXT_REGISTER, '000000' )['code'] );
+		$this->push_verified( false, 'invalid_code', 2 );
+		$wrong = $this->otp->verify( Otp_Service::CONTEXT_REGISTER, '000000' );
+		$this->assertSame( 'invalid_code', $wrong['code'] );
+		$this->assertSame( 2, $wrong['attempts_remaining'] );
+		$this->assertStringContainsString( '2 attempts left', $wrong['message'] );
 
-		$this->push_verified( false, 'max_attempts_reached' );
-		$this->assertSame( 'max_attempts_reached', $this->otp->verify( Otp_Service::CONTEXT_REGISTER, '000001' )['code'] );
+		$this->push_verified( false, 'invalid_code', 1 );
+		$this->assertStringContainsString( '1 attempt left', $this->otp->verify( Otp_Service::CONTEXT_REGISTER, '000002' )['message'] );
+
+		$this->push_verified( false, 'max_attempts_reached', 0 );
+		$blocked = $this->otp->verify( Otp_Service::CONTEXT_REGISTER, '000001' );
+		$this->assertSame( 'max_attempts_reached', $blocked['code'] );
+		$this->assertSame( 0, $blocked['attempts_remaining'] );
 
 		$this->assertSame( 'NO_PENDING_CODE', $this->otp->verify( Otp_Service::CONTEXT_REGISTER, '482913' )['code'] );
-		$this->assertCount( 3, $this->http->requests );
+		$this->assertCount( 4, $this->http->requests );
 	}
 
 	public function test_expired_or_unknown_otp_is_reported_as_expired(): void {
@@ -225,8 +416,12 @@ final class OtpTest extends TestCase {
 		$this->assertStringContainsString( '24381*****78', $result['message'] );
 		$this->assertSame( array(), $this->http->requests, 'No SMS (no credit) for a number without account.' );
 
+		$this->assertSame( 6, $result['code_length'], 'Same shape as a real code.' );
+		$this->assertSame( 60, $result['resend_in'] );
 		for ( $i = 0; $i < 4; $i++ ) {
-			$this->assertSame( 'invalid_code', $this->otp->verify( Otp_Service::CONTEXT_LOGIN, '123456' )['code'] );
+			$wrong = $this->otp->verify( Otp_Service::CONTEXT_LOGIN, '123456' );
+			$this->assertSame( 'invalid_code', $wrong['code'] );
+			$this->assertSame( 4 - $i, $wrong['attempts_remaining'], 'Same countdown as a real code.' );
 		}
 		$this->assertSame( 'max_attempts_reached', $this->otp->verify( Otp_Service::CONTEXT_LOGIN, '123456' )['code'] );
 		$this->assertSame( array(), $this->http->requests );

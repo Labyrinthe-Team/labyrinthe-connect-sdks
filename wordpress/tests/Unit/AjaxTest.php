@@ -7,6 +7,7 @@
 
 namespace LabyrintheConnect\Tests\Unit;
 
+use LabyrintheConnect\Account_Status;
 use LabyrintheConnect\Admin\Admin;
 use LabyrintheConnect\Client_Factory;
 use LabyrintheConnect\Crypto;
@@ -119,10 +120,13 @@ final class AjaxTest extends \WP_Ajax_UnitTestCase {
 			201,
 			array(
 				'data' => array(
-					'otp_id'       => 'secret-otp-id',
-					'expires_at'   => gmdate( 'c', time() + 600 ),
-					'max_attempts' => 3,
-					'test_code'    => '482913',
+					'otp_id'               => 'secret-otp-id',
+					'expires_at'           => gmdate( 'c', time() + 600 ),
+					'max_attempts'         => 3,
+					'code_length'          => 6,
+					'code_type'            => 'numeric',
+					'resend_after_seconds' => 45,
+					'test_code'            => '482913',
 				),
 			)
 		);
@@ -130,8 +134,9 @@ final class AjaxTest extends \WP_Ajax_UnitTestCase {
 			200,
 			array(
 				'data' => array(
-					'verified' => true,
-					'reason'   => null,
+					'verified'           => true,
+					'reason'             => null,
+					'attempts_remaining' => null,
 				),
 			)
 		);
@@ -145,6 +150,9 @@ final class AjaxTest extends \WP_Ajax_UnitTestCase {
 			)
 		);
 		$this->assertTrue( $sent['success'] );
+		$this->assertSame( 6, $sent['data']['code_length'] );
+		$this->assertSame( 'numeric', $sent['data']['code_type'] );
+		$this->assertSame( 45, $sent['data']['resend_in'], 'Countdown from resend_after_seconds.' );
 		$this->assertStringNotContainsString( 'secret-otp-id', $this->_last_response );
 		$this->assertStringNotContainsString( '482913', $this->_last_response, 'Visitors never see the test code.' );
 
@@ -245,6 +253,104 @@ final class AjaxTest extends \WP_Ajax_UnitTestCase {
 		$this->assertStringContainsString( '24381*****78', $response['data']['message'] );
 		$this->assertSame( 'Test ' . get_bloginfo( 'name' ), $this->http->last()['body']['body'] );
 		$this->assertArrayHasKey( 'idempotency-key', $this->http->last()['headers'] );
+	}
+
+	public function test_failed_test_sms_shows_the_request_id(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		$this->http->push_error( 422, 'SENDER_ID_NOT_APPROVED', array(), array( 'x-request-id' => 'req-support-42' ) );
+
+		$response = $this->ajax(
+			'labyrinthe_connect_send_test_sms',
+			array(
+				'nonce' => wp_create_nonce( Admin::NONCE ),
+				'phone' => '0812345678',
+			)
+		);
+
+		$this->assertFalse( $response['success'] );
+		$this->assertStringContainsString( 'req-support-42', $response['data']['message'] );
+		$this->assertStringStartsWith( 'wp-', $this->http->last()['headers']['x-request-id'], 'The plugin sends its own X-Request-Id.' );
+	}
+
+	public function test_suspended_account_is_reported_and_remembered(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		$this->http->push_error( 403, 'ACCOUNT_SUSPENDED', array(), array( 'x-request-id' => 'req-suspended-1' ) );
+
+		$response = $this->ajax( 'labyrinthe_connect_test_connection', array( 'nonce' => wp_create_nonce( Admin::NONCE ) ) );
+
+		$this->assertFalse( $response['success'] );
+		$this->assertSame( 'ACCOUNT_SUSPENDED', $response['data']['code'] );
+		$this->assertStringContainsString( 'suspended', $response['data']['message'] );
+		$this->assertStringContainsString( 'req-suspended-1', $response['data']['message'] );
+		$this->assertSame( 'req-suspended-1', Account_Status::suspended()['request_id'] ?? null );
+
+		// Compte réactivé : le prochain appel réussi efface l'avis.
+		$this->http->push(
+			200,
+			array(
+				'data' => array(
+					'balance' => 10,
+					'held'    => 0,
+				),
+			)
+		);
+		$this->assertTrue( $this->ajax( 'labyrinthe_connect_test_connection', array( 'nonce' => wp_create_nonce( Admin::NONCE ) ) )['success'] );
+		$this->assertNull( Account_Status::suspended() );
+	}
+
+	public function test_estimate_counts_with_the_api_and_strip_accents(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		update_option( Settings::OPTION, array_merge( get_option( Settings::OPTION ), array( 'strip_accents' => true ) ) );
+		$this->http->push(
+			200,
+			array(
+				'data' => array(
+					'encoding'             => 'gsm7',
+					'characters'           => 24,
+					'segments_per_message' => 1,
+					'recipients_count'     => 1,
+					'total_credits'        => 1,
+					'balance_after'        => null,
+				),
+			)
+		);
+
+		$response = $this->ajax(
+			'labyrinthe_connect_estimate',
+			array(
+				'nonce'   => wp_create_nonce( Admin::NONCE ),
+				'message' => 'Votre commande est expédiée',
+			)
+		);
+
+		$this->assertTrue( $response['success'] );
+		$this->assertSame(
+			array(
+				'encoding'   => 'gsm7',
+				'characters' => 24,
+				'segments'   => 1,
+			),
+			$response['data']
+		);
+		$request = $this->http->last();
+		$this->assertStringEndsWith( '/sms/estimate', $request['url'] );
+		$this->assertTrue( $request['body']['strip_accents'] );
+		$this->assertSame( 'Votre commande est expédiée', $request['body']['body'], 'The API removes the accents, not the plugin.' );
+	}
+
+	public function test_estimate_requires_the_admin_nonce(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+
+		$response = $this->ajax(
+			'labyrinthe_connect_estimate',
+			array(
+				'nonce'   => 'bad',
+				'message' => 'Test',
+			)
+		);
+
+		$this->assertFalse( $response['success'] );
+		$this->assertSame( array(), $this->http->requests );
 	}
 
 	public function test_refresh_senders_caches_the_list(): void {

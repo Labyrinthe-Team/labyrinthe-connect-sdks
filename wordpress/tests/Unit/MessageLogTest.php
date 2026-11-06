@@ -130,6 +130,40 @@ final class MessageLogTest extends TestCase {
 		$this->assertNotFalse( wp_next_scheduled( Cron::HOOK ), 'Scheduled on activation.' );
 	}
 
+	public function test_request_id_is_stored_searchable_and_shown(): void {
+		$this->log->insert(
+			array(
+				'message_id'    => '',
+				'recipient'     => '24381*****78',
+				'context'       => 'test',
+				'status'        => 'error',
+				'error_code'    => 'SERVICE_UNAVAILABLE',
+				'error_message' => 'Indisponible',
+				'request_id'    => 'wp-6b1f2c3d-support',
+			)
+		);
+		$this->log->insert( array( 'message_id' => 'other' ) );
+
+		$found = $this->log->query( array( 'search' => 'wp-6b1f2c3d-support' ) );
+		$this->assertSame( 1, $found['total'] );
+		$this->assertSame( 'wp-6b1f2c3d-support', $found['items'][0]['request_id'] );
+
+		set_current_screen( 'toplevel_page_labyrinthe-connect' );
+		$table = new Log_List_Table();
+		$table->prepare_items();
+		ob_start();
+		$table->display();
+		$this->assertStringContainsString( 'Request ID: wp-6b1f2c3d-support', (string) ob_get_clean() );
+	}
+
+	public function test_schema_upgrade_adds_the_request_id_column(): void {
+		global $wpdb;
+
+		$columns = $wpdb->get_col( $wpdb->prepare( 'SHOW COLUMNS FROM %i', \LabyrintheConnect\Schema::log_table() ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$this->assertContains( 'request_id', $columns );
+		$this->assertSame( '2', get_option( \LabyrintheConnect\Schema::VERSION_OPTION ) );
+	}
+
 	public function test_list_table_shows_masked_numbers_and_escapes_values(): void {
 		$this->log->insert(
 			array(

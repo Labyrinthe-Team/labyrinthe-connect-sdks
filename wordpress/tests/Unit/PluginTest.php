@@ -104,6 +104,34 @@ final class PluginTest extends TestCase {
 		$this->assertStringContainsString( 'MABOUTIQUE', $html );
 		$this->assertStringContainsString( '/labyrinthe/v1/webhook', $html );
 		$this->assertSame( array(), $this->http->requests, 'Sender IDs come from the cache.' );
+
+		$_GET['tab'] = Settings::TAB_OTP;
+		ob_start();
+		$page->render();
+		$html = (string) ob_get_clean();
+		unset( $_GET['tab'] );
+		$this->assertStringContainsString( 'otp_web_otp_domain', $html );
+		$this->assertStringContainsString( 'placeholder="example.org"', $html, 'The domain of the site by default.' );
+	}
+
+	public function test_suspended_account_notice(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		$settings = $this->configure();
+		update_option(
+			\LabyrintheConnect\Account_Status::SUSPENDED_OPTION,
+			array(
+				'time'       => time(),
+				'request_id' => 'req-<b>9</b>',
+			)
+		);
+
+		ob_start();
+		( new \LabyrintheConnect\Admin\Admin( $settings, new Client_Factory( $settings ), $this->sender( $settings ), new Sender_Ids( new Client_Factory( $settings ) ) ) )->notices();
+		$html = (string) ob_get_clean();
+
+		$this->assertStringContainsString( 'your account is suspended', $html );
+		$this->assertStringContainsString( 'req-&lt;b&gt;9&lt;/b&gt;', $html, 'Escaped.' );
+		$this->assertStringContainsString( 'notice-error', $html );
 	}
 
 	public function test_settings_page_requires_manage_options(): void {

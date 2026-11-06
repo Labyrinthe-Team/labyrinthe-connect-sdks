@@ -32,6 +32,8 @@ final class UninstallTest extends TestCase {
 
 		$this->configure();
 		update_option( 'labyrinthe_connect_last_ping', time() );
+		update_option( 'labyrinthe_connect_account_suspended', array( 'time' => time() ) );
+		update_option( 'labyrinthe_connect_otp_shape', array( 'code_length' => 6 ) );
 		set_transient( Sender_Ids::CACHE_KEY, array(), HOUR_IN_SECONDS );
 		set_transient( 'labyrinthe_otp_' . str_repeat( 'a', 64 ), array( 'pending' => array() ), HOUR_IN_SECONDS );
 		( new Message_Log() )->insert( array( 'message_id' => 'x' ) );
@@ -53,6 +55,8 @@ final class UninstallTest extends TestCase {
 
 		$this->assertFalse( get_option( Settings::OPTION ) );
 		$this->assertFalse( get_option( 'labyrinthe_connect_last_ping' ) );
+		$this->assertFalse( get_option( 'labyrinthe_connect_account_suspended' ) );
+		$this->assertFalse( get_option( 'labyrinthe_connect_otp_shape' ) );
 		$this->assertFalse( get_option( Schema::VERSION_OPTION ) );
 		$this->assertSame( '0', (string) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE %s", '%transient%labyrinthe_%' ) ) );
 		$this->assertSame( '', get_user_meta( $user_id, Phone_Users::META, true ) );

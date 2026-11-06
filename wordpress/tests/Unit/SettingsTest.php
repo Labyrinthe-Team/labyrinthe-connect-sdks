@@ -202,6 +202,42 @@ final class SettingsTest extends TestCase {
 		$this->assertSame( '', $settings->sanitize( array( 'otp_template' => '' ) )['otp_template'] );
 	}
 
+	public function test_web_otp_is_on_by_default_with_the_site_domain(): void {
+		$settings = $this->configure();
+
+		$this->assertTrue( Settings::defaults()['otp_web_otp'] );
+		$this->assertSame( 'example.org', $settings->web_otp_domain() );
+		$this->assertFalse( Settings::is_valid_web_otp_domain( 'localhost' ) );
+		$this->assertFalse( Settings::is_valid_web_otp_domain( '192.168.1.10' ) );
+		$this->assertTrue( Settings::is_valid_web_otp_domain( 'shop.example.cd' ) );
+	}
+
+	public function test_web_otp_domain_is_sanitized_and_validated(): void {
+		$settings = $this->configure( array( 'otp_web_otp_domain' => 'shop.example.com' ) );
+
+		$saved = $settings->sanitize(
+			array(
+				'_tab'               => Settings::TAB_OTP,
+				'otp_web_otp_domain' => ' https://Boutique.Example.CD:8443/mon-compte/ ',
+			)
+		);
+		$this->assertSame( 'boutique.example.cd', $saved['otp_web_otp_domain'] );
+		$this->assertFalse( $saved['otp_web_otp'], 'Unchecked box of the submitted tab.' );
+
+		$kept = $settings->sanitize(
+			array(
+				'_tab'               => Settings::TAB_OTP,
+				'otp_web_otp'        => '1',
+				'otp_web_otp_domain' => 'localhost',
+			)
+		);
+		$this->assertSame( 'shop.example.com', $kept['otp_web_otp_domain'], 'Invalid domain: the previous one is kept.' );
+		$this->assertTrue( $kept['otp_web_otp'] );
+		$this->assertNotEmpty( get_settings_errors( Settings::OPTION ) );
+
+		$this->assertSame( '', $settings->sanitize( array( 'otp_web_otp_domain' => '' ) )['otp_web_otp_domain'], 'Empty: domain of the site.' );
+	}
+
 	public function test_unknown_keys_are_dropped(): void {
 		$saved = ( new Settings() )->sanitize( array( 'evil' => 'x' ) );
 

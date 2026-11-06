@@ -40,15 +40,23 @@ final class WebhookTest extends TestCase {
 		);
 	}
 
-	private static function status_event( string $status, ?string $id = null ): string {
+	/**
+	 * Événement message.status_changed.
+	 *
+	 * @param array<string, mixed> $extra Champs ajoutés (reference, error_code, error_message : spec 1.2.0).
+	 */
+	private static function status_event( string $status, ?string $id = null, array $extra = array() ): string {
 		return self::envelope(
 			'message.status_changed',
-			array(
-				'message_id'          => self::MESSAGE_ID,
-				'recipient'           => '243812345678',
-				'status'              => $status,
-				'provider_message_id' => 'DD-1',
-				'campaign_id'         => null,
+			array_merge(
+				array(
+					'message_id'          => self::MESSAGE_ID,
+					'recipient'           => '243812345678',
+					'status'              => $status,
+					'provider_message_id' => 'DD-1',
+					'campaign_id'         => null,
+				),
+				$extra
 			),
 			$id
 		);
@@ -197,6 +205,103 @@ final class WebhookTest extends TestCase {
 		$this->assertCount( 1, $notes );
 		$this->assertStringContainsString( 'undeliverable', $notes[0]->content );
 		$this->assertStringContainsString( '24381*****78', $notes[0]->content );
+	}
+
+	public function test_failure_details_are_saved_in_the_log_and_the_order_note(): void {
+		$order = wc_create_order();
+		$id    = $this->log_message( $order->get_id() );
+
+		$this->deliver(
+			self::status_event(
+				'failed',
+				null,
+				array(
+					'reference'     => 'order-' . $order->get_id(),
+					'error_code'    => 'IP_NOT_WHITELISTED',
+					'error_message' => 'IP not Whitelisted',
+				)
+			)
+		);
+
+		$row = ( new Message_Log() )->find( $id );
+		$this->assertSame( 'failed', $row['status'] );
+		$this->assertSame( 'IP_NOT_WHITELISTED', $row['error_code'] );
+		$this->assertSame( 'IP not Whitelisted', $row['error_message'] );
+		$notes = wc_get_order_notes( array( 'order_id' => $order->get_id() ) );
+		$this->assertCount( 1, $notes );
+		$this->assertStringContainsString( 'IP_NOT_WHITELISTED', $notes[0]->content );
+		$this->assertStringContainsString( 'IP not Whitelisted', $notes[0]->content );
+	}
+
+	public function test_reference_links_the_report_to_the_order_when_the_log_row_is_gone(): void {
+		$order = wc_create_order();
+
+		// Journal purgé (ou message envoyé par un autre canal avec la même référence) : la référence suffit.
+		$this->deliver( self::status_event( 'delivered', null, array( 'reference' => 'order-' . $order->get_id() ) ) );
+
+		$notes = wc_get_order_notes( array( 'order_id' => $order->get_id() ) );
+		$this->assertCount( 1, $notes );
+		$this->assertStringContainsString( 'delivered', $notes[0]->content );
+		$this->assertStringContainsString( '24381*****78', $notes[0]->content, 'Masked number, never the full one.' );
+		$this->assertStringNotContainsString( '243812345678', $notes[0]->content );
+	}
+
+	public function test_foreign_reference_or_intermediate_status_adds_no_note(): void {
+		$order = wc_create_order();
+
+		$this->deliver( self::status_event( 'delivered', null, array( 'reference' => 'invoice-' . $order->get_id() ) ) );
+		$this->deliver( self::status_event( 'sent', null, array( 'reference' => 'order-' . $order->get_id() ) ) );
+
+		$this->assertCount( 0, wc_get_order_notes( array( 'order_id' => $order->get_id() ) ) );
+	}
+
+	public function test_otp_events_fire_their_actions(): void {
+		$verified = array();
+		$failed   = array();
+		add_action(
+			'labyrinthe_otp_verified',
+			static function ( $envelope ) use ( &$verified ): void {
+				$verified[] = $envelope;
+			}
+		);
+		add_action(
+			'labyrinthe_otp_failed',
+			static function ( $envelope ) use ( &$failed ): void {
+				$failed[] = $envelope;
+			}
+		);
+
+		$ok = $this->deliver(
+			self::envelope(
+				'otp.verified',
+				array(
+					'otp_id'      => '9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10',
+					'phone'       => '243812345678',
+					'status'      => 'verified',
+					'reason'      => null,
+					'verified_at' => '2026-11-06T09:41:02+00:00',
+				)
+			)
+		);
+		$this->deliver(
+			self::envelope(
+				'otp.failed',
+				array(
+					'otp_id'      => '8e1b3d6f-0a2c-4e5b-9d7f-3c6a8e0b2d14',
+					'phone'       => '243812345678',
+					'status'      => 'failed',
+					'reason'      => 'max_attempts_reached',
+					'verified_at' => null,
+				)
+			)
+		);
+
+		$this->assertSame( 200, $ok->get_status() );
+		$this->assertCount( 1, $verified );
+		$this->assertSame( 'verified', $verified[0]['data']['status'] );
+		$this->assertCount( 1, $failed );
+		$this->assertSame( 'max_attempts_reached', $failed[0]['data']['reason'] );
+		$this->assertSame( 0, did_action( 'labyrinthe_message_status_changed' ) );
 	}
 
 	public function test_balance_low_and_campaign_completed(): void {

@@ -110,8 +110,9 @@ final class OrderNotificationsTest extends TestCase {
 		$this->assertStringStartsWith( 'labyrinthe-php/', $request['headers']['user-agent'] );
 		$this->assertStringContainsString( 'labyrinthe-wordpress/' . LABYRINTHE_CONNECT_VERSION, $request['headers']['user-agent'] );
 		$this->assertNotNull( $request['body'] );
-		$this->assertSame( '243812345678', $request['body']['recipient'] );
-		$this->assertSame( 'order-' . $order->get_order_number(), $request['body']['reference'] );
+		$this->assertSame( '+243812345678', $request['body']['recipient'] );
+		$this->assertSame( 'order-' . $order->get_id(), $request['body']['reference'], 'Reference = order ID: links the delivery report to the order.' );
+		$this->assertStringStartsWith( 'wp-', $request['headers']['x-request-id'] );
 		$this->assertStringContainsString( 'Marie Kabongo', $request['body']['body'] );
 		$this->assertStringContainsString( '25.00 USD', $request['body']['body'] );
 		$this->assertStringContainsString( (string) $order->get_order_number(), $request['body']['body'] );
@@ -166,6 +167,74 @@ final class OrderNotificationsTest extends TestCase {
 		$this->assertSame( 'INSUFFICIENT_CREDITS', $this->log_rows()[0]['error_code'] );
 	}
 
+	public function test_failure_notes_and_log_keep_the_request_id_for_the_support(): void {
+		$order = $this->create_order();
+		$this->http->push_error( 422, 'SENDER_ID_NOT_APPROVED', array(), array( 'x-request-id' => 'req-7f3a-support' ) );
+
+		$this->notifications->send_customer_sms( $order->get_id(), 'processing', 1 );
+
+		$this->assertStringContainsString( 'Request ID: req-7f3a-support', $this->notes( $order )[0] );
+		$this->assertSame( 'req-7f3a-support', $this->log_rows()[0]['request_id'] );
+	}
+
+	public function test_network_failure_note_has_the_request_id_sent_by_the_plugin(): void {
+		$order = $this->create_order();
+		$this->http->push_network_error()->push_network_error();
+
+		$this->notifications->send_customer_sms( $order->get_id(), 'processing', 1 );
+
+		$sent = $this->http->requests[0]['headers']['x-request-id'];
+		$this->assertSame( $sent, $this->http->requests[1]['headers']['x-request-id'], 'Same request ID on the retry.' );
+		$this->assertStringContainsString( 'Request ID: ' . $sent, $this->notes( $order )[0] );
+		$this->assertSame( $sent, $this->log_rows()[0]['request_id'] );
+	}
+
+	public function test_unresolved_idempotency_key_is_a_final_failure_with_the_request_id(): void {
+		$order = $this->create_order();
+		$this->http->push_error( 409, 'IDEMPOTENCY_KEY_UNRESOLVED', array(), array( 'x-request-id' => 'req-unresolved' ) );
+
+		$this->notifications->send_customer_sms( $order->get_id(), 'processing', 1 );
+
+		$notes = $this->notes( $order );
+		$this->assertCount( 1, $notes );
+		$this->assertStringContainsString( 'IDEMPOTENCY_KEY_UNRESOLVED', $notes[0] );
+		$this->assertStringContainsString( 'may have been sent', $notes[0] );
+		$this->assertStringContainsString( 'Request ID: req-unresolved', $notes[0] );
+		$this->assertCount( 1, $this->http->requests, 'Never retried by the SDK.' );
+		$this->assertCount( 0, $this->pending_actions( Order_Notifications::HOOK_CUSTOMER ), 'No new attempt scheduled.' );
+		$this->assertSame( 'IDEMPOTENCY_KEY_UNRESOLVED', $this->log_rows()[0]['error_code'] );
+		$this->assertSame( 'req-unresolved', $this->log_rows()[0]['request_id'] );
+	}
+
+	public function test_suspended_account_note_is_clear_and_not_retried(): void {
+		$order = $this->create_order();
+		$this->http->push_error( 403, 'ACCOUNT_SUSPENDED', array(), array( 'x-request-id' => 'req-susp' ) );
+
+		$this->notifications->send_customer_sms( $order->get_id(), 'processing', 1 );
+
+		$note = $this->notes( $order )[0];
+		$this->assertStringContainsString( 'ACCOUNT_SUSPENDED', $note );
+		$this->assertStringContainsString( 'suspended', $note );
+		$this->assertStringContainsString( 'req-susp', $note );
+		$this->assertCount( 1, $this->http->requests );
+		$this->assertCount( 0, $this->pending_actions( Order_Notifications::HOOK_CUSTOMER ) );
+		$this->assertNotNull( \LabyrintheConnect\Account_Status::suspended() );
+	}
+
+	public function test_reference_is_the_order_id_even_with_custom_order_numbers(): void {
+		$order = $this->create_order();
+		add_filter( 'woocommerce_order_number', static fn(): string => 'FA-2026-0042' );
+		$this->accepted();
+
+		$this->notifications->send_customer_sms( $order->get_id(), 'processing', 1 );
+		remove_all_filters( 'woocommerce_order_number' );
+
+		$this->assertSame( 'order-' . $order->get_id(), $this->http->last()['body']['reference'] );
+		$this->assertSame( $order->get_id(), Order_Notifications::order_id_from_reference( 'order-' . $order->get_id() ) );
+		$this->assertSame( 0, Order_Notifications::order_id_from_reference( 'order-FA-2026' ) );
+		$this->assertSame( 0, Order_Notifications::order_id_from_reference( null ) );
+	}
+
 	public function test_network_error_is_retried_later_with_the_same_idempotency_key(): void {
 		$order = $this->create_order();
 		// Le SDK relance une fois (clé d'idempotence présente), puis l'action est replanifiée.
@@ -204,7 +273,7 @@ final class OrderNotificationsTest extends TestCase {
 		$this->assertStringContainsString( 'no phone number', $this->notes( $order )[0] );
 	}
 
-	public function test_custom_template_with_accents_is_stripped_when_enabled(): void {
+	public function test_accents_are_removed_by_the_api_when_enabled(): void {
 		$this->use_settings(
 			array(
 				'strip_accents' => true,
@@ -221,8 +290,9 @@ final class OrderNotificationsTest extends TestCase {
 
 		$this->notifications->send_customer_sms( $order->get_id(), 'completed', 1 );
 
-		$body = (string) $this->http->last()['body']['body'];
-		$this->assertSame( 'Bonjour Marie, votre commande no' . $order->get_order_number() . ' est expediee ! " Merci "', $body );
+		$request = $this->http->last();
+		$this->assertSame( 'Bonjour Marie, votre commande n°' . $order->get_order_number() . ' est expédiée ! « Merci »', $request['body']['body'], 'The text is sent as is.' );
+		$this->assertTrue( $request['body']['strip_accents'], 'The API removes the accents (strip_accents).' );
 	}
 
 	public function test_local_number_uses_the_billing_country_calling_code(): void {
@@ -233,7 +303,17 @@ final class OrderNotificationsTest extends TestCase {
 
 		$this->notifications->send_customer_sms( $order->get_id(), 'processing', 1 );
 
-		$this->assertSame( '33612345678', $this->http->last()['body']['recipient'] );
+		$this->assertSame( '+33612345678', $this->http->last()['body']['recipient'] );
+	}
+
+	public function test_short_foreign_number_keeps_its_country_code(): void {
+		$order = $this->create_order( '+248 123 4567' );
+		$this->accepted();
+
+		$this->notifications->send_customer_sms( $order->get_id(), 'processing', 1 );
+
+		// BACKEND-TODO n° 32 : sans « + », l'API lirait 2481234567 comme un numéro local RDC.
+		$this->assertSame( '+2481234567', $this->http->last()['body']['recipient'] );
 	}
 
 	public function test_tracking_variables_come_from_shipment_tracking(): void {
@@ -294,8 +374,8 @@ final class OrderNotificationsTest extends TestCase {
 		$this->notifications->send_admin_sms( $order->get_id(), 1 );
 
 		$this->assertCount( 2, $this->http->requests );
-		$this->assertSame( '243990000001', $this->http->requests[0]['body']['recipient'] );
-		$this->assertSame( '243990000002', $this->http->requests[1]['body']['recipient'] );
+		$this->assertSame( '+243990000001', $this->http->requests[0]['body']['recipient'] );
+		$this->assertSame( '+243990000002', $this->http->requests[1]['body']['recipient'] );
 		$this->assertNotSame( $this->http->requests[0]['headers']['idempotency-key'], $this->http->requests[1]['headers']['idempotency-key'] );
 		$this->assertStringContainsString( '0812345678', (string) $this->http->requests[0]['body']['body'], 'The shop manager sees the customer phone.' );
 		$this->assertSame( 'admin_new_order', $this->log_rows()[0]['context'] );
