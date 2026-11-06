@@ -25,16 +25,16 @@ Maven:
 <dependency>
   <groupId>cd.labyrinthe</groupId>
   <artifactId>labyrinthe-connect</artifactId>
-  <version>1.0.0</version>
+  <version>1.1.1</version>
 </dependency>
 ```
 
 Gradle:
 
 ```kotlin
-implementation("cd.labyrinthe:labyrinthe-connect:1.0.0")
+implementation("cd.labyrinthe:labyrinthe-connect:1.1.1")
 // Spring Boot 3 (Java 17+):
-implementation("cd.labyrinthe:labyrinthe-connect-spring-boot-starter:1.0.0")
+implementation("cd.labyrinthe:labyrinthe-connect-spring-boot-starter:1.1.1")
 ```
 
 ## Quick start
@@ -118,6 +118,10 @@ estimate.totalCredits();   // 2
 estimate.isAffordable();   // does the balance cover it?
 ```
 
+`stripAccents(true)` (on `SendSmsParams`, `SendManySmsParams`, `EstimateSmsParams` and `SendOtpParams`) asks the
+API to replace accents and typographic characters by ASCII: the message becomes GSM-7, often half the price. The
+transliteration depends on the server (`Café` may become `Cafe` or `Caf'e`): do not use it for an exact text.
+
 ### Several recipients: all or nothing
 
 ```java
@@ -155,7 +159,27 @@ MessageBatch batch = client.sms().sendMany(SendManySmsParams.builder()
 batch.replayed();   // true when this was a replay
 ```
 
-The same key with a different content is refused with `IdempotencyKeyReusedException` (409).
+The same key with a different content is refused with `IdempotencyKeyReusedException` (409). Recipients are
+compared after normalisation (`0812345678` then `243812345678` with the same key is a replay). While the original
+request is still running, the API answers 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS`: the SDK waits `Retry-After` and
+retries with the same key, then throws `IdempotencyRequestInProgressException` (`retryAfter()`).
+
+**`IdempotencyKeyUnresolvedException` (409 `IDEMPOTENCY_KEY_UNRESOLVED`, `sms().send()`, `sendMany()` and
+`otp().send()`).** The original request with this key failed unexpectedly on the API side and its outcome is
+unknown: an SMS **may** have been sent. The SDK never retries it, and you must not retry it automatically either
+(not with the same key: it will keep answering this error; not with a new key: you could send twice). What to do:
+
+1. check whether the message left: `client.sms().list(ListSmsParams.builder().reference("order-1042").build())`
+   when you sent a `reference`, or ask the user whether the code arrived (OTP);
+2. only if nothing was sent, send again with a **new** `Idempotency-Key`.
+
+```java
+try {
+  client.sms().send(params);
+} catch (IdempotencyKeyUnresolvedException e) {
+  log.warn("Outcome unknown (request {}): check before sending again", e.requestId().orElse("?"));
+}
+```
 
 ### Listing messages
 
@@ -195,6 +219,9 @@ with a test key) and never logged by the SDK.
 // 1. Send the code. Keep otpId SERVER-SIDE (session, cache, database), never in the browser.
 OtpSendResult otp = client.otp().send("0812345678");
 session.setAttribute("otpId", otp.otpId());
+otp.codeLength();           // e.g. 6: size of the input field
+otp.codeType();             // OtpCodeType.NUMERIC (numeric keypad) or ALPHANUMERIC
+otp.resendAfterSeconds();   // e.g. 60: "Resend the code" countdown
 
 // 2. The user types the code received by SMS.
 
@@ -203,7 +230,7 @@ OtpVerifyResult result = client.otp().verify((String) session.getAttribute("otpI
 if (result.isVerified()) {
   session.removeAttribute("otpId");                 // log the user in / mark the number as verified
 } else if (result.reason().orElseThrow() == OtpFailureReason.INVALID_CODE) {
-  // wrong code: one attempt consumed, let the user try again
+  // wrong code: one attempt consumed, result.attemptsRemaining() left (OptionalInt)
 } else {
   // EXPIRED, ALREADY_USED, MAX_ATTEMPTS_REACHED: ask for a new code
 }
@@ -213,13 +240,19 @@ if (result.isVerified()) {
 - A new `send()` to the same number invalidates the previous code.
 - Length, validity, attempts, Sender ID and template come from the account's OTP settings. You can override the
   template (`SendOtpParams.builder().template("Your MyShop code: {code}")`, must contain `{code}`; optional
-  `{app_name}`, `{minutes}`) and the language (`.locale(OtpLocale.EN)`).
-- Limits: `OtpResendTooSoonException` (wait `retryAfter()`) and `OtpRateLimitedException` (`scope()`, `limit()`).
+  `{app_name}`, `{minutes}`), the language (`.locale(OtpLocale.EN)`), add the
+  [Web OTP API](https://developer.mozilla.org/docs/Web/API/WebOTP_API) line for autofill
+  (`.webOtpDomain("app.example.com")`) and `.stripAccents(true)`.
+- Limits: `OtpResendTooSoonException` and `OtpRateLimitedException` (`scope()`, `limit()`), both with
+  `retryAfter()`. After a successful verification, a new code can be sent at once.
 - **Test mode**: with a `lsk_test_` key no SMS is sent and `otp.testCode()` holds the code, so you can test the
   whole flow. Always empty with a live key; excluded from `toString()`, `equals()` and `hashCode()`.
 
-`otp().send()` is never retried after a network error or a 5xx (the SMS may have left): show an error and let the
-user ask for a new code.
+`otp().send()` always carries an `Idempotency-Key` (a UUID, or yours with `.idempotencyKey("login-42")`), so it is
+retried safely after a network error, a timeout, a 5xx, 429 `TOO_MANY_REQUESTS` or 409
+`IDEMPOTENCY_REQUEST_IN_PROGRESS`: a retry returns the same OTP (`otp.replayed()`), never a second SMS.
+`OTP_RESEND_TOO_SOON` and `OTP_RATE_LIMITED` are never retried. `otp().verify()` is retried only on 429
+`TOO_MANY_REQUESTS` (an attempt could otherwise be consumed twice).
 
 ## Webhooks
 
@@ -246,9 +279,11 @@ Every event has `id()` (deduplicate on it: deliveries are retried up to 5 times 
 
 | Class | `type()` | `data()` |
 |---|---|---|
-| `MessageStatusChanged` | `message.status_changed` | `messageId`, `recipient`, `status`, `providerMessageId`, `campaignId` |
+| `MessageStatusChanged` | `message.status_changed` | `messageId`, `recipient`, `status`, `providerMessageId`, `campaignId`, `reference`, `errorCode`, `errorMessage` |
 | `CampaignCompleted` | `campaign.completed` | `campaignId`, `name`, `recipientsCount`, `messagesByStatus`, `creditsCharged`, `completedAt` |
 | `BalanceLow` | `balance.low` | `balance`, `threshold` |
+| `OtpVerified` | `otp.verified` | `OtpEventData`: `otpId`, `phone`, `status` (`VERIFIED`), `reason` (empty), `verifiedAt` |
+| `OtpFailed` | `otp.failed` | `OtpEventData`: `status` `FAILED` (`MAX_ATTEMPTS_REACHED`) or `EXPIRED` (`EXPIRED`) |
 | `TestPing` | `test.ping` | `Map` (empty) |
 | `UnknownEvent` | a type added after this SDK version | `Map`, as sent; acknowledge it with a 2xx |
 
@@ -263,7 +298,7 @@ JDK HTTP server: [`WebhookServer.java`](examples/src/main/java/cd/labyrinthe/con
 <dependency>
   <groupId>cd.labyrinthe</groupId>
   <artifactId>labyrinthe-connect-spring-boot-starter</artifactId>
-  <version>1.0.0</version>
+  <version>1.1.1</version>
 </dependency>
 ```
 
@@ -299,12 +334,13 @@ class Orders {
 
 Every exception is unchecked and extends `LabyrintheException`, with `code()` (stable, for your code),
 `getMessage()`, `statusCode()` (HTTP status, `0` without a response) and `details()`. API errors extend
-`ApiException` and also expose `headers()` and `requestId()`.
+`ApiException` and also expose `headers()`, `requestId()` (`X-Request-Id`, for the support) and `apiVersion()`.
 
 | Exception | When |
 |---|---|
 | `AuthenticationException` | 401 — missing, invalid or revoked key |
 | `PermissionException` | 403 — IP not allowed (`FORBIDDEN`), OTP disabled for the account (`OTP_DISABLED_FOR_ACCOUNT`) |
+| `AccountSuspendedException` | 403 `ACCOUNT_SUSPENDED` — extends `PermissionException`; the whole API is closed |
 | `NotFoundException` | 404 — unknown message or `otpId` |
 | `ValidationException` | 422 `VALIDATION_ERROR` — `fieldErrors()` |
 | `RecipientNotSendableException` | 422 — `rejected()`, `reason()`; nothing was sent |
@@ -312,8 +348,10 @@ Every exception is unchecked and extends `LabyrintheException`, with `code()` (s
 | `InvalidPhoneException` | 422 `INVALID_PHONE` (OTP) |
 | `InsufficientCreditsException` | 409 — `available()`, `required()`; nothing was sent |
 | `IdempotencyKeyReusedException` | 409 — same key, different request |
+| `IdempotencyRequestInProgressException` | 409 — original request still running; `retryAfter()`, retry with the same key |
+| `IdempotencyKeyUnresolvedException` | 409 `IDEMPOTENCY_KEY_UNRESOLVED` — the original request failed, outcome unknown (an SMS may have left); never retried: check, then send with a **new** key |
 | `RateLimitException` | 429 `TOO_MANY_REQUESTS` — `retryAfter()` |
-| `OtpResendTooSoonException`, `OtpRateLimitedException` | 429 — extend `RateLimitException`; `scope()`, `limit()` |
+| `OtpResendTooSoonException`, `OtpRateLimitedException` | 429 — extend `RateLimitException` (`retryAfter()`); `scope()`, `limit()` |
 | `ServiceUnavailableException` | 5xx, including 503 `OTP_SERVICE_DISABLED` |
 | `ApiException` | any other code (the list is open: new codes may appear) |
 | `ApiConnectionException`, `ApiTimeoutException` | network error (`CONNECTION_ERROR`) or timeout (`TIMEOUT`) |
@@ -336,16 +374,28 @@ try {
 The SDK retries automatically (default: 2 retries, exponential backoff 0.5 s → 1 s → 2 s with jitter) **only when a
 replay cannot cause a side effect twice**:
 
-| Request | Network error / timeout | 5xx | 429 `TOO_MANY_REQUESTS` |
-|---|---|---|---|
-| `get`, `list`, `balance().get`, `senderIds().list`, `estimate` | retried | retried | retried after `Retry-After` |
-| `send` / `sendMany` (always with an `Idempotency-Key`) | retried, same key | retried, same key | retried after `Retry-After` |
-| `otp().send`, `otp().verify` | **never** | **never** | retried (refused before processing) |
+| Request | Network error / timeout | 5xx | 429 `TOO_MANY_REQUESTS` | 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` |
+|---|---|---|---|---|
+| `get`, `list`, `balance().get`, `senderIds().list`, `estimate` | retried | retried | retried after `Retry-After` | — |
+| `send` / `sendMany` / `otp().send` (always with an `Idempotency-Key`) | retried, same key | retried, same key | retried after `Retry-After` | retried after `Retry-After`, same key |
+| `otp().verify` | **never** | **never** | retried (refused before processing) | — |
 
-Business errors (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`) are never retried. When the API asks to wait longer
+Business errors (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`, 409 `IDEMPOTENCY_KEY_UNRESOLVED`) are never
+retried. When the API asks to wait longer
 than `maxRetryWait` (default 10 s), the SDK throws `RateLimitException` instead of waiting. Redirects are never
-followed (a custom `HttpClient` that follows redirects is refused). Every method accepts a `RequestOptions`
-(`RequestOptions.timeout(Duration.ofSeconds(5))`) to override the timeout of one call.
+followed (a custom `HttpClient` that follows redirects is refused).
+
+Every method accepts a `RequestOptions`: a timeout for one call, your own `X-Request-Id` (sent on every retry,
+echoed by the API in its logs and responses) and a callback reading the response headers:
+
+```java
+client.sms().send(params, RequestOptions.builder()
+    .timeout(Duration.ofSeconds(5))
+    .requestId("order-1042")                              // 1-128 chars among A-Z a-z 0-9 . _ : -
+    .onResponse(info -> log.info("request {} (API v{}), {} requests left",
+        info.requestId().orElse("?"), info.apiVersion().orElse("?"), info.rateLimitRemaining()))
+    .build());
+```
 
 ## Configuration
 
@@ -368,8 +418,11 @@ LabyrintheClient client = LabyrintheClient.builder()
   number (`24381*****78`). Errors are thrown, not logged.
 - `toString()` shows `lsk_test_****`; models mask phone numbers in `toString()`; exceptions are serializable
   without their `details()`.
-- `PhoneNumbers.normalize("0812345678")` returns `Optional[243812345678]` with the same rules as the API;
-  `isValid()` and `mask()` are also available. International numbers are never blocked.
+- `PhoneNumbers.normalize("0812345678")` returns `Optional[243812345678]` with the same rules as the API:
+  without "+", 11 digits or more not starting with 0 are already international (`33612345678` stays
+  `33612345678`); use the "+" for a short foreign number. `isValid()` and `mask()` are also available.
+  International numbers are never blocked. Requests always carry the number in E.164 form with the "+"
+  (`+243812345678`), so a short foreign number such as `+2481234567` keeps its country code.
 - `User-Agent: labyrinthe-java/<version> Java/<version>`; `Version.VERSION` holds the SDK version.
 
 ## Development
