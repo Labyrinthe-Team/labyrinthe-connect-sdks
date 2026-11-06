@@ -9,13 +9,20 @@ use Labyrinthe\Connect\Exception\InvalidArgumentException;
 /**
  * Phone number helpers, consistent with the API's own normalisation.
  *
- * The API expects international numbers without "+" (e.g. "243812345678").
+ * normalize() returns the format of the API responses: international digits
+ * without "+" (e.g. "243812345678"). Requests are sent in E.164 with "+"
+ * (toE164(): "+243812345678"), so that the API never mistakes a short foreign
+ * number for a local one ("+2481234567" stays in the Seychelles).
  * Accepted input formats (with the default country code 243, DR Congo):
  *
  *  - "+243 81 234 5678", "00243812345678"  → "243812345678" (explicit international prefix kept)
  *  - "243812345678"                         → "243812345678"
+ *  - "33612345678" (11+ digits, no leading 0) → "33612345678"  (already international, other country)
  *  - "0812345678", "812345678"              → "243812345678" (local format, default country code added)
  *  - "+33 6 12 34 56 78"                    → "33612345678"  (other countries are never blocked)
+ *
+ * Idempotent, like the API: a normalised number stays unchanged. A foreign
+ * number of 10 digits or less must be written with "+".
  *
  * Validation is deliberately light (8 to 15 digits, E.164): the API remains
  * the authority on whether a number can receive SMS.
@@ -45,7 +52,12 @@ final class PhoneNumber
 
         if ($explicitInternational) {
             $digits = str_starts_with($raw, '00') ? substr($digits, 2) : $digits;
-        } elseif (!(str_starts_with($digits, $defaultCountryCode) && \strlen($digits) > 10)) {
+        } elseif (str_starts_with($digits, $defaultCountryCode) && \strlen($digits) > 10) {
+            // Already international with the default country code ("243812345678").
+        } elseif (\strlen($digits) >= 11 && !str_starts_with($digits, '0')) {
+            // Already international, other country, without "+" ("33612345678"): no local
+            // number of the default country is that long.
+        } else {
             // Local format: drop the trunk "0" and add the default country code.
             $digits = $defaultCountryCode.ltrim($digits, '0');
         }
@@ -68,6 +80,28 @@ final class PhoneNumber
         }
 
         return $normalized;
+    }
+
+    /**
+     * Normalises a number to E.164 with "+" ("0812345678" → "+243812345678"), the
+     * format the SDK sends to the API, or returns null when it cannot be a valid
+     * phone number.
+     */
+    public static function toE164(string $raw, string $defaultCountryCode = self::DEFAULT_COUNTRY_CODE): ?string
+    {
+        $normalized = self::normalize($raw, $defaultCountryCode);
+
+        return $normalized === null ? null : '+'.$normalized;
+    }
+
+    /**
+     * Normalises a number to E.164 with "+" or throws.
+     *
+     * @throws InvalidArgumentException
+     */
+    public static function toE164OrFail(string $raw, string $defaultCountryCode = self::DEFAULT_COUNTRY_CODE, string $field = 'phone'): string
+    {
+        return '+'.self::normalizeOrFail($raw, $defaultCountryCode, $field);
     }
 
     public static function isValid(string $raw, string $defaultCountryCode = self::DEFAULT_COUNTRY_CODE): bool

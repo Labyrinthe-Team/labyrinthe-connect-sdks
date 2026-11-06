@@ -8,6 +8,7 @@ use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Psr7\HttpFactory;
 use Labyrinthe\Connect\Exception\InvalidArgumentException;
 use Labyrinthe\Connect\Http\NativeSleeper;
+use Labyrinthe\Connect\Http\ResponseInfo;
 use Labyrinthe\Connect\Http\Sleeper;
 use Labyrinthe\Connect\Internal\Redactor;
 use Labyrinthe\Connect\Internal\Transport;
@@ -42,6 +43,7 @@ final class Client
 
     private readonly string $apiKey;
     private readonly string $baseUrl;
+    private readonly Transport $transport;
 
     /**
      * @param string                       $apiKey             `lsk_live_…` or `lsk_test_…` (keep it server-side)
@@ -99,7 +101,7 @@ final class Client
 
         $factory = new HttpFactory();
 
-        $transport = new Transport(
+        $this->transport = $transport = new Transport(
             apiKey: $apiKey,
             baseUrl: $this->baseUrl,
             http: $httpClient ?? new GuzzleClient([
@@ -168,6 +170,18 @@ final class Client
     public function baseUrl(): string
     {
         return $this->baseUrl;
+    }
+
+    /**
+     * Status and headers of the last HTTP response received by this client
+     * (success or error), e.g. its X-Request-Id for support. Null before the
+     * first response. Low-level access: exceptions carry getRequestId() too.
+     *
+     * @phpstan-impure
+     */
+    public function lastResponse(): ?ResponseInfo
+    {
+        return $this->transport->lastResponse();
     }
 
     /**
