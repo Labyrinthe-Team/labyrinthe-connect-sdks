@@ -13,7 +13,7 @@
   "info": {
     "_postman_id": "7f8a06b0-d8ac-47fc-a902-2071f871bdb0",
     "description": {
-      "content": "Generated from `openapi/openapi.yaml` (spec 1.2.0). Do not edit by hand: run `npm run generate` in `postman/`.\n\nSet the `apiKey` variable (secret) to a **test key** (`lsk_test_…`): nothing is sent, nothing is billed, and\n`POST /otp/send` returns `test_code`, saved automatically so that `POST /otp/verify` can be run right after.\nRun the whole collection in order (Collection Runner or Newman) to play the nominal flow.\n\n---\n\nAPI REST JSON pour envoyer des SMS, consulter le solde de crédits et les Sender IDs\napprouvés, et vérifier des numéros de téléphone par OTP (code à usage unique envoyé par SMS).\n\n## Authentification\nChaque requête porte une clé API créée dans l'espace client (Développeurs > Clés API) :\n\n    Authorization: Bearer lsk_live_xxxxxxxxxxxxxxxx\n\n- `lsk_live_…` : production. Les SMS partent réellement et consomment des crédits.\n- `lsk_test_…` : bac à sable. Fournisseur simulé, **rien n'est envoyé, aucun crédit n'est consommé**.\n  Les réponses ont la même forme qu'en production, à deux différences près : le solde n'est pas\n  vérifié (`INSUFFICIENT_CREDITS` n'est jamais renvoyé en bac à sable) et `POST /otp/send`\n  renvoie le code (`test_code`).\n\nUne clé peut être restreinte à une liste d'adresses IP (403 `FORBIDDEN` sinon).\nLa clé n'est affichée qu'une fois à sa création ; elle doit rester côté serveur,\n**jamais dans une application mobile ou un navigateur**.\n\n## Numéros de téléphone\nFormat international sans `+` (ex. `243812345678`). Les espaces, tirets et parenthèses sont ignorés.\nL'API accepte :\n- `+243812345678` ou `00243812345678` : l'indicatif fourni est conservé (tous pays) ;\n- `243812345678` : déjà international ;\n- sans `+`, **11 chiffres ou plus ne commençant pas par 0** : déjà international, autre pays\n  (`33612345678` reste `33612345678`) ;\n- sinon, format local RDC (`0812345678`, `812345678`), complété avec l'indicatif par défaut de la\n  plateforme (243) : `243812345678`.\n\nUn numéro normalisé doit compter de 8 à 15 chiffres. Pour un numéro étranger court (10 chiffres\nou moins), toujours utiliser le `+`. Les réponses renvoient toujours le format international sans `+`.\n\n## Crédits et segments\n1 crédit = 1 segment SMS. Un message en ASCII (GSM-7) tient en 160 caractères (153 par segment\nau-delà). **Tout caractère non ASCII** (é, à, ç, emoji, tiret long, guillemets typographiques…)\npasse le message en UCS-2 : 70 caractères (67 par segment au-delà), soit un coût souvent doublé.\nLe paramètre `strip_accents` (`POST /sms`, `/sms/estimate`, `/otp/send`) remplace accents et\ncaractères typographiques par leur équivalent ASCII. Utiliser `POST /sms/estimate` avant un envoi\nimportant.\n\n## Idempotence\n`POST /sms` et `POST /otp/send` acceptent l'en-tête `Idempotency-Key` (UUID recommandé, 255 caractères\nau maximum). Une requête rejouée avec la même clé dans les 24 h renvoie la même réponse, sans nouvel\nenvoi ni débit, avec l'en-tête `Idempotent-Replayed: true`. La clé est propre à la clé API et à\nl'opération (`/sms` et `/otp/send` ont des espaces de clés séparés), et liée au contenu **normalisé**\nde la requête : la même clé avec un autre contenu renvoie `409 IDEMPOTENCY_KEY_REUSED`. Si la requête\nd'origine est encore en cours, `409 IDEMPOTENCY_REQUEST_IN_PROGRESS` (en-tête `Retry-After`) :\nrelancer avec la même clé est sans risque. Une requête en erreur n'enregistre pas la clé.\n\n## Erreurs\nToutes les erreurs ont la même forme :\n\n    { \"error\": { \"code\": \"INSUFFICIENT_CREDITS\", \"message\": \"…\", \"details\": { … } } }\n\n`code` est stable et destiné au code ; `message` est en français et destiné aux humains ;\n`details` est **toujours un objet** (`{}` quand il est vide), dont le contenu dépend du code\n(erreurs par champ pour `VALIDATION_ERROR`). Un SDK doit accepter un code inconnu.\n\nErreurs communes à toutes les routes :\n- `404 NOT_FOUND`, message « Route introuvable. » : chemin inexistant ;\n- `405 HTTP_ERROR` : méthode non autorisée sur ce chemin (ex. `DELETE /balance`), avec\n  `details.allowed_methods` et l'en-tête `Allow`.\n\nCes deux réponses sont décrites dans l'extension `x-common-responses` de ce document.\n\n## Identifiant de requête\nChaque réponse, erreurs comprises, porte l'en-tête `X-Request-Id`, à communiquer au support. Un\n`X-Request-Id` envoyé avec la requête est réutilisé s'il compte 1 à 128 caractères parmi\n`A-Z a-z 0-9 . _ : -` ; sinon un UUID est généré.\n\n## Versions\nChaque réponse de `/api/public/v1` porte l'en-tête `X-Api-Version: 1`. Les **ajouts compatibles**\n(champ de réponse, en-tête, paramètre facultatif, code d'erreur, événement de webhook) arrivent sans\npréavis dans la v1 : une intégration doit ignorer ce qu'elle ne connaît pas. Toute **rupture**\n(champ retiré ou renommé, type ou sens changé, paramètre devenu obligatoire, code HTTP changé) passe\npar une nouvelle version `/api/public/v2`, la v1 restant servie pendant une période de dépréciation\nannoncée. `info.version` de ce document suit SemVer.\n\n## Dates\nISO 8601 avec décalage, à la seconde : `2026-11-06T09:39:11+00:00`.\n\n## Limites de débit\n- 120 requêtes / minute **par clé API** sur l'ensemble de l'API ;\n- 10 requêtes / minute **par clé API** sur `POST /otp/send` (compteur séparé) ;\n- 120 requêtes / minute par adresse IP, toutes clés confondues ;\n- limites métier OTP par numéro et par compte (voir `/otp/send`).\n\nAu-delà : `429 TOO_MANY_REQUESTS`, avec l'en-tête `Retry-After` (secondes) et\n`details.retry_after_seconds`. Les réponses réussies portent aussi `X-RateLimit-Limit` et\n`X-RateLimit-Remaining`.\n\n## Webhooks\nVoir la section `webhooks` : événements envoyés en POST JSON, signés en HMAC-SHA256.\n\n## Nouveautés 1.2.0\nToutes compatibles avec la 1.1.0 (ajouts et précisions).\n- En-têtes de réponse `X-Request-Id` (réutilise celui de la requête s'il est valide) et `X-Api-Version: 1` ;\n  politique de version documentée.\n- `error.details` toujours un objet (`{}`, jamais `[]`) ; schéma `Error` corrigé (`details` de type objet\n  uniquement, `type: string` à côté des `const` des sous-schémas).\n- Messages d'erreur et de validation en français (« Le champ body est obligatoire. ») ; 404 de route\n  inconnue « Route introuvable. » ; 405 `HTTP_ERROR` avec `details.allowed_methods` et en-tête `Allow`.\n- Numéros : sans `+`, 11 chiffres ou plus ne commençant pas par 0 = déjà international (`33612345678`\n  n'est plus préfixé de 243).\n- Idempotence `POST /sms` : empreinte calculée après normalisation et dédoublonnage des destinataires\n  (`0812345678` puis `243812345678` avec la même clé = rejeu) ; nouveau `409 IDEMPOTENCY_REQUEST_IN_PROGRESS`\n  (`Retry-After: 5`, `details.retry_after_seconds`).\n- `POST /otp/send` : `Idempotency-Key` ; nouveaux champs de réponse `code_length`, `code_type`,\n  `resend_after_seconds` ; nouveaux paramètres `web_otp_domain` (Web OTP API) et `strip_accents` ;\n  renvoi accepté tout de suite après une vérification réussie (plus de `OTP_RESEND_TOO_SOON`).\n- `OTP_RESEND_TOO_SOON` et `OTP_RATE_LIMITED` : en-tête `Retry-After` égal à `details.retry_after_seconds`\n  (nouveau dans `OTP_RATE_LIMITED`).\n- `POST /otp/verify` : nouveau champ `attempts_remaining`.\n- `POST /sms` et `POST /sms/estimate` : paramètre `strip_accents`. L'estimation dédoublonne les\n  destinataires comme l'envoi (`recipients_count` et `total_credits` cohérents avec l'envoi réel).\n- `GET /sms/{id}` : recherche par `id` uniquement.\n- `Message.encoding` jamais `null` ; dates au format `2026-11-06T09:39:11+00:00` partout.\n- Webhook `message.status_changed` enrichi (`reference`, `error_code`, `error_message`) ; nouveaux\n  webhooks `otp.verified` et `otp.failed`.",
+      "content": "Generated from `openapi/openapi.yaml` (spec 1.3.0). Do not edit by hand: run `npm run generate` in `postman/`.\n\nSet the `apiKey` variable (secret) to a **test key** (`lsk_test_…`): nothing is sent, nothing is billed, and\n`POST /otp/send` returns `test_code`, saved automatically so that `POST /otp/verify` can be run right after.\nRun the whole collection in order (Collection Runner or Newman) to play the nominal flow.\n\n---\n\nAPI REST JSON pour envoyer des SMS, consulter le solde de crédits et les Sender IDs\napprouvés, et vérifier des numéros de téléphone par OTP (code à usage unique envoyé par SMS).\n\n## Authentification\nChaque requête porte une clé API créée dans l'espace client (Développeurs > Clés API) :\n\n    Authorization: Bearer lsk_live_xxxxxxxxxxxxxxxx\n\n- `lsk_live_…` : production. Les SMS partent réellement et consomment des crédits.\n- `lsk_test_…` : bac à sable. Fournisseur simulé, **rien n'est envoyé, aucun crédit n'est consommé**.\n  Les réponses ont la même forme qu'en production, à deux différences près : le solde n'est pas\n  vérifié (`INSUFFICIENT_CREDITS` n'est jamais renvoyé en bac à sable) et `POST /otp/send`\n  renvoie le code (`test_code`).\n\nUne clé peut être restreinte à une liste d'adresses IP (403 `FORBIDDEN` sinon).\nLa clé n'est affichée qu'une fois à sa création ; elle doit rester côté serveur,\n**jamais dans une application mobile ou un navigateur**.\n\n## Numéros de téléphone\nFormat international sans `+` (ex. `243812345678`). Les espaces, tirets et parenthèses sont ignorés.\nL'API accepte :\n- `+243812345678` ou `00243812345678` : l'indicatif fourni est conservé (tous pays) ;\n- `243812345678` : déjà international ;\n- sans `+`, **11 chiffres ou plus ne commençant pas par 0** : déjà international, autre pays\n  (`33612345678` reste `33612345678`) ;\n- sinon, format local RDC (`0812345678`, `812345678`), complété avec l'indicatif par défaut de la\n  plateforme (243) : `243812345678`.\n\nUn numéro normalisé doit compter de 8 à 15 chiffres. Pour un numéro étranger court (10 chiffres\nou moins), toujours utiliser le `+`. Les réponses renvoient toujours le format international sans `+`.\n\n## Crédits et segments\n1 crédit = 1 segment SMS. Un message en ASCII (GSM-7) tient en 160 caractères (153 par segment\nau-delà). **Tout caractère non ASCII** (é, à, ç, emoji, tiret long, guillemets typographiques…)\npasse le message en UCS-2 : 70 caractères (67 par segment au-delà), soit un coût souvent doublé.\nLe paramètre `strip_accents` (`POST /sms`, `/sms/estimate`, `/otp/send`) remplace accents et\ncaractères typographiques par leur équivalent ASCII. Utiliser `POST /sms/estimate` avant un envoi\nimportant.\n\n## Idempotence\n`POST /sms` et `POST /otp/send` acceptent l'en-tête `Idempotency-Key` (UUID recommandé, 255 caractères\nau maximum). Une requête rejouée avec la même clé dans les 24 h renvoie la même réponse, sans nouvel\nenvoi ni débit, avec l'en-tête `Idempotent-Replayed: true`. La clé est propre à la clé API et à\nl'opération (`/sms` et `/otp/send` ont des espaces de clés séparés), et liée au contenu **normalisé**\nde la requête : la même clé avec un autre contenu renvoie `409 IDEMPOTENCY_KEY_REUSED`. Si la requête\nd'origine est encore en cours, `409 IDEMPOTENCY_REQUEST_IN_PROGRESS` (en-tête `Retry-After`) :\nrelancer avec la même clé est sans risque. Une requête en erreur n'enregistre pas la clé.\n\n## Erreurs\nToutes les erreurs ont la même forme :\n\n    { \"error\": { \"code\": \"INSUFFICIENT_CREDITS\", \"message\": \"…\", \"details\": { … } } }\n\n`code` est stable et destiné au code ; `message` est en français et destiné aux humains ;\n`details` est **toujours un objet** (`{}` quand il est vide), dont le contenu dépend du code\n(erreurs par champ pour `VALIDATION_ERROR`). Un SDK doit accepter un code inconnu.\n\nErreurs communes à toutes les routes :\n- `404 NOT_FOUND`, message « Route introuvable. » : chemin inexistant ;\n- `405 HTTP_ERROR` : méthode non autorisée sur ce chemin (ex. `DELETE /balance`), avec\n  `details.allowed_methods` et l'en-tête `Allow`.\n\nCes deux réponses sont décrites dans l'extension `x-common-responses` de ce document.\n\n## Maintenance (503 `FEATURE_DISABLED`)\nUn administrateur de la plateforme peut couper temporairement toute l'API ou une fonction. L'appel\nreçoit alors `503 FEATURE_DISABLED` et **rien n'est fait** (aucun envoi, aucun débit) :\n\n    { \"error\": { \"code\": \"FEATURE_DISABLED\", \"message\": \"…\",\n      \"details\": { \"feature\": \"api.sms_send\", \"blocked_by\": \"api\", \"message\": null, \"until\": null } } }\n\n- `details.feature` : fonctionnalité demandée ; `details.blocked_by` : celle qui est réellement coupée\n  (elle-même ou une parente). Liste ouverte : `api` (toute l'API, toutes les routes), `api.sms_send`\n  (`POST /sms`), `api.otp_send` (`POST /otp/send`), `api.otp_verify` (`POST /otp/verify`) ;\n- `details.message` : message de l'administrateur (`null` sinon) ; `error.message` le reprend, ou\n  donne un texte générique ;\n- `details.until` : réactivation automatique programmée (ISO 8601), `null` si inconnue. Quand elle\n  est connue, l'en-tête `Retry-After` donne les secondes restantes.\n\nToute l'API coupée (`api`) : le refus arrive **avant** l'authentification et les limites de débit,\nmême avec une clé invalide. Le service OTP entier coupé renvoie le code historique\n`503 OTP_SERVICE_DISABLED` sur `POST /otp/send`, avec les mêmes `details` (`feature` = `otp`) ; la\nvérification des codes déjà envoyés reste possible.\n\nConseil : ne pas relancer en boucle. Relancer après `Retry-After` s'il est présent, sinon traiter\nl'appel comme un échec temporaire (file d'attente, message à l'utilisateur).\n\n## Identifiant de requête\nChaque réponse, erreurs comprises, porte l'en-tête `X-Request-Id`, à communiquer au support. Un\n`X-Request-Id` envoyé avec la requête est réutilisé s'il compte 1 à 128 caractères parmi\n`A-Z a-z 0-9 . _ : -` ; sinon un UUID est généré.\n\n## Versions\nChaque réponse de `/api/public/v1` porte l'en-tête `X-Api-Version: 1`. Les **ajouts compatibles**\n(champ de réponse, en-tête, paramètre facultatif, code d'erreur, événement de webhook) arrivent sans\npréavis dans la v1 : une intégration doit ignorer ce qu'elle ne connaît pas. Toute **rupture**\n(champ retiré ou renommé, type ou sens changé, paramètre devenu obligatoire, code HTTP changé) passe\npar une nouvelle version `/api/public/v2`, la v1 restant servie pendant une période de dépréciation\nannoncée. `info.version` de ce document suit SemVer.\n\n## Dates\nISO 8601 avec décalage, à la seconde : `2026-11-06T09:39:11+00:00`.\n\n## Limites de débit\n- 120 requêtes / minute **par clé API** sur l'ensemble de l'API ;\n- 10 requêtes / minute **par clé API** sur `POST /otp/send` (compteur séparé) ;\n- 120 requêtes / minute par adresse IP, toutes clés confondues ;\n- limites métier OTP par numéro et par compte (voir `/otp/send`).\n\nAu-delà : `429 TOO_MANY_REQUESTS`, avec l'en-tête `Retry-After` (secondes) et\n`details.retry_after_seconds`. Les réponses réussies portent aussi `X-RateLimit-Limit` et\n`X-RateLimit-Remaining`.\n\n## Webhooks\nVoir la section `webhooks` : événements envoyés en POST JSON, signés en HMAC-SHA256.\n\n## Nouveautés 1.3.0\nCompatible avec la 1.2.0 (ajout d'un code d'erreur).\n- Nouveau code `503 FEATURE_DISABLED` sur toutes les opérations (fonctionnalité coupée par la plateforme,\n  voir « Maintenance ») : `details` = `{ feature, blocked_by, message, until }`, en-tête `Retry-After`\n  quand une réactivation automatique est programmée. Schéma `FeatureDisabledError`, réponse\n  `ServiceUnavailable`.\n- `503 OTP_SERVICE_DISABLED` (`POST /otp/send`) porte désormais les mêmes `details` et le même\n  `Retry-After`.\n\n## Nouveautés 1.2.0\nToutes compatibles avec la 1.1.0 (ajouts et précisions).\n- En-têtes de réponse `X-Request-Id` (réutilise celui de la requête s'il est valide) et `X-Api-Version: 1` ;\n  politique de version documentée.\n- `error.details` toujours un objet (`{}`, jamais `[]`) ; schéma `Error` corrigé (`details` de type objet\n  uniquement, `type: string` à côté des `const` des sous-schémas).\n- Messages d'erreur et de validation en français (« Le champ body est obligatoire. ») ; 404 de route\n  inconnue « Route introuvable. » ; 405 `HTTP_ERROR` avec `details.allowed_methods` et en-tête `Allow`.\n- Numéros : sans `+`, 11 chiffres ou plus ne commençant pas par 0 = déjà international (`33612345678`\n  n'est plus préfixé de 243).\n- Idempotence `POST /sms` : empreinte calculée après normalisation et dédoublonnage des destinataires\n  (`0812345678` puis `243812345678` avec la même clé = rejeu) ; nouveau `409 IDEMPOTENCY_REQUEST_IN_PROGRESS`\n  (`Retry-After: 5`, `details.retry_after_seconds`).\n- `POST /otp/send` : `Idempotency-Key` ; nouveaux champs de réponse `code_length`, `code_type`,\n  `resend_after_seconds` ; nouveaux paramètres `web_otp_domain` (Web OTP API) et `strip_accents` ;\n  renvoi accepté tout de suite après une vérification réussie (plus de `OTP_RESEND_TOO_SOON`).\n- `OTP_RESEND_TOO_SOON` et `OTP_RATE_LIMITED` : en-tête `Retry-After` égal à `details.retry_after_seconds`\n  (nouveau dans `OTP_RATE_LIMITED`).\n- `POST /otp/verify` : nouveau champ `attempts_remaining`.\n- `POST /sms` et `POST /sms/estimate` : paramètre `strip_accents`. L'estimation dédoublonne les\n  destinataires comme l'envoi (`recipients_count` et `total_credits` cohérents avec l'envoi réel).\n- `GET /sms/{id}` : recherche par `id` uniquement.\n- `Message.encoding` jamais `null` ; dates au format `2026-11-06T09:39:11+00:00` partout.\n- Webhook `message.status_changed` enrichi (`reference`, `error_code`, `error_message`) ; nouveaux\n  webhooks `otp.verified` et `otp.failed`.",
       "type": "text/markdown"
     },
     "name": "Labyrinthe Connect API",
@@ -284,7 +284,7 @@
                 }
               ],
               "id": "a749a8ef-e396-433c-a376-ee2917f35bcc",
-              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé.",
+              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé ; `ACCOUNT_SUSPENDED` : compte suspendu par la plateforme (toute l'API est fermée jusqu'à réactivation).",
               "originalRequest": {
                 "body": {
                   "mode": "raw",
@@ -357,7 +357,7 @@
                 }
               ],
               "id": "66abb6ad-3efa-4069-a3e8-5f43a6bccbc6",
-              "name": "- `INSUFFICIENT_CREDITS` : le solde ne couvre pas l'envoi (rien n'est envoyé) ;\n- `IDEMPOTENCY_KEY_REUSED` : `Idempotency-Key` déjà utilisée pour une requête différente ;\n- `IDEMPOTENCY_REQUEST_IN_PROGRESS` : la requête d'origine avec cette clé est encore en cours\n  (en-tête `Retry-After`) ; relancer avec la même clé.\n",
+              "name": "- `INSUFFICIENT_CREDITS` : le solde ne couvre pas l'envoi (rien n'est envoyé) ;\n- `IDEMPOTENCY_KEY_REUSED` : `Idempotency-Key` déjà utilisée pour une requête différente ;\n- `IDEMPOTENCY_KEY_UNRESOLVED` : la requête d'origine avec cette clé a échoué de façon inattendue, son résultat est inconnu (un SMS a pu partir) ; ne pas relancer automatiquement, vérifier puis renvoyer avec une nouvelle clé ;\n- `IDEMPOTENCY_REQUEST_IN_PROGRESS` : la requête d'origine avec cette clé est encore en cours\n  (en-tête `Retry-After`) ; relancer avec la même clé.\n",
               "originalRequest": {
                 "body": {
                   "mode": "raw",
@@ -539,6 +539,79 @@
                 }
               },
               "status": "Too Many Requests"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"FEATURE_DISABLED\",\n    \"message\": \"« API développeurs » est momentanément indisponible (maintenance). Merci de réessayer plus tard.\",\n    \"details\": {\n      \"feature\": \"api\",\n      \"blocked_by\": \"api\",\n      \"message\": null,\n      \"until\": null\n    }\n  }\n}",
+              "code": 503,
+              "cookie": [],
+              "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Avec `FEATURE_DISABLED` et `OTP_SERVICE_DISABLED`, uniquement quand une réactivation automatique est\nprogrammée : secondes jusqu'à `details.until` (au moins 1). Absent quand la date de retour est inconnue.\n",
+                  "disabled": false,
+                  "key": "Retry-After",
+                  "value": "4099"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "00493515-5dad-4f10-a5b3-ef996829376d",
+              "name": "`FEATURE_DISABLED` : fonctionnalité coupée par la plateforme (voir « Maintenance »), rien n'est fait.\n`details.blocked_by` vaut `api` quand toute l'API est coupée ; `POST /sms` peut aussi être coupé seul\n(`api.sms_send`), et `POST /otp/verify` (`api.otp_verify`). En-tête `Retry-After` quand une\nréactivation automatique est programmée (`details.until`).\n",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"recipient\": \"243812345678\",\n  \"body\": \"Votre commande 1042 est prête.\"\n}"
+                },
+                "header": [
+                  {
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API et par\nopération. Plus de 255 caractères : `422 VALIDATION_ERROR`.\n",
+                    "disabled": false,
+                    "key": "Idempotency-Key",
+                    "value": "string"
+                  },
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Service Unavailable"
             }
           ]
         },
@@ -840,7 +913,7 @@
                 }
               ],
               "id": "ab5359a9-7b52-4a4f-a3f1-739991a19b45",
-              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé.",
+              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé ; `ACCOUNT_SUSPENDED` : compte suspendu par la plateforme (toute l'API est fermée jusqu'à réactivation).",
               "originalRequest": {
                 "body": {},
                 "header": [
@@ -1067,6 +1140,94 @@
                 }
               },
               "status": "Too Many Requests"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"FEATURE_DISABLED\",\n    \"message\": \"« API développeurs » est momentanément indisponible (maintenance). Merci de réessayer plus tard.\",\n    \"details\": {\n      \"feature\": \"api\",\n      \"blocked_by\": \"api\",\n      \"message\": null,\n      \"until\": null\n    }\n  }\n}",
+              "code": 503,
+              "cookie": [],
+              "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Avec `FEATURE_DISABLED` et `OTP_SERVICE_DISABLED`, uniquement quand une réactivation automatique est\nprogrammée : secondes jusqu'à `details.until` (au moins 1). Absent quand la date de retour est inconnue.\n",
+                  "disabled": false,
+                  "key": "Retry-After",
+                  "value": "4099"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "a03502d9-8134-42f4-adf4-db4efc381e2a",
+              "name": "`FEATURE_DISABLED` : fonctionnalité coupée par la plateforme (voir « Maintenance »), rien n'est fait.\n`details.blocked_by` vaut `api` quand toute l'API est coupée ; `POST /sms` peut aussi être coupé seul\n(`api.sms_send`), et `POST /otp/verify` (`api.otp_verify`). En-tête `Retry-After` quand une\nréactivation automatique est programmée (`details.until`).\n",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "15"
+                    },
+                    {
+                      "key": "status",
+                      "value": "queued"
+                    },
+                    {
+                      "key": "recipient",
+                      "value": "string"
+                    },
+                    {
+                      "key": "reference",
+                      "value": "string"
+                    },
+                    {
+                      "key": "from",
+                      "value": "2026-11-01"
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-11-30"
+                    }
+                  ],
+                  "variable": []
+                }
+              },
+              "status": "Service Unavailable"
             }
           ]
         },
@@ -1298,7 +1459,7 @@
                 }
               ],
               "id": "82b527d6-f318-4482-aeab-51d7c640a528",
-              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé.",
+              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé ; `ACCOUNT_SUSPENDED` : compte suspendu par la plateforme (toute l'API est fermée jusqu'à réactivation).",
               "originalRequest": {
                 "body": {},
                 "header": [
@@ -1465,6 +1626,74 @@
                 }
               },
               "status": "Too Many Requests"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"FEATURE_DISABLED\",\n    \"message\": \"« API développeurs » est momentanément indisponible (maintenance). Merci de réessayer plus tard.\",\n    \"details\": {\n      \"feature\": \"api\",\n      \"blocked_by\": \"api\",\n      \"message\": null,\n      \"until\": null\n    }\n  }\n}",
+              "code": 503,
+              "cookie": [],
+              "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Avec `FEATURE_DISABLED` et `OTP_SERVICE_DISABLED`, uniquement quand une réactivation automatique est\nprogrammée : secondes jusqu'à `details.until` (au moins 1). Absent quand la date de retour est inconnue.\n",
+                  "disabled": false,
+                  "key": "Retry-After",
+                  "value": "4099"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "c56e30c6-2e21-42bf-afd8-dc3a69187c83",
+              "name": "`FEATURE_DISABLED` : fonctionnalité coupée par la plateforme (voir « Maintenance »), rien n'est fait.\n`details.blocked_by` vaut `api` quand toute l'API est coupée ; `POST /sms` peut aussi être coupé seul\n(`api.sms_send`), et `POST /otp/verify` (`api.otp_verify`). En-tête `Retry-After` quand une\nréactivation automatique est programmée (`details.until`).\n",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms",
+                    ":id"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "description": "(Required) Identifiant du message (`id`). Toute autre valeur renvoie 404.",
+                      "disabled": false,
+                      "key": "id",
+                      "type": "any",
+                      "value": "string"
+                    }
+                  ]
+                }
+              },
+              "status": "Service Unavailable"
             }
           ]
         },
@@ -1700,7 +1929,7 @@
                 }
               ],
               "id": "f9efb899-060e-4b72-ae11-c4fb3d4a709b",
-              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé.",
+              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé ; `ACCOUNT_SUSPENDED` : compte suspendu par la plateforme (toute l'API est fermée jusqu'à réactivation).",
               "originalRequest": {
                 "body": {
                   "mode": "raw",
@@ -1867,6 +2096,74 @@
                 }
               },
               "status": "Too Many Requests"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"FEATURE_DISABLED\",\n    \"message\": \"« API développeurs » est momentanément indisponible (maintenance). Merci de réessayer plus tard.\",\n    \"details\": {\n      \"feature\": \"api\",\n      \"blocked_by\": \"api\",\n      \"message\": null,\n      \"until\": null\n    }\n  }\n}",
+              "code": 503,
+              "cookie": [],
+              "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Avec `FEATURE_DISABLED` et `OTP_SERVICE_DISABLED`, uniquement quand une réactivation automatique est\nprogrammée : secondes jusqu'à `details.until` (au moins 1). Absent quand la date de retour est inconnue.\n",
+                  "disabled": false,
+                  "key": "Retry-After",
+                  "value": "4099"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "2811f6ee-7b33-4f37-a7e1-c006dec80bd7",
+              "name": "`FEATURE_DISABLED` : fonctionnalité coupée par la plateforme (voir « Maintenance »), rien n'est fait.\n`details.blocked_by` vaut `api` quand toute l'API est coupée ; `POST /sms` peut aussi être coupé seul\n(`api.sms_send`), et `POST /otp/verify` (`api.otp_verify`). En-tête `Retry-After` quand une\nréactivation automatique est programmée (`details.until`).\n",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"body\": \"Votre code est 482913\",\n  \"recipients\": [\n    \"243812345678\",\n    \"0812345678\",\n    \"0899999999\"\n  ]\n}"
+                },
+                "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sms",
+                    "estimate"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Service Unavailable"
             }
           ]
         }
@@ -2078,7 +2375,7 @@
                 }
               ],
               "id": "726ab95e-537c-42a8-a98d-01414f2c8c4f",
-              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé.",
+              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé ; `ACCOUNT_SUSPENDED` : compte suspendu par la plateforme (toute l'API est fermée jusqu'à réactivation).",
               "originalRequest": {
                 "body": {},
                 "header": [
@@ -2165,6 +2462,65 @@
                 }
               },
               "status": "Too Many Requests"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"FEATURE_DISABLED\",\n    \"message\": \"« API développeurs » est momentanément indisponible (maintenance). Merci de réessayer plus tard.\",\n    \"details\": {\n      \"feature\": \"api\",\n      \"blocked_by\": \"api\",\n      \"message\": null,\n      \"until\": null\n    }\n  }\n}",
+              "code": 503,
+              "cookie": [],
+              "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Avec `FEATURE_DISABLED` et `OTP_SERVICE_DISABLED`, uniquement quand une réactivation automatique est\nprogrammée : secondes jusqu'à `details.until` (au moins 1). Absent quand la date de retour est inconnue.\n",
+                  "disabled": false,
+                  "key": "Retry-After",
+                  "value": "4099"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "55288738-9460-433a-a324-abda20af40d7",
+              "name": "`FEATURE_DISABLED` : fonctionnalité coupée par la plateforme (voir « Maintenance »), rien n'est fait.\n`details.blocked_by` vaut `api` quand toute l'API est coupée ; `POST /sms` peut aussi être coupé seul\n(`api.sms_send`), et `POST /otp/verify` (`api.otp_verify`). En-tête `Retry-After` quand une\nréactivation automatique est programmée (`details.until`).\n",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "balance"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Service Unavailable"
             }
           ]
         },
@@ -2368,7 +2724,7 @@
                 }
               ],
               "id": "53b7d03c-5920-40e8-a729-c35f7fd7e13d",
-              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé.",
+              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé ; `ACCOUNT_SUSPENDED` : compte suspendu par la plateforme (toute l'API est fermée jusqu'à réactivation).",
               "originalRequest": {
                 "body": {},
                 "header": [
@@ -2455,6 +2811,65 @@
                 }
               },
               "status": "Too Many Requests"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"FEATURE_DISABLED\",\n    \"message\": \"« API développeurs » est momentanément indisponible (maintenance). Merci de réessayer plus tard.\",\n    \"details\": {\n      \"feature\": \"api\",\n      \"blocked_by\": \"api\",\n      \"message\": null,\n      \"until\": null\n    }\n  }\n}",
+              "code": 503,
+              "cookie": [],
+              "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Avec `FEATURE_DISABLED` et `OTP_SERVICE_DISABLED`, uniquement quand une réactivation automatique est\nprogrammée : secondes jusqu'à `details.until` (au moins 1). Absent quand la date de retour est inconnue.\n",
+                  "disabled": false,
+                  "key": "Retry-After",
+                  "value": "4099"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "5f830eb4-7055-463a-a3fd-6718168c9acd",
+              "name": "`FEATURE_DISABLED` : fonctionnalité coupée par la plateforme (voir « Maintenance »), rien n'est fait.\n`details.blocked_by` vaut `api` quand toute l'API est coupée ; `POST /sms` peut aussi être coupé seul\n(`api.sms_send`), et `POST /otp/verify` (`api.otp_verify`). En-tête `Retry-After` quand une\nréactivation automatique est programmée (`details.until`).\n",
+              "originalRequest": {
+                "body": {},
+                "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sender-ids"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Service Unavailable"
             }
           ]
         }
@@ -2748,7 +3163,7 @@
                 }
               ],
               "id": "e4494202-c6a9-4c6e-af46-997224e3ba9d",
-              "name": "- `FORBIDDEN` : adresse IP non autorisée pour cette clé ;\n- `OTP_DISABLED_FOR_ACCOUNT` : service OTP désactivé pour ce compte par la plateforme.\n",
+              "name": "- `FORBIDDEN` : adresse IP non autorisée pour cette clé ;\n- `ACCOUNT_SUSPENDED` : compte suspendu par la plateforme ;\n- `OTP_DISABLED_FOR_ACCOUNT` : service OTP désactivé pour ce compte par la plateforme.\n",
               "originalRequest": {
                 "body": {
                   "mode": "raw",
@@ -2822,7 +3237,7 @@
                 }
               ],
               "id": "cd3d3017-8b26-42ee-ac45-a76ee4c271be",
-              "name": "- `INSUFFICIENT_CREDITS` : crédits insuffisants (jamais avec une clé de test) ;\n- `IDEMPOTENCY_KEY_REUSED` : `Idempotency-Key` déjà utilisée pour une requête différente ;\n- `IDEMPOTENCY_REQUEST_IN_PROGRESS` : la requête d'origine avec cette clé est encore en cours\n  (en-tête `Retry-After`) ; relancer avec la même clé.\n",
+              "name": "- `INSUFFICIENT_CREDITS` : crédits insuffisants (jamais avec une clé de test) ;\n- `IDEMPOTENCY_KEY_REUSED` : `Idempotency-Key` déjà utilisée pour une requête différente ;\n- `IDEMPOTENCY_KEY_UNRESOLVED` : la requête d'origine avec cette clé a échoué de façon inattendue, son résultat est inconnu (un SMS a pu partir) ; ne pas relancer automatiquement, vérifier puis renvoyer avec une nouvelle clé ;\n- `IDEMPOTENCY_REQUEST_IN_PROGRESS` : la requête d'origine avec cette clé est encore en cours\n  (en-tête `Retry-After`) ; relancer avec la même clé.\n",
               "originalRequest": {
                 "body": {
                   "mode": "raw",
@@ -3010,7 +3425,7 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"FEATURE_DISABLED\",\n    \"message\": \"« Envoi d’OTP par l’API » est momentanément indisponible (maintenance). Merci de réessayer plus tard.\",\n    \"details\": {\n      \"feature\": \"api.otp_send\",\n      \"blocked_by\": \"api.otp_send\",\n      \"message\": null,\n      \"until\": null\n    }\n  }\n}",
               "code": 503,
               "cookie": [],
               "header": [
@@ -3027,12 +3442,18 @@
                   "value": "string"
                 },
                 {
+                  "description": "Avec `FEATURE_DISABLED` et `OTP_SERVICE_DISABLED`, uniquement quand une réactivation automatique est\nprogrammée : secondes jusqu'à `details.until` (au moins 1). Absent quand la date de retour est inconnue.\n",
+                  "disabled": false,
+                  "key": "Retry-After",
+                  "value": "4099"
+                },
+                {
                   "key": "Content-Type",
                   "value": "application/json"
                 }
               ],
               "id": "b252bbc3-a7bd-476f-aaa3-5c01da4cc739",
-              "name": "`OTP_SERVICE_DISABLED` : service OTP momentanément coupé sur la plateforme.",
+              "name": "Fonctionnalité coupée par la plateforme (voir « Maintenance » dans l'introduction), rien n'est envoyé :\n- `FEATURE_DISABLED` : toute l'API (`details.blocked_by` = `api`) ou l'envoi d'OTP par l'API\n  (`api.otp_send`) est coupé ;\n- `OTP_SERVICE_DISABLED` : tout le service OTP est coupé (`details.feature` et `details.blocked_by`\n  = `otp`). Code historique conservé, avec les mêmes `details` que `FEATURE_DISABLED` depuis la 1.3.0.\n\nEn-tête `Retry-After` quand une réactivation automatique est programmée (`details.until`).\n",
               "originalRequest": {
                 "body": {
                   "mode": "raw",
@@ -3400,7 +3821,7 @@
                 }
               ],
               "id": "50dcd7b5-767c-4a22-a5e0-789c905c5b92",
-              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé.",
+              "name": "`FORBIDDEN` : adresse IP non autorisée pour cette clé ; `ACCOUNT_SUSPENDED` : compte suspendu par la plateforme (toute l'API est fermée jusqu'à réactivation).",
               "originalRequest": {
                 "body": {
                   "mode": "raw",
@@ -3629,6 +4050,74 @@
                 }
               },
               "status": "Too Many Requests"
+            },
+            {
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": {\n    \"code\": \"FEATURE_DISABLED\",\n    \"message\": \"« API développeurs » est momentanément indisponible (maintenance). Merci de réessayer plus tard.\",\n    \"details\": {\n      \"feature\": \"api\",\n      \"blocked_by\": \"api\",\n      \"message\": null,\n      \"until\": null\n    }\n  }\n}",
+              "code": 503,
+              "cookie": [],
+              "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Avec `FEATURE_DISABLED` et `OTP_SERVICE_DISABLED`, uniquement quand une réactivation automatique est\nprogrammée : secondes jusqu'à `details.until` (au moins 1). Absent quand la date de retour est inconnue.\n",
+                  "disabled": false,
+                  "key": "Retry-After",
+                  "value": "4099"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "id": "f2fa5ac9-8baf-41b1-a1cd-f725a9f20be9",
+              "name": "`FEATURE_DISABLED` : fonctionnalité coupée par la plateforme (voir « Maintenance »), rien n'est fait.\n`details.blocked_by` vaut `api` quand toute l'API est coupée ; `POST /sms` peut aussi être coupé seul\n(`api.sms_send`), et `POST /otp/verify` (`api.otp_verify`). En-tête `Retry-After` quand une\nréactivation automatique est programmée (`details.until`).\n",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  },
+                  "raw": "{\n  \"otp_id\": \"9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10\",\n  \"code\": \"482913\"\n}"
+                },
+                "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "otp",
+                    "verify"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "status": "Service Unavailable"
             }
           ]
         }
