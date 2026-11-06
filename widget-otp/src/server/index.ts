@@ -48,13 +48,29 @@ export type { ErrorBody, SendSuccessBody, ServerErrorCode, VerifyFailureBody, Ve
  */
 export interface OtpClient {
   otp: {
-    send(params: { phone: string; template?: string; locale?: 'fr' | 'en' }): Promise<{
+    send(params: {
+      phone: string;
+      template?: string;
+      locale?: 'fr' | 'en';
+      webOtpDomain?: string;
+      stripAccents?: boolean;
+      idempotencyKey?: string;
+    }): Promise<{
       otpId: string;
       expiresAt: Date;
       maxAttempts: number;
+      /** `@labyrinthe/connect` ≥ 1.1.0 (API 1.2.0); absent or null with an older SDK. */
+      codeLength?: number | null;
+      codeType?: string | null;
+      resendAfterSeconds?: number | null;
       readonly testCode: string | null;
     }>;
-    verify(params: { otpId: string; code: string }): Promise<{ verified: boolean; reason: string | null }>;
+    verify(params: { otpId: string; code: string }): Promise<{
+      verified: boolean;
+      reason: string | null;
+      /** `@labyrinthe/connect` ≥ 1.1.0; absent or null with an older SDK (then estimated). */
+      attemptsRemaining?: number | null;
+    }>;
   };
 }
 
@@ -90,11 +106,25 @@ export interface OtpHandlersOptions {
   /** SMS language. Default: the widget's locale, then the account's OTP settings. */
   locale?: 'fr' | 'en';
   /**
-   * Seconds before the widget enables "Resend". Set it to the anti-resend delay
-   * of your account's OTP settings (platform default 60). The API still enforces it.
+   * Web OTP API: host name of YOUR site, as seen in the browser address bar
+   * (e.g. "app.example.com", no scheme, port or path). The API ends the SMS with
+   * the line `@app.example.com #123456`, and Chrome on Android then offers to
+   * fill the code in `<labyrinthe-otp>` (top-level page on that exact host, HTTPS).
+   */
+  webOtpDomain?: string;
+  /** Replace accents in the SMS with ASCII (GSM-7, often half the cost). Default false. */
+  stripAccents?: boolean;
+  /**
+   * Override of the anti-resend delay sent to the widget. Default: the
+   * `resend_after_seconds` returned by the API (account's OTP settings), then 60.
+   * The API still enforces the real delay.
    */
   resendAfterSeconds?: number;
-  /** Code length / alphabet of your account's OTP settings, so the widget shows the right boxes. */
+  /**
+   * Override of the code length / alphabet sent to the widget. Default: the
+   * `code_length` / `code_type` returned by the API (account's OTP settings).
+   * Only needed with an API older than 1.2.0.
+   */
   codeLength?: number;
   codeType?: CodeType;
   /**
@@ -198,10 +228,12 @@ export function createOtpHandlers(options: OtpHandlersOptions): OtpHandlers {
   if (options.template !== undefined && !options.template.includes('{code}')) {
     throw new Error('createOtpHandlers: `template` must contain the {code} token.');
   }
+  if (options.webOtpDomain !== undefined && !WEB_OTP_DOMAIN.test(options.webOtpDomain)) {
+    throw new Error('createOtpHandlers: `webOtpDomain` must be a host name such as "app.example.com" (no scheme, port or path).');
+  }
 
   const sealer = new Sealer(secret);
   const cookieName = options.cookie?.name ?? 'labyrinthe_otp';
-  const resendAfterSeconds = options.resendAfterSeconds ?? DEFAULT_RESEND_AFTER;
   let client: OtpClient | undefined;
   const getClient = (): OtpClient => (client ??= typeof options.client === 'function' ? options.client() : options.client);
 
@@ -293,15 +325,25 @@ export function createOtpHandlers(options: OtpHandlersOptions): OtpHandlers {
       throw new HttpError(403, 'forbidden', 'Refused.');
     }
     const locale = options.locale ?? (body['locale'] === 'fr' || body['locale'] === 'en' ? body['locale'] : undefined);
+    // Jeton d'envoi du widget, réutilisé quand il relance après une réponse perdue : même
+    // Idempotency-Key, donc pas de second SMS. Dérivé par HMAC avec le secret : un navigateur
+    // ne peut pas choisir la clé envoyée à l'API, ni toucher aux clés de vos propres appels.
+    const nonce = body['send_id'];
+    if (nonce !== undefined && (typeof nonce !== 'string' || !SEND_ID.test(nonce))) {
+      throw new HttpError(400, 'invalid_request', 'Invalid send_id.');
+    }
+    const idempotencyKey = nonce === undefined ? undefined : `otp-widget-${await sealer.tag(`send:${nonce}`)}`;
 
     let sent: Awaited<ReturnType<OtpClient['otp']['send']>>;
     try {
       sent = await getClient().otp.send({
-        // « + » explicite : sans lui, un numéro étranger déjà normalisé (33612345678)
-        // recevrait l'indicatif par défaut une seconde fois dans le SDK.
+        // « + » explicite : le numéro est déjà international, l'indicatif par défaut ne doit pas s'y ajouter.
         phone: `+${phone}`,
         ...(options.template === undefined ? {} : { template: options.template }),
         ...(locale === undefined ? {} : { locale }),
+        ...(options.webOtpDomain === undefined ? {} : { webOtpDomain: options.webOtpDomain }),
+        ...(options.stripAccents === undefined ? {} : { stripAccents: options.stripAccents }),
+        ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
       });
     } catch (error) {
       throw upstreamError(error, 'send', options.onError);
@@ -320,14 +362,18 @@ export function createOtpHandlers(options: OtpHandlersOptions): OtpHandlers {
     }
     await saveState(request, result, state, null);
 
+    // Valeurs renvoyées par l'API (paramètres OTP du compte), sauf surcharge explicite.
+    const codeLength = options.codeLength ?? positiveInt(sent.codeLength);
+    const codeType = options.codeType ?? (sent.codeType === 'numeric' || sent.codeType === 'alphanumeric' ? sent.codeType : undefined);
+    const resendAfter = options.resendAfterSeconds ?? nonNegativeInt(sent.resendAfterSeconds) ?? DEFAULT_RESEND_AFTER;
     const response: SendSuccessBody = {
       sent: true,
       phone_masked: maskPhone(phone),
       expires_at: sent.expiresAt.toISOString(),
       max_attempts: sent.maxAttempts,
-      resend_after_seconds: resendAfterSeconds,
-      ...(options.codeLength === undefined ? {} : { code_length: options.codeLength }),
-      ...(options.codeType === undefined ? {} : { code_type: options.codeType }),
+      resend_after_seconds: resendAfter,
+      ...(codeLength === undefined ? {} : { code_length: codeLength }),
+      ...(codeType === undefined ? {} : { code_type: codeType }),
     };
     const testCode = sent.testCode;
     if (options.exposeTestCode === true && typeof testCode === 'string' && testCode !== '') {
@@ -355,7 +401,7 @@ export function createOtpHandlers(options: OtpHandlersOptions): OtpHandlers {
       return;
     }
 
-    let checked: { verified: boolean; reason: string | null };
+    let checked: Awaited<ReturnType<OtpClient['otp']['verify']>>;
     try {
       checked = await getClient().otp.verify({ otpId: state.otpId, code });
     } catch (error) {
@@ -383,7 +429,9 @@ export function createOtpHandlers(options: OtpHandlersOptions): OtpHandlers {
         ? checked.reason
         : 'invalid_code';
     if (reason === 'invalid_code') {
-      const attemptsLeft = state.attemptsLeft === null ? null : Math.max(0, state.attemptsLeft - 1);
+      // Valeur réelle de l'API (1.2.0) ; estimation locale avec un SDK plus ancien.
+      const fromApi = nonNegativeInt(checked.attemptsRemaining);
+      const attemptsLeft = fromApi ?? (state.attemptsLeft === null ? null : Math.max(0, state.attemptsLeft - 1));
       await saveState(request, result, { ...state, attemptsLeft }, sid);
       result.body = { verified: false, reason, attempts_left: attemptsLeft };
     } else {
@@ -475,6 +523,18 @@ function upstreamError(error: unknown, action: 'send' | 'verify', onError: OtpHa
     case 'OTP_RATE_LIMITED':
     case 'TOO_MANY_REQUESTS':
       return new HttpError(429, 'rate_limited', 'Too many requests.', retryAfter(error));
+    case 'IDEMPOTENCY_REQUEST_IN_PROGRESS':
+      // L'envoi d'origine est encore en cours (le SDK a déjà patienté) : le widget réessaie plus tard.
+      return new HttpError(429, 'rate_limited', 'A send is still in progress.', retryAfter(error) ?? 5);
+    case 'IDEMPOTENCY_KEY_UNRESOLVED':
+      // L'envoi d'origine a échoué de façon inattendue côté API : un SMS a pu partir. Jamais relancé
+      // automatiquement (ni par le SDK, ni par le widget) ; l'utilisateur redemande un code s'il ne l'a pas reçu.
+      onError?.(error, { action });
+      return new HttpError(502, 'send_failed', 'The code may not have been sent.');
+    case 'ACCOUNT_SUSPENDED':
+      // Compte Labyrinthe suspendu : rien à faire côté utilisateur ; code stable pour l'intégrateur.
+      onError?.(error, { action });
+      return new HttpError(503, 'account_suspended', 'The verification service is unavailable.');
     default:
       // Configuration (clé, crédits, Sender ID, service coupé) ou réseau : rien d'exploitable par l'utilisateur.
       onError?.(error, { action });
@@ -482,7 +542,21 @@ function upstreamError(error: unknown, action: 'send' | 'verify', onError: OtpHa
   }
 }
 
+const WEB_OTP_DOMAIN =
+  /^(?=.{1,253}$)([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
+/** Jeton d'envoi généré par le widget (`send_id`). */
+const SEND_ID = /^[A-Za-z0-9_-]{16,64}$/;
+
+function positiveInt(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : undefined;
+}
+
+function nonNegativeInt(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
 function retryAfter(error: unknown): number | undefined {
+
   const ms = (error as { retryAfterMs?: unknown } | null)?.retryAfterMs;
   if (typeof ms === 'number' && ms >= 0) {
     return Math.ceil(ms / 1000);

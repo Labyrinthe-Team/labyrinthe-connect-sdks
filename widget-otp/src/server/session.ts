@@ -88,20 +88,34 @@ export function getCrypto(): Promise<Crypto> {
 /** Chiffre et déchiffre de petits objets JSON avec une clé dérivée du secret. */
 export class Sealer {
   readonly #key: Promise<CryptoKey>;
+  readonly #macKey: Promise<CryptoKey>;
 
   constructor(secret: string) {
-    this.#key = (async () => {
+    const material = (async () => {
       const crypto = await getCrypto();
-      const material = await crypto.subtle.importKey('raw', encoder.encode(secret), 'HKDF', false, ['deriveKey']);
-      return crypto.subtle.deriveKey(
-        { name: 'HKDF', hash: 'SHA-256', salt: encoder.encode('labyrinthe-otp-widget'), info: encoder.encode('session-cookie-v1') },
-        material,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['encrypt', 'decrypt'],
-      );
+      return crypto.subtle.importKey('raw', encoder.encode(secret), 'HKDF', false, ['deriveKey']);
     })();
+    const derive = async (info: string, algorithm: AesKeyGenParams | HmacKeyGenParams, usages: KeyUsage[]) => {
+      const crypto = await getCrypto();
+      return crypto.subtle.deriveKey(
+        { name: 'HKDF', hash: 'SHA-256', salt: encoder.encode('labyrinthe-otp-widget'), info: encoder.encode(info) },
+        await material,
+        algorithm,
+        false,
+        usages,
+      );
+    };
+    this.#key = derive('session-cookie-v1', { name: 'AES-GCM', length: 256 }, ['encrypt', 'decrypt']);
+    // Clé distincte (autre `info`) pour les empreintes : jamais la clé de chiffrement.
+    this.#macKey = derive('idempotency-key-v1', { name: 'HMAC', hash: 'SHA-256', length: 256 }, ['sign']);
   }
+
+  /** HMAC-SHA-256 de `value` en base64url (43 caractères) : identifiant stable, non devinable sans le secret. */
+  async tag(value: string): Promise<string> {
+    const crypto = await getCrypto();
+    return toBase64Url(new Uint8Array(await crypto.subtle.sign('HMAC', await this.#macKey, encoder.encode(value))));
+  }
+
 
   /** `context` (nom du cookie) est authentifié avec le contenu : un jeton ne sert que là où il a été émis. */
   async seal(value: unknown, context: string): Promise<string> {
