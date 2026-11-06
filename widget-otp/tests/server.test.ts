@@ -491,6 +491,59 @@ describe('API 1.2.0', () => {
     expect((await s.call('verify', { code: '000000' })).json['error'].code).toBe('account_suspended');
   });
 
+  it.each(['FEATURE_DISABLED', 'OTP_SERVICE_DISABLED'])(
+    'maps %s (maintenance) to service_unavailable with the admin message, until and Retry-After',
+    async (code) => {
+      const client = fakeClient();
+      const onError = vi.fn();
+      client.nextSendError = sdkErrors.featureDisabled(120, code);
+      const { response, json } = await session(handlers(client, { onError })).call('send', { phone: '0812345678' });
+      expect(response.status).toBe(503);
+      expect(response.headers.get('retry-after')).toBe('120');
+      expect(json).toEqual({
+        error: {
+          code: 'service_unavailable',
+          message: 'The verification service is temporarily unavailable.',
+          retry_after_seconds: 120,
+          admin_message: 'Maintenance jusqu’à 10 h.',
+          until: '2026-11-06T10:00:00+00:00',
+        },
+      });
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code }), { action: 'send' });
+    },
+  );
+
+  it('maps FEATURE_DISABLED without a scheduled end: no Retry-After, no until, no admin message', async () => {
+    const client = fakeClient();
+    client.nextSendError = sdkErrors.featureDisabled(undefined, 'FEATURE_DISABLED', null);
+    const { response, json } = await session(handlers(client)).call('send', { phone: '0812345678' });
+    expect(response.status).toBe(503);
+    expect(response.headers.get('retry-after')).toBeNull();
+    expect(json).toEqual({ error: { code: 'service_unavailable', message: 'The verification service is temporarily unavailable.' } });
+
+    // Vérification coupée (api.otp_verify) : même réponse.
+    client.nextVerifyError = sdkErrors.featureDisabled(30);
+    const s = session(handlers(client));
+    await s.call('send', { phone: '0812345678' });
+    const verify = await s.call('verify', { code: '000000' });
+    expect(verify.response.status).toBe(503);
+    expect(verify.response.headers.get('retry-after')).toBe('30');
+    expect(verify.json['error']).toMatchObject({ code: 'service_unavailable', retry_after_seconds: 30 });
+  });
+
+  it('reads FEATURE_DISABLED from an older SDK (generic ServiceUnavailableError, Retry-After header)', async () => {
+    const client = fakeClient();
+    client.nextSendError = sdkErrors.featureDisabledLegacy(45);
+    const { response, json } = await session(handlers(client)).call('send', { phone: '0812345678' });
+    expect(response.headers.get('retry-after')).toBe('45');
+    expect(json['error']).toEqual({
+      code: 'service_unavailable',
+      message: 'The verification service is temporarily unavailable.',
+      retry_after_seconds: 45,
+      until: '2026-11-06T10:00:00+00:00',
+    });
+  });
+
   it('maps IDEMPOTENCY_KEY_UNRESOLVED to a stable send_failed code (reported to onError, never retried)', async () => {
     const client = fakeClient();
     const onError = vi.fn();

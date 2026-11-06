@@ -81,6 +81,8 @@ describe('i18n', () => {
     expect(format('{count} sur {total} {x}', { count: 1, total: 6 })).toBe('1 sur 6 {x}');
     expect(formatDuration(75)).toBe('1:15');
     expect(formatDuration(-3)).toBe('0:00');
+    expect(formatDuration(3599)).toBe('59:59');
+    expect(formatDuration(5400)).toBe('1:30:00');
   });
 });
 

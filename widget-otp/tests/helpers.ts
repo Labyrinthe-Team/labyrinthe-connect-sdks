@@ -4,6 +4,7 @@
  */
 import {
   AccountSuspendedError,
+  FeatureDisabledError,
   IdempotencyKeyUnresolvedError,
   IdempotencyRequestInProgressError,
   NotFoundError,
@@ -139,7 +140,26 @@ export const sdkErrors = {
   resendTooSoon: (seconds: number) =>
     new OtpResendTooSoonError('Patientez.', 'OTP_RESEND_TOO_SOON', 429, { retry_after_seconds: seconds }, {}),
   rateLimited: () => new OtpRateLimitedError('Plafond.', 'OTP_RATE_LIMITED', 429, { scope: 'phone', limit: 5 }, {}),
+  /** Erreur d'un SDK < 1.2.0 (classe générique, sans détails). */
   serviceDisabled: () => new ServiceUnavailableError('Service coupé.', 'OTP_SERVICE_DISABLED', 503, {}, {}),
+  /** 503 FEATURE_DISABLED (SDK 1.2.0), avec message de l'administrateur et retour programmé quand `retryAfter` est donné. */
+  featureDisabled: (retryAfter?: number, code = 'FEATURE_DISABLED', message: string | null = 'Maintenance jusqu’à 10 h.') =>
+    new FeatureDisabledError(
+      'Coupé.',
+      code,
+      503,
+      { feature: 'api.otp_send', blocked_by: 'api', message, until: retryAfter === undefined ? null : '2026-11-06T10:00:00+00:00' },
+      retryAfter === undefined ? {} : { 'retry-after': String(retryAfter) },
+    ),
+  /** Même erreur vue par un SDK < 1.2.0 : ServiceUnavailableError générique, mêmes détails et en-têtes. */
+  featureDisabledLegacy: (retryAfter: number) =>
+    new ServiceUnavailableError(
+      'Coupé.',
+      'FEATURE_DISABLED',
+      503,
+      { feature: 'api', blocked_by: 'api', message: null, until: '2026-11-06T10:00:00+00:00' },
+      { 'retry-after': String(retryAfter) },
+    ),
   accountSuspended: () => new AccountSuspendedError('Compte suspendu.', 'ACCOUNT_SUSPENDED', 403, {}, {}),
   inProgress: () =>
     new IdempotencyRequestInProgressError('En cours.', 'IDEMPOTENCY_REQUEST_IN_PROGRESS', 409, { retry_after_seconds: 5 }, { 'retry-after': '5' }),

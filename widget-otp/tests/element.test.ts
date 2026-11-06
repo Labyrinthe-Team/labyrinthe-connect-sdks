@@ -187,6 +187,33 @@ describe('phone step', () => {
   });
 
 
+  it('shows the maintenance message of the Labyrinthe administrator, with the time left when known', async () => {
+    const element = mount();
+    const log = events(element);
+    client.nextSendError = sdkErrors.featureDisabled(90);
+    await sendPhone(element);
+    expect(errorText(element)).toBe('Maintenance jusqu’à 10 h. Réessayez dans 1:30.');
+    expect(log[0]).toMatchObject({
+      type: EVENT_ERROR,
+      detail: { code: 'service_unavailable', status: 503, retryAfterSeconds: 90, adminMessage: 'Maintenance jusqu’à 10 h.' },
+    });
+    expect(log[0]!.detail.until).toEqual(new Date('2026-11-06T10:00:00Z'));
+    expect(element.step).toBe('phone');
+
+    element.setAttribute('locale', 'en');
+    expect(errorText(element)).toBe('Maintenance jusqu’à 10 h. Try again in 1:30.');
+  });
+
+  it('shows the default text during a maintenance without an admin message or end date', async () => {
+    const element = mount();
+    const log = events(element);
+    client.nextSendError = sdkErrors.featureDisabled(undefined, 'FEATURE_DISABLED', null);
+    await sendPhone(element);
+    expect(errorText(element)).toBe('Le service de vérification est momentanément indisponible.');
+    expect(log[0]!.detail).not.toHaveProperty('adminMessage');
+    expect(log[0]!.detail).not.toHaveProperty('until');
+  });
+
   it('shows send_failed when the outcome of a send is unknown, and a new click uses a new send_id', async () => {
     const element = mount();
     const log = events(element);
