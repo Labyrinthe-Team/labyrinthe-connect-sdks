@@ -29,6 +29,7 @@ from .errors import (
     APIConnectionError,
     ApiError,
     APITimeoutError,
+    FeatureDisabledError,
     InvalidArgumentError,
     UnexpectedResponseError,
     _to_int,
@@ -69,6 +70,9 @@ class RetryMode(enum.Enum):
       429 TOO_MANY_REQUESTS et 409 IDEMPOTENCY_REQUEST_IN_PROGRESS (après Retry-After).
     - ``THROTTLED_ONLY`` : POST /otp/verify. Relancée seulement sur 429 TOO_MANY_REQUESTS
       (refusée avant traitement), jamais sur erreur réseau ni 5xx (risque d'une tentative consommée).
+
+    Dans les deux modes, 503 FEATURE_DISABLED / OTP_SERVICE_DISABLED (refusée avant traitement) n'est
+    relancée qu'après ``Retry-After`` s'il est présent et ≤ ``max_retry_wait`` ; jamais par backoff.
     """
 
     SAFE = "safe"
@@ -311,6 +315,10 @@ class _BaseTransport:
 
     def _retry_delay(self, error: ApiError, attempt: int) -> Optional[float]:
         """Délai avant la prochaine tentative ; ``None`` pour abandonner (attente demandée trop longue)."""
+        if isinstance(error, FeatureDisabledError):
+            # Exactement le délai annoncé, jamais de backoff à l'aveugle (_is_retryable a vérifié l'en-tête).
+            wait = error.retry_after
+            return float(wait) if wait is not None and wait <= self.max_retry_wait else None
         if error.status == 429 or error.code == _IN_PROGRESS:
             retry_after = _retry_after_seconds(error)
             if retry_after is not None:
@@ -461,6 +469,9 @@ class AsyncTransport(_BaseTransport):
 
 
 def _is_retryable(mode: RetryMode, error: ApiError) -> bool:
+    # Fonctionnalité coupée : refusée avant traitement (tous modes), relancée seulement avec Retry-After.
+    if isinstance(error, FeatureDisabledError):
+        return error.retry_after is not None
     # Seulement la limite générique : OTP_RESEND_TOO_SOON / OTP_RATE_LIMITED sont des limites métier.
     if error.status == 429:
         return error.code == "TOO_MANY_REQUESTS"

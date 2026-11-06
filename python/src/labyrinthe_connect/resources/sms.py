@@ -205,7 +205,9 @@ class Sms(_SmsCore):
         An ``Idempotency-Key`` is always sent (a UUID4 when you give none), so
         network errors, 5xx, ``TOO_MANY_REQUESTS`` and ``IDEMPOTENCY_REQUEST_IN_PROGRESS``
         are retried safely: the SMS is never sent twice. ``IdempotencyKeyUnresolvedError``
-        (outcome of the original request unknown) is never retried.
+        (outcome of the original request unknown) is never retried. ``FeatureDisabledError``
+        (503 ``FEATURE_DISABLED``, maintenance) is retried only after ``Retry-After`` when it is
+        present and within ``max_retry_wait``.
 
         ``strip_accents=True`` replaces accents and typographic characters with ASCII
         (GSM-7, often half the price). ``request_id`` is sent as ``X-Request-Id``.

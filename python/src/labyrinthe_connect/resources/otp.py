@@ -142,6 +142,8 @@ class Otp(_OtpCore):
         same ``otp_id`` (``replayed``), without a second SMS. ``OTP_RESEND_TOO_SOON``
         and ``OTP_RATE_LIMITED`` are never retried, nor ``IDEMPOTENCY_KEY_UNRESOLVED``
         (``IdempotencyKeyUnresolvedError``: outcome of the original request unknown).
+        ``FeatureDisabledError`` (503 ``FEATURE_DISABLED`` / ``OTP_SERVICE_DISABLED``, maintenance) is
+        retried only after ``Retry-After`` when it is present and within ``max_retry_wait``.
 
         :param web_otp_domain: host name of the site reading the code (Web OTP API): adds the
             ``@<domain> #<code>`` line to the SMS for autofill.
@@ -159,7 +161,8 @@ class Otp(_OtpCore):
         """Checks a code. A wrong code is NOT an exception: ``verified`` is false with a ``reason``.
 
         One attempt is consumed per wrong code (``attempts_remaining``). Free.
-        Retried only on 429 ``TOO_MANY_REQUESTS``. Raises
+        Retried only on 429 ``TOO_MANY_REQUESTS`` and, after ``Retry-After`` when it is present and
+        within ``max_retry_wait``, on 503 ``FEATURE_DISABLED`` (both refused before processing). Raises
         :class:`~labyrinthe_connect.NotFoundError` for an unknown ``otp_id``.
         """
         body = self._verify_body(otp_id, code)
