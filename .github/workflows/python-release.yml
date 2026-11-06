@@ -3,7 +3,7 @@
 # Trusted Publishing (OIDC) : aucun jeton ni secret. Configuration unique côté PyPI
 # (https://pypi.org/manage/account/publishing/, ou « Publishing » du projet une fois créé) :
 #   - PyPI project name : labyrinthe-connect
-#   - Owner             : labyrinthe-rdc
+#   - Owner             : Labyrinthe-Team
 #   - Repository name   : labyrinthe-connect-sdks
 #   - Workflow name     : python-release.yml
 #   - Environment name  : pypi

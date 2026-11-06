@@ -2,7 +2,7 @@
 #
 # Deux modes d'authentification, au choix :
 #   1. NuGet Trusted Publishing (recommandé, sans secret de longue durée) : sur nuget.org, Account > Trusted
-#      Publishing, ajouter une politique pour le dépôt labyrinthe-rdc/labyrinthe-connect-sdks, workflow
+#      Publishing, ajouter une politique pour le dépôt Labyrinthe-Team/labyrinthe-connect-sdks, workflow
 #      dotnet-release.yml, environnement « nuget ». Renseigner la variable de dépôt NUGET_USER (le profil nuget.org
 #      propriétaire des packages). L'action NuGet/login échange le jeton OIDC contre une clé temporaire (1 h).
 #   2. Secret NUGET_API_KEY (repli) : clé nuget.org limitée au « Push » des packages Labyrinthe.Connect*, stockée dans
