@@ -10,6 +10,7 @@ use Labyrinthe\Connect\Enum\RejectionReason;
 use Labyrinthe\Connect\Exception\AccountSuspendedException;
 use Labyrinthe\Connect\Exception\ApiException;
 use Labyrinthe\Connect\Exception\AuthenticationException;
+use Labyrinthe\Connect\Exception\FeatureDisabledException;
 use Labyrinthe\Connect\Exception\IdempotencyKeyReusedException;
 use Labyrinthe\Connect\Exception\IdempotencyKeyUnresolvedException;
 use Labyrinthe\Connect\Exception\IdempotencyRequestInProgressException;
@@ -52,7 +53,8 @@ final class ErrorMappingTest extends TestCase
         yield 'too many requests' => [429, 'TOO_MANY_REQUESTS', RateLimitException::class];
         yield 'otp resend too soon' => [429, 'OTP_RESEND_TOO_SOON', OtpResendTooSoonException::class];
         yield 'otp rate limited' => [429, 'OTP_RATE_LIMITED', OtpRateLimitedException::class];
-        yield 'otp service disabled' => [503, 'OTP_SERVICE_DISABLED', ServiceUnavailableException::class];
+        yield 'otp service disabled' => [503, 'OTP_SERVICE_DISABLED', FeatureDisabledException::class];
+        yield 'feature disabled' => [503, 'FEATURE_DISABLED', FeatureDisabledException::class];
         yield 'unknown code' => [418, 'BRAND_NEW_CODE', ApiException::class];
         yield 'unknown code on 401' => [401, 'KEY_EXPIRED', AuthenticationException::class];
         yield 'http error' => [405, 'HTTP_ERROR', ApiException::class];
@@ -76,6 +78,94 @@ final class ErrorMappingTest extends TestCase
             self::assertSame($status, $e->getStatusCode());
             self::assertSame('Message en français.', $e->getMessage());
             self::assertSame(['some' => 'detail'], $e->getDetails());
+        }
+    }
+
+    public function test_feature_disabled_exposes_its_details(): void
+    {
+        $client = $this->client([self::error(503, 'FEATURE_DISABLED', [
+            'feature' => 'api.sms_send',
+            'blocked_by' => 'api',
+            'message' => "Maintenance de l'envoi de SMS jusqu'à 10 h.",
+            'until' => '2026-11-06T10:00:00+00:00',
+        ], ['Retry-After' => '3600'])], maxRetries: 0);
+
+        try {
+            $client->balance->get();
+            self::fail('FeatureDisabledException expected.');
+        } catch (FeatureDisabledException $e) {
+            self::assertSame('api.sms_send', $e->getFeature());
+            self::assertSame('api', $e->getBlockedBy());
+            self::assertSame("Maintenance de l'envoi de SMS jusqu'à 10 h.", $e->getAdminMessage());
+            self::assertEquals(new \DateTimeImmutable('2026-11-06T10:00:00+00:00'), $e->getUntil());
+            self::assertSame(3600, $e->getRetryAfter());
+        }
+    }
+
+    public function test_otp_service_disabled_exposes_the_same_details(): void
+    {
+        $client = $this->client([self::error(503, 'OTP_SERVICE_DISABLED', [
+            'feature' => 'otp', 'blocked_by' => 'otp', 'message' => null, 'until' => null,
+        ])], maxRetries: 0);
+
+        try {
+            $client->otp->send('0812345678');
+            self::fail('FeatureDisabledException expected.');
+        } catch (ServiceUnavailableException $e) {
+            // Code written for 1.1 (catch ServiceUnavailableException) keeps working.
+            self::assertInstanceOf(FeatureDisabledException::class, $e);
+            self::assertSame('OTP_SERVICE_DISABLED', $e->getErrorCode());
+            self::assertSame('otp', $e->getFeature());
+            self::assertSame('otp', $e->getBlockedBy());
+            self::assertNull($e->getAdminMessage());
+            self::assertNull($e->getUntil());
+            self::assertNull($e->getRetryAfter());
+        }
+    }
+
+    /**
+     * @return iterable<string, array{array<mixed>, string|null}>
+     */
+    public static function malformedFeatureDetails(): iterable
+    {
+        yield 'missing' => [[], null];
+        yield 'wrong types' => [['feature' => 42, 'blocked_by' => ['api'], 'message' => false, 'until' => 1_700_000_000], null];
+        yield 'invalid until' => [['feature' => 'api', 'blocked_by' => 'api', 'message' => '', 'until' => 'pas une date'], 'api'];
+    }
+
+    /**
+     * @param array<mixed> $details
+     */
+    #[DataProvider('malformedFeatureDetails')]
+    public function test_feature_disabled_tolerates_missing_or_malformed_details(array $details, ?string $feature): void
+    {
+        $client = $this->client([self::error(503, 'FEATURE_DISABLED', $details, ['Retry-After' => 'soon'])], maxRetries: 0);
+
+        try {
+            $client->balance->get();
+            self::fail('FeatureDisabledException expected.');
+        } catch (FeatureDisabledException $e) {
+            self::assertSame($feature, $e->getFeature());
+            self::assertSame($feature, $e->getBlockedBy());
+            self::assertNull($e->getAdminMessage());
+            self::assertNull($e->getUntil());
+            self::assertNull($e->getRetryAfter());
+            self::assertSame('Message en français.', $e->getMessage());
+        }
+    }
+
+    public function test_feature_disabled_without_a_details_object_is_still_typed(): void
+    {
+        $client = $this->client([new Response(503, ['Content-Type' => 'application/json'], '{"error":{"code":"FEATURE_DISABLED","message":"Maintenance."}}')], maxRetries: 0);
+
+        try {
+            $client->balance->get();
+            self::fail('FeatureDisabledException expected.');
+        } catch (FeatureDisabledException $e) {
+            self::assertSame([], $e->getDetails());
+            self::assertNull($e->getFeature());
+            self::assertNull($e->getBlockedBy());
+            self::assertNull($e->getUntil());
         }
     }
 

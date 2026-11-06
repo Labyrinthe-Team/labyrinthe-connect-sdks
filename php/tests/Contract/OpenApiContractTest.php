@@ -14,6 +14,7 @@ use Labyrinthe\Connect\Enum\OtpWebhookStatus;
 use Labyrinthe\Connect\Enum\RejectionReason;
 use Labyrinthe\Connect\Enum\SenderIdStatus;
 use Labyrinthe\Connect\Enum\WebhookEvent;
+use Labyrinthe\Connect\Exception\FeatureDisabledException;
 use Labyrinthe\Connect\Internal\ErrorFactory;
 use Labyrinthe\Connect\Internal\Transport;
 use Labyrinthe\Connect\Model\Message;
@@ -92,7 +93,7 @@ final class OpenApiContractTest extends TestCase
 
     public function test_the_spec_version_is_supported(): void
     {
-        self::assertSame('1.2.0', self::at('info.version'));
+        self::assertSame('1.3.0', self::at('info.version'));
     }
 
     public function test_every_operation_of_the_spec_is_implemented(): void
@@ -153,6 +154,19 @@ final class OpenApiContractTest extends TestCase
         foreach (self::strings('components.schemas.ErrorCode.examples') as $code) {
             self::assertTrue(isset($mapped[$code]) || \in_array($code, $generic, true), \sprintf('Error code %s is not handled.', $code));
         }
+    }
+
+    public function test_feature_disabled_codes_and_details_are_handled(): void
+    {
+        $mapped = (new \ReflectionClassConstant(ErrorFactory::class, 'BY_CODE'))->getValue();
+        self::assertIsArray($mapped);
+
+        $error = 'components.schemas.FeatureDisabledError.allOf.1.properties.error.properties';
+        foreach (self::strings($error.'.code.enum') as $code) {
+            self::assertSame(FeatureDisabledException::class, $mapped[$code] ?? null, \sprintf('%s must map to FeatureDisabledException.', $code));
+        }
+        self::assertSame(['feature', 'blocked_by', 'message', 'until'], self::strings($error.'.details.required'));
+        self::assertSame('#/components/schemas/FeatureDisabledError', self::at('components.responses.ServiceUnavailable.content.application/json.schema.$ref'));
     }
 
     public function test_limits_match_the_spec(): void

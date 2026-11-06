@@ -6,7 +6,9 @@ namespace Labyrinthe\Connect\Tests\Unit;
 
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Psr7\Request;
+use Labyrinthe\Connect\Client;
 use Labyrinthe\Connect\Exception\ConnectionException;
+use Labyrinthe\Connect\Exception\FeatureDisabledException;
 use Labyrinthe\Connect\Exception\IdempotencyKeyReusedException;
 use Labyrinthe\Connect\Exception\OtpRateLimitedException;
 use Labyrinthe\Connect\Exception\OtpResendTooSoonException;
@@ -14,6 +16,7 @@ use Labyrinthe\Connect\Exception\RateLimitException;
 use Labyrinthe\Connect\Exception\ServiceUnavailableException;
 use Labyrinthe\Connect\Exception\ValidationException;
 use Labyrinthe\Connect\Tests\Support\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 final class RetryTest extends TestCase
 {
@@ -25,6 +28,14 @@ final class RetryTest extends TestCase
     private static function otpSent(): \GuzzleHttp\Psr7\Response
     {
         return self::json(201, ['data' => self::otpSendData()]);
+    }
+
+    /**
+     * @param array<string, string> $headers
+     */
+    private static function featureDisabled(string $code, array $headers = []): \GuzzleHttp\Psr7\Response
+    {
+        return self::error(503, $code, ['feature' => 'api', 'blocked_by' => 'api', 'message' => null, 'until' => null], $headers);
     }
 
     public function test_get_is_retried_on_5xx_then_succeeds(): void
@@ -209,18 +220,18 @@ final class RetryTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{\Closure(\Labyrinthe\Connect\Client): mixed, \GuzzleHttp\Psr7\Response}>
+     * @return iterable<string, array{\Closure(Client): mixed, \GuzzleHttp\Psr7\Response}>
      */
     public static function idempotentCalls(): iterable
     {
-        yield 'sms send' => [static fn (\Labyrinthe\Connect\Client $c): mixed => $c->sms->send('0812345678', 'Hello'), self::json(202, ['data' => [self::message()]])];
-        yield 'otp send' => [static fn (\Labyrinthe\Connect\Client $c): mixed => $c->otp->send('0812345678'), self::json(201, ['data' => self::otpSendData()])];
+        yield 'sms send' => [static fn (Client $c): mixed => $c->sms->send('0812345678', 'Hello'), self::json(202, ['data' => [self::message()]])];
+        yield 'otp send' => [static fn (Client $c): mixed => $c->otp->send('0812345678'), self::json(201, ['data' => self::otpSendData()])];
     }
 
     /**
-     * @param \Closure(\Labyrinthe\Connect\Client): mixed $call
+     * @param \Closure(Client): mixed $call
      */
-    #[\PHPUnit\Framework\Attributes\DataProvider('idempotentCalls')]
+    #[DataProvider('idempotentCalls')]
     public function test_idempotency_request_in_progress_is_retried_after_retry_after_with_the_same_key(\Closure $call, \GuzzleHttp\Psr7\Response $success): void
     {
         $client = $this->client([
@@ -236,9 +247,9 @@ final class RetryTest extends TestCase
     }
 
     /**
-     * @param \Closure(\Labyrinthe\Connect\Client): mixed $call
+     * @param \Closure(Client): mixed $call
      */
-    #[\PHPUnit\Framework\Attributes\DataProvider('idempotentCalls')]
+    #[DataProvider('idempotentCalls')]
     public function test_idempotency_key_unresolved_is_never_retried(\Closure $call, \GuzzleHttp\Psr7\Response $success): void
     {
         $client = $this->client([
@@ -352,6 +363,104 @@ final class RetryTest extends TestCase
 
         self::assertTrue($client->otp->verify('otp-1', '123456')->isValid());
         self::assertCount(2, $this->history);
+    }
+
+    /**
+     * @return iterable<string, array{\Closure(Client): mixed, \GuzzleHttp\Psr7\Response}>
+     */
+    public static function featureDisabledCalls(): iterable
+    {
+        yield 'GET /balance' => [static fn (Client $c): mixed => $c->balance->get(), self::json(200, ['data' => ['balance' => 1, 'held' => 0]])];
+        yield 'POST /sms' => [static fn (Client $c): mixed => $c->sms->send('0812345678', 'Hello'), self::json(202, ['data' => [self::message()]])];
+        yield 'POST /otp/send' => [static fn (Client $c): mixed => $c->otp->send('0812345678'), self::json(201, ['data' => self::otpSendData()])];
+        yield 'POST /otp/verify' => [static fn (Client $c): mixed => $c->otp->verify('otp-1', '123456'), self::json(200, ['data' => ['verified' => true, 'reason' => null]])];
+    }
+
+    /**
+     * @return iterable<string, array{string, \Closure(Client): mixed, \GuzzleHttp\Psr7\Response}>
+     */
+    public static function featureDisabledCodesAndCalls(): iterable
+    {
+        foreach (['FEATURE_DISABLED', 'OTP_SERVICE_DISABLED'] as $code) {
+            foreach (self::featureDisabledCalls() as $name => [$call, $success]) {
+                yield $code.' '.$name => [$code, $call, $success];
+            }
+        }
+    }
+
+    /**
+     * @param \Closure(Client): mixed $call
+     */
+    #[DataProvider('featureDisabledCodesAndCalls')]
+    public function test_feature_disabled_without_retry_after_is_never_retried(string $code, \Closure $call, \GuzzleHttp\Psr7\Response $success): void
+    {
+        $client = $this->client([self::featureDisabled($code), $success], maxRetries: 3);
+
+        try {
+            $call($client);
+            self::fail('FeatureDisabledException expected.');
+        } catch (FeatureDisabledException $e) {
+            self::assertSame($code, $e->getErrorCode());
+            self::assertCount(1, $this->history, 'Never retried without Retry-After.');
+            self::assertSame([], $this->sleeper->sleeps);
+        }
+    }
+
+    /**
+     * @param \Closure(Client): mixed $call
+     */
+    #[DataProvider('featureDisabledCalls')]
+    public function test_feature_disabled_is_retried_after_retry_after_within_the_maximum(\Closure $call, \GuzzleHttp\Psr7\Response $success): void
+    {
+        $client = $this->client([self::featureDisabled('FEATURE_DISABLED', ['Retry-After' => '7']), $success], maxRetryWait: 10.0);
+
+        $call($client);
+
+        self::assertCount(2, $this->history);
+        self::assertSame([7.0], $this->sleeper->sleeps, 'Waits exactly Retry-After, no backoff.');
+        self::assertSame($this->request(0)->getHeaderLine('Idempotency-Key'), $this->request(1)->getHeaderLine('Idempotency-Key'));
+    }
+
+    /**
+     * @param \Closure(Client): mixed $call
+     */
+    #[DataProvider('featureDisabledCalls')]
+    public function test_feature_disabled_is_not_retried_when_retry_after_exceeds_the_maximum(\Closure $call, \GuzzleHttp\Psr7\Response $success): void
+    {
+        $client = $this->client([self::featureDisabled('OTP_SERVICE_DISABLED', ['Retry-After' => '3600']), $success], maxRetryWait: 10.0);
+
+        try {
+            $call($client);
+            self::fail('FeatureDisabledException expected.');
+        } catch (FeatureDisabledException $e) {
+            self::assertSame(3600, $e->getRetryAfter());
+            self::assertCount(1, $this->history);
+            self::assertSame([], $this->sleeper->sleeps);
+        }
+    }
+
+    public function test_feature_disabled_stops_after_max_retries(): void
+    {
+        $client = $this->client(array_fill(0, 4, self::featureDisabled('FEATURE_DISABLED', ['Retry-After' => '1'])), maxRetries: 2);
+
+        try {
+            $client->balance->get();
+            self::fail('FeatureDisabledException expected.');
+        } catch (FeatureDisabledException) {
+            self::assertCount(3, $this->history);
+            self::assertSame([1.0, 1.0], $this->sleeper->sleeps);
+        }
+    }
+
+    public function test_other_5xx_keep_the_exponential_backoff(): void
+    {
+        $client = $this->client([self::error(503, 'HTTP_ERROR'), self::json(200, ['data' => ['balance' => 1, 'held' => 0]])]);
+
+        $client->balance->get();
+
+        self::assertCount(2, $this->history);
+        self::assertCount(1, $this->sleeper->sleeps);
+        self::assertLessThanOrEqual(0.5, $this->sleeper->sleeps[0]);
     }
 
     public function test_network_errors_become_connection_exceptions_without_query_strings(): void
