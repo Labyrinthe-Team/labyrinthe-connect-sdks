@@ -8,6 +8,7 @@ use Labyrinthe\Connect\Client;
 use Labyrinthe\Connect\Enum\Encoding;
 use Labyrinthe\Connect\Enum\OtpCodeType;
 use Labyrinthe\Connect\Enum\OtpFailureReason;
+use Labyrinthe\Connect\Exception\FeatureDisabledException;
 use Labyrinthe\Connect\Exception\IdempotencyKeyReusedException;
 use Labyrinthe\Connect\Exception\IdempotencyKeyUnresolvedException;
 use Labyrinthe\Connect\Exception\InsufficientCreditsException;
@@ -174,6 +175,46 @@ final class FakeTest extends TestCase
 
         $this->expectException(SenderIdNotApprovedException::class);
         Labyrinthe::send('0812345678', 'x', sender: 'OTHER');
+    }
+
+    public function test_a_feature_disabled_by_the_platform_can_be_simulated(): void
+    {
+        $until = new \DateTimeImmutable('+1 hour');
+        $fake = Labyrinthe::fake()->failNextRequestWithFeatureDisabled('api.sms_send', "Maintenance de l'envoi de SMS.", $until, 'api');
+
+        try {
+            Labyrinthe::send('0812345678', 'Hello');
+            self::fail('FeatureDisabledException expected.');
+        } catch (FeatureDisabledException $e) {
+            self::assertSame(503, $e->getStatusCode());
+            self::assertSame('FEATURE_DISABLED', $e->getErrorCode());
+            self::assertSame('api.sms_send', $e->getFeature());
+            self::assertSame('api', $e->getBlockedBy());
+            self::assertSame("Maintenance de l'envoi de SMS.", $e->getAdminMessage());
+            self::assertSame("Maintenance de l'envoi de SMS.", $e->getMessage());
+            self::assertSame($until->getTimestamp(), $e->getUntil()?->getTimestamp());
+            $retryAfter = $e->getRetryAfter();
+            self::assertNotNull($retryAfter);
+            self::assertGreaterThanOrEqual(3590, $retryAfter);
+        }
+        $fake->assertNothingSent();
+
+        $fake->failNextRequestWithFeatureDisabled('otp');
+        try {
+            Labyrinthe::otp()->send('0812345678');
+            self::fail('FeatureDisabledException expected.');
+        } catch (FeatureDisabledException $e) {
+            self::assertSame('OTP_SERVICE_DISABLED', $e->getErrorCode());
+            self::assertSame('otp', $e->getBlockedBy());
+            self::assertNull($e->getAdminMessage());
+            self::assertNull($e->getUntil());
+            self::assertNull($e->getRetryAfter());
+        }
+        $fake->assertNoOtpSent();
+
+        // Only the next call fails.
+        Labyrinthe::send('0812345678', 'Hello');
+        $fake->assertSmsSentCount(1);
     }
 
     public function test_balance_and_estimate(): void
