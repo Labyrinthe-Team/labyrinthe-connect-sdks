@@ -19,8 +19,8 @@ return [
     // API root. "http://localhost:8000" is completed with /api/public/v1.
     'base_url' => env('LABYRINTHE_BASE_URL', 'https://api.labyrinthe-rdc.com/api/public/v1'),
 
-    // HTTP timeouts (seconds) and automatic retries, only when safe:
-    // never a second SMS, never a second OTP.
+    // HTTP timeouts (seconds) and automatic retries, only when safe (SMS and
+    // OTP sends carry an Idempotency-Key): never a second SMS, never a second OTP.
     'timeout' => (float) env('LABYRINTHE_TIMEOUT', 30),
     'connect_timeout' => (float) env('LABYRINTHE_CONNECT_TIMEOUT', 10),
     'max_retries' => (int) env('LABYRINTHE_MAX_RETRIES', 2),
@@ -36,6 +36,13 @@ return [
     'otp' => [
         'template' => env('LABYRINTHE_OTP_TEMPLATE'),
         'locale' => env('LABYRINTHE_OTP_LOCALE'),
+
+        // Web OTP API: host name of the site that reads the code (e.g. "app.example.com"),
+        // adds the line "@app.example.com #123456" for autofill (Chrome, Android). Null: none.
+        'web_otp_domain' => env('LABYRINTHE_OTP_WEB_OTP_DOMAIN'),
+
+        // Replace accents by ASCII in the OTP message (GSM-7, cheaper).
+        'strip_accents' => (bool) env('LABYRINTHE_OTP_STRIP_ACCENTS', false),
     ],
 
     /*
