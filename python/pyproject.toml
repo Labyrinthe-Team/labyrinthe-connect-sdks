@@ -41,10 +41,10 @@ flask = ["Flask>=2.3"]
 
 [project.urls]
 Homepage = "https://labyrinthe-rdc.com"
-Documentation = "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/tree/main/python#readme"
-Repository = "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks"
-Issues = "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/issues"
-Changelog = "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/blob/main/python/CHANGELOG.md"
+Documentation = "https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/tree/main/python#readme"
+Repository = "https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks"
+Issues = "https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/issues"
+Changelog = "https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/blob/main/python/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/labyrinthe_connect"]
