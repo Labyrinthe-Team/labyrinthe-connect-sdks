@@ -6,3 +6,10 @@ rules:
   no-unused-components: warn
   operation-4xx-response: error
   security-defined: error
+  # Les sous-schémas d'erreur (`allOf` : Error + précision de `code` / `details`)
+  # ne redéclarent pas `message` : sans cette option, Redocly ajoute
+  # `unevaluatedProperties: false` à chaque branche et rejette tout exemple
+  # d'erreur pourtant conforme.
+  no-invalid-media-type-examples:
+    severity: warn
+    allowAdditionalProperties: true
