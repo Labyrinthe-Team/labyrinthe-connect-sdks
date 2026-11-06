@@ -34,6 +34,9 @@ final class FakeApi implements ClientInterface
 
     public int $otpMaxAttempts = 3;
 
+    /** Returned as resend_after_seconds (informative: the fake does not enforce OTP_RESEND_TOO_SOON). */
+    public int $otpResendAfterSeconds = 60;
+
     /** @var list<array{status: int, code: string, message: string, details: array<mixed>}> */
     public array $failures = [];
 
@@ -45,6 +48,9 @@ final class FakeApi implements ClientInterface
 
     /** @var array<string, array{used: bool, attempts: int}> */
     private array $otpState = [];
+
+    /** @var array<string, array{fingerprint: string, data: array<string, mixed>}> */
+    private array $otpIdempotency = [];
 
     public function __construct(private readonly string $defaultCountryCode = PhoneNumber::DEFAULT_COUNTRY_CODE)
     {
@@ -70,7 +76,7 @@ final class FakeApi implements ClientInterface
             $method === 'GET' && str_starts_with($path, '/sms/') => $this->getSms(rawurldecode(substr($path, 5))),
             $method === 'GET' && $path === '/balance' => self::json(200, ['data' => ['balance' => $this->balance, 'held' => 0]]),
             $method === 'GET' && $path === '/sender-ids' => $this->listSenderIds(),
-            $method === 'POST' && $path === '/otp/send' => $this->sendOtp($input),
+            $method === 'POST' && $path === '/otp/send' => $this->sendOtp($input, $request->getHeaderLine('Idempotency-Key')),
             $method === 'POST' && $path === '/otp/verify' => $this->verifyOtp($input),
             default => self::error(404, 'NOT_FOUND', 'Route introuvable.'),
         };
@@ -85,6 +91,7 @@ final class FakeApi implements ClientInterface
         $body = \is_string($input['body'] ?? null) ? $input['body'] : '';
         $sender = \is_string($input['sender'] ?? null) ? $input['sender'] : null;
         $reference = \is_string($input['reference'] ?? null) ? $input['reference'] : null;
+        $stripAccents = ($input['strip_accents'] ?? false) === true;
 
         $normalized = [];
         $rejected = [];
@@ -103,7 +110,8 @@ final class FakeApi implements ClientInterface
             return self::error(422, 'SENDER_ID_NOT_APPROVED', "Ce Sender ID n'est pas approuvé.");
         }
 
-        $fingerprint = hash('sha256', serialize([$recipients, $body, $sender, $reference]));
+        // Like the API (1.2.0): computed after normalisation and deduplication of the recipients.
+        $fingerprint = hash('sha256', serialize([array_values($normalized), $body, $sender, $reference, $stripAccents]));
         if ($idempotencyKey !== '' && isset($this->idempotency[$idempotencyKey])) {
             $previous = $this->idempotency[$idempotencyKey];
             if ($previous['fingerprint'] !== $fingerprint) {
@@ -115,8 +123,8 @@ final class FakeApi implements ClientInterface
             return self::json(202, ['data' => $replayed], ['Idempotent-Replayed' => 'true']);
         }
 
-        [$encoding, $segments] = self::segments($body);
-        $now = gmdate('Y-m-d\TH:i:s.000000\Z');
+        [$encoding, $segments] = self::segments($stripAccents ? self::stripAccents($body) : $body);
+        $now = gmdate('Y-m-d\TH:i:sP');
         $created = [];
         foreach ($normalized as $number) {
             $id = self::uuid();
@@ -132,7 +140,7 @@ final class FakeApi implements ClientInterface
         if ($idempotencyKey !== '') {
             $this->idempotency[$idempotencyKey] = ['fingerprint' => $fingerprint, 'ids' => $created];
         }
-        $this->sms[] = new SentSms(array_values($normalized), $body, $sender, $reference, $idempotencyKey !== '' ? $idempotencyKey : null, $created, $this->defaultCountryCode);
+        $this->sms[] = new SentSms(array_values($normalized), $body, $sender, $reference, $idempotencyKey !== '' ? $idempotencyKey : null, $created, $this->defaultCountryCode, $stripAccents);
 
         return self::json(202, ['data' => array_map(fn (string $id): array => $this->messages[$id], $created)]);
     }
@@ -144,7 +152,18 @@ final class FakeApi implements ClientInterface
     {
         $body = \is_string($input['body'] ?? null) ? $input['body'] : '';
         $recipients = \is_array($input['recipients'] ?? null) ? $input['recipients'] : [];
-        $valid = \count(array_filter($recipients, fn (mixed $r): bool => \is_string($r) && PhoneNumber::normalize($r, $this->defaultCountryCode) !== null));
+        if (($input['strip_accents'] ?? false) === true) {
+            $body = self::stripAccents($body);
+        }
+        // Counted like a send: normalised, duplicates merged, invalid numbers ignored.
+        $numbers = [];
+        foreach ($recipients as $recipient) {
+            $number = \is_string($recipient) ? PhoneNumber::normalize($recipient, $this->defaultCountryCode) : null;
+            if ($number !== null) {
+                $numbers[$number] = true;
+            }
+        }
+        $valid = \count($numbers);
         [$encoding, $segments] = self::segments($body);
 
         return self::json(200, ['data' => [
@@ -194,7 +213,7 @@ final class FakeApi implements ClientInterface
     {
         $data = array_map(static fn (string $value): array => [
             'id' => self::uuid(), 'value' => $value, 'status' => 'approved', 'purpose' => null,
-            'rejection_reason' => null, 'is_default' => false, 'created_at' => gmdate('Y-m-d\TH:i:s\Z'),
+            'rejection_reason' => null, 'is_default' => false, 'created_at' => gmdate('Y-m-d\TH:i:sP'),
         ], $this->senderIds ?? []);
 
         return self::json(200, ['data' => $data]);
@@ -203,11 +222,27 @@ final class FakeApi implements ClientInterface
     /**
      * @param array<mixed> $input
      */
-    private function sendOtp(array $input): ResponseInterface
+    private function sendOtp(array $input, string $idempotencyKey): ResponseInterface
     {
         $phone = \is_string($input['phone'] ?? null) ? PhoneNumber::normalize($input['phone'], $this->defaultCountryCode) : null;
         if ($phone === null) {
             return self::error(422, 'INVALID_PHONE', 'Numéro de téléphone invalide.');
+        }
+
+        $template = \is_string($input['template'] ?? null) ? $input['template'] : null;
+        $locale = \is_string($input['locale'] ?? null) ? $input['locale'] : null;
+        $webOtpDomain = \is_string($input['web_otp_domain'] ?? null) ? strtolower($input['web_otp_domain']) : null;
+        $stripAccents = ($input['strip_accents'] ?? false) === true;
+
+        // Like the API (1.2.0): a replay returns the same response, without a new SMS.
+        $fingerprint = hash('sha256', serialize([$phone, $template, $locale, $webOtpDomain, $stripAccents]));
+        if ($idempotencyKey !== '' && isset($this->otpIdempotency[$idempotencyKey])) {
+            $previous = $this->otpIdempotency[$idempotencyKey];
+            if ($previous['fingerprint'] !== $fingerprint) {
+                return self::error(409, 'IDEMPOTENCY_KEY_REUSED', "Cette clé d'idempotence a déjà servi pour une requête différente.");
+            }
+
+            return self::json(201, ['data' => $previous['data']], ['Idempotent-Replayed' => 'true']);
         }
 
         // A new code invalidates the previous ones for this number.
@@ -219,21 +254,23 @@ final class FakeApi implements ClientInterface
 
         $otpId = self::uuid();
         $code = $this->otpCode ?? str_pad((string) random_int(0, 999999), 6, '0', \STR_PAD_LEFT);
-        $this->otps[] = new SentOtp(
-            $otpId,
-            $phone,
-            $code,
-            \is_string($input['template'] ?? null) ? $input['template'] : null,
-            \is_string($input['locale'] ?? null) ? $input['locale'] : null,
-        );
+        $this->otps[] = new SentOtp($otpId, $phone, $code, $template, $locale, $webOtpDomain, $stripAccents, $idempotencyKey !== '' ? $idempotencyKey : null);
         $this->otpState[$otpId] = ['used' => false, 'attempts' => 0];
 
-        return self::json(201, ['data' => [
+        $data = [
             'otp_id' => $otpId,
-            'expires_at' => gmdate('Y-m-d\TH:i:s\Z', time() + 600),
+            'expires_at' => gmdate('Y-m-d\TH:i:sP', time() + 600),
             'max_attempts' => $this->otpMaxAttempts,
+            'code_length' => \strlen($code),
+            'code_type' => ctype_digit($code) ? 'numeric' : 'alphanumeric',
+            'resend_after_seconds' => $this->otpResendAfterSeconds,
             'test_code' => $code,
-        ]]);
+        ];
+        if ($idempotencyKey !== '') {
+            $this->otpIdempotency[$idempotencyKey] = ['fingerprint' => $fingerprint, 'data' => $data];
+        }
+
+        return self::json(201, ['data' => $data]);
     }
 
     /**
@@ -256,16 +293,21 @@ final class FakeApi implements ClientInterface
 
         $state = &$this->otpState[$otpId];
         $result = match (true) {
-            $state['used'] => ['verified' => false, 'reason' => 'already_used'],
-            $state['attempts'] >= $this->otpMaxAttempts => ['verified' => false, 'reason' => 'max_attempts_reached'],
-            hash_equals(strtolower($otp->code), $code) => ['verified' => true, 'reason' => null],
-            default => ['verified' => false, 'reason' => 'invalid_code'],
+            $state['used'] => ['verified' => false, 'reason' => 'already_used', 'attempts_remaining' => null],
+            $state['attempts'] >= $this->otpMaxAttempts => ['verified' => false, 'reason' => 'max_attempts_reached', 'attempts_remaining' => 0],
+            hash_equals(strtolower($otp->code), $code) => ['verified' => true, 'reason' => null, 'attempts_remaining' => null],
+            default => ['verified' => false, 'reason' => 'invalid_code', 'attempts_remaining' => null],
         };
 
         if ($result['verified']) {
             $state['used'] = true;
         } elseif ($result['reason'] === 'invalid_code') {
             ++$state['attempts'];
+            // Like the API: the last wrong attempt blocks the code.
+            $result['attempts_remaining'] = max(0, $this->otpMaxAttempts - $state['attempts']);
+            if ($result['attempts_remaining'] === 0) {
+                $result['reason'] = 'max_attempts_reached';
+            }
         }
 
         return self::json(200, ['data' => $result]);
@@ -284,6 +326,22 @@ final class FakeApi implements ClientInterface
         }
 
         return ['ucs2', $length <= 70 ? 1 : (int) ceil($length / 67)];
+    }
+
+    /**
+     * Rough equivalent of the API's strip_accents: accents removed, typographic
+     * quotes and dashes replaced, any other non-ASCII character dropped.
+     */
+    private static function stripAccents(string $body): string
+    {
+        $body = strtr($body, ['’' => "'", '‘' => "'", '“' => '"', '”' => '"', '«' => '"', '»' => '"', '–' => '-', '—' => '-', '…' => '...', "\u{00A0}" => ' ']);
+        if (class_exists(\Normalizer::class)) {
+            $decomposed = \Normalizer::normalize($body, \Normalizer::FORM_D);
+            $body = \is_string($decomposed) ? $decomposed : $body;
+        }
+        $body = (string) preg_replace('/\p{Mn}+/u', '', $body);
+
+        return (string) preg_replace('/[^\x00-\x7F]/u', '', $body);
     }
 
     private static function uuid(): string

@@ -85,6 +85,22 @@ class LabyrintheFake extends LabyrintheManager
         return $this;
     }
 
+    /** Attempts allowed per code (max_attempts, attempts_remaining). Default 3. */
+    public function withOtpMaxAttempts(int $maxAttempts): static
+    {
+        $this->api->otpMaxAttempts = max(1, $maxAttempts);
+
+        return $this;
+    }
+
+    /** Value returned as resendAfterSeconds (the fake never refuses a resend). Default 60. */
+    public function withOtpResendAfter(int $seconds): static
+    {
+        $this->api->otpResendAfterSeconds = max(0, $seconds);
+
+        return $this;
+    }
+
     /**
      * The next API call fails with this error, e.g.
      * failNextRequest('INSUFFICIENT_CREDITS', 409, ['available' => 0, 'required' => 1]).

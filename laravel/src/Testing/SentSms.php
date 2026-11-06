@@ -23,6 +23,8 @@ final class SentSms
         public readonly ?string $idempotencyKey,
         public readonly array $messageIds,
         private readonly string $defaultCountryCode = PhoneNumber::DEFAULT_COUNTRY_CODE,
+        /** True when sent with strip_accents (`body` is the text as given, before transliteration). */
+        public readonly bool $stripAccents = false,
     ) {
     }
 
