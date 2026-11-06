@@ -60,6 +60,7 @@ public sealed class SmsResource
             request.Sender,
             request.Reference,
             request.IdempotencyKey,
+            request.StripAccents,
             cancellationToken).ConfigureAwait(false);
         return batch.Messages.Count > 0 ? batch.Messages[0] : throw new UnexpectedResponseException("Unexpected API response: no message was returned.");
     }
@@ -98,7 +99,7 @@ public sealed class SmsResource
         var invalid = new List<int>();
         for (var i = 0; i < recipients.Count; i++)
         {
-            if (PhoneNumber.Normalize(recipients[i], defaultCountryCode) is { } number)
+            if (PhoneNumber.ToE164(recipients[i], defaultCountryCode) is { } number)
             {
                 normalized.Add(number);
             }
@@ -121,6 +122,7 @@ public sealed class SmsResource
             request.Sender,
             request.Reference,
             request.IdempotencyKey,
+            request.StripAccents,
             cancellationToken);
     }
 
@@ -142,10 +144,11 @@ public sealed class SmsResource
         var body = Json.Write(new[]
         {
             new KeyValuePair<string, object?>("body", request.Body),
-            new KeyValuePair<string, object?>("recipients", recipients.Where(r => r is not null).Select(r => PhoneNumber.Normalize(r, defaultCountryCode) ?? r).ToArray()),
+            new KeyValuePair<string, object?>("recipients", recipients.Where(r => r is not null).Select(r => PhoneNumber.ToE164(r, defaultCountryCode) ?? r).ToArray()),
+            new KeyValuePair<string, object?>("strip_accents", request.StripAccents ? true : null),
         });
         var response = await transport.SendAsync(HttpMethod.Post, "/sms/estimate", RetryMode.Safe, null, body, null, cancellationToken).ConfigureAwait(false);
-        return Mapping.ToEstimate(Json.Api.Obj(response.Body, "data"));
+        return Mapping.ToEstimate(Json.Api.Obj(response.Body, "data")) with { RequestId = response.RequestId };
     }
 
     /// <summary>One message of the account, by id.</summary>
@@ -212,6 +215,7 @@ public sealed class SmsResource
         string? sender,
         string? reference,
         string? idempotencyKey,
+        bool stripAccents,
         CancellationToken cancellationToken)
     {
         AssertBody(body);
@@ -239,6 +243,7 @@ public sealed class SmsResource
             new KeyValuePair<string, object?>("body", body),
             new KeyValuePair<string, object?>("sender", sender),
             new KeyValuePair<string, object?>("reference", string.IsNullOrEmpty(reference) ? null : reference),
+            new KeyValuePair<string, object?>("strip_accents", stripAccents ? true : null),
         });
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Idempotency-Key"] = key };
         var response = await transport.SendAsync(HttpMethod.Post, "/sms", RetryMode.Safe, null, payload, headers, cancellationToken).ConfigureAwait(false);
@@ -246,7 +251,8 @@ public sealed class SmsResource
         {
             Messages = Mapping.ToMessages(response.Body),
             IdempotencyKey = key,
-            Replayed = response.Headers.TryGetValue("Idempotent-Replayed", out var replayed) && replayed == "true",
+            Replayed = response.Replayed,
+            RequestId = response.RequestId,
         };
     }
 
@@ -277,7 +283,7 @@ public sealed class SmsResource
         }
 
         Add("status", options.Status?.ToApiString());
-        Add("recipient", options.Recipient is null ? null : PhoneNumber.Normalize(options.Recipient, defaultCountryCode) ?? options.Recipient);
+        Add("recipient", options.Recipient is null ? null : PhoneNumber.ToE164(options.Recipient, defaultCountryCode) ?? options.Recipient);
         Add("reference", options.Reference);
         Add("from", options.From?.Value);
         Add("to", options.To?.Value);
@@ -300,6 +306,7 @@ public sealed class SmsResource
             Json.Api.NullableInt(meta, "last_page") ?? page,
             Json.Api.NullableInt(meta, "per_page") ?? data.Count,
             Json.Api.NullableInt(meta, "total") ?? data.Count,
-            (next, token) => FetchPageAsync(query, next, token));
+            (next, token) => FetchPageAsync(query, next, token),
+            response.RequestId);
     }
 }

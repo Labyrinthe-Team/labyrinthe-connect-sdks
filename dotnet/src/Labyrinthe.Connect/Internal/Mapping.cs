@@ -18,7 +18,7 @@ internal static class Mapping
             Reference = Api.NullableString(data, "reference"),
             Recipient = Api.String(data, "recipient"),
             Sender = Api.NullableString(data, "sender"),
-            // Nullable dans le backend malgré la spec (BACKEND-TODO n° 9).
+            // Jamais null depuis la spec 1.2.0 ; null toléré (anciens backends).
             Encoding = encoding is null ? null : ApiValues.ParseEncoding(encoding),
             Status = ApiValues.ParseMessageStatus(Api.String(data, "status")),
             Segments = Api.NullableInt(data, "segments") ?? 0,
@@ -60,18 +60,31 @@ internal static class Mapping
         CreatedAt = Api.NullableDate(data, "created_at"),
     };
 
-    public static OtpSendResult ToOtpSendResult(JsonElement data) => new()
+    public static OtpSendResult ToOtpSendResult(JsonElement data)
     {
-        OtpId = Api.String(data, "otp_id"),
-        ExpiresAt = Api.Date(data, "expires_at"),
-        MaxAttempts = Api.Int(data, "max_attempts"),
-        TestCode = Api.NullableString(data, "test_code"),
-    };
+        // code_length, code_type et resend_after_seconds : obligatoires depuis la spec 1.2.0, tolérés absents.
+        var codeType = Api.NullableString(data, "code_type");
+        return new OtpSendResult
+        {
+            OtpId = Api.String(data, "otp_id"),
+            ExpiresAt = Api.Date(data, "expires_at"),
+            MaxAttempts = Api.Int(data, "max_attempts"),
+            CodeLength = Api.NullableInt(data, "code_length") ?? 0,
+            CodeType = ApiValues.ParseOtpCodeType(codeType),
+            ResendAfterSeconds = Api.NullableInt(data, "resend_after_seconds") ?? 0,
+            TestCode = Api.NullableString(data, "test_code"),
+        };
+    }
 
     public static OtpVerifyResult ToOtpVerifyResult(JsonElement data) =>
         Api.Bool(data, "verified")
-            ? new OtpVerifyResult { Verified = true, Reason = null }
-            : new OtpVerifyResult { Verified = false, Reason = ApiValues.ParseOtpFailureReason(Api.NullableString(data, "reason")) };
+            ? new OtpVerifyResult { Verified = true, Reason = null, AttemptsRemaining = Api.NullableInt(data, "attempts_remaining") }
+            : new OtpVerifyResult
+            {
+                Verified = false,
+                Reason = ApiValues.ParseOtpFailureReason(Api.NullableString(data, "reason")),
+                AttemptsRemaining = Api.NullableInt(data, "attempts_remaining"),
+            };
 
     public static IReadOnlyList<Message> ToMessages(JsonElement body)
     {
@@ -97,7 +110,7 @@ internal static class Mapping
         {
             code = error.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() : null;
             message = error.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() : null;
-            // L'API renvoie parfois [] au lieu de {} (BACKEND-TODO n° 4) : les deux donnent un dictionnaire vide.
+            // Toujours un objet depuis la spec 1.2.0 ; [] (anciens backends PHP) toléré : dictionnaire vide.
             details = error.TryGetProperty("details", out var d) ? Json.ToDictionary(d) : null;
         }
 
@@ -111,6 +124,7 @@ internal static class Mapping
     {
         ["UNAUTHENTICATED"] = typeof(AuthenticationException),
         ["FORBIDDEN"] = typeof(PermissionException),
+        ["ACCOUNT_SUSPENDED"] = typeof(AccountSuspendedException),
         ["OTP_DISABLED_FOR_ACCOUNT"] = typeof(PermissionException),
         ["NOT_FOUND"] = typeof(NotFoundException),
         ["VALIDATION_ERROR"] = typeof(ValidationException),
@@ -119,6 +133,8 @@ internal static class Mapping
         ["INVALID_PHONE"] = typeof(InvalidPhoneException),
         ["INSUFFICIENT_CREDITS"] = typeof(InsufficientCreditsException),
         ["IDEMPOTENCY_KEY_REUSED"] = typeof(IdempotencyKeyReusedException),
+        ["IDEMPOTENCY_KEY_UNRESOLVED"] = typeof(IdempotencyKeyUnresolvedException),
+        ["IDEMPOTENCY_REQUEST_IN_PROGRESS"] = typeof(IdempotencyRequestInProgressException),
         ["TOO_MANY_REQUESTS"] = typeof(RateLimitException),
         ["OTP_RESEND_TOO_SOON"] = typeof(OtpResendTooSoonException),
         ["OTP_RATE_LIMITED"] = typeof(OtpRateLimitedException),
@@ -132,6 +148,7 @@ internal static class Mapping
             case "UNAUTHENTICATED": return new AuthenticationException(message, code, status, details, headers);
             case "FORBIDDEN":
             case "OTP_DISABLED_FOR_ACCOUNT": return new PermissionException(message, code, status, details, headers);
+            case "ACCOUNT_SUSPENDED": return new AccountSuspendedException(message, code, status, details, headers);
             case "NOT_FOUND": return new NotFoundException(message, code, status, details, headers);
             case "VALIDATION_ERROR": return new ValidationException(message, code, status, details, headers);
             case "RECIPIENT_NOT_SENDABLE": return new RecipientNotSendableException(message, code, status, details, headers);
@@ -139,6 +156,8 @@ internal static class Mapping
             case "INVALID_PHONE": return new InvalidPhoneException(message, code, status, details, headers);
             case "INSUFFICIENT_CREDITS": return new InsufficientCreditsException(message, code, status, details, headers);
             case "IDEMPOTENCY_KEY_REUSED": return new IdempotencyKeyReusedException(message, code, status, details, headers);
+            case "IDEMPOTENCY_KEY_UNRESOLVED": return new IdempotencyKeyUnresolvedException(message, code, status, details, headers);
+            case "IDEMPOTENCY_REQUEST_IN_PROGRESS": return new IdempotencyRequestInProgressException(message, code, status, details, headers);
             case "TOO_MANY_REQUESTS": return new RateLimitException(message, code, status, details, headers);
             case "OTP_RESEND_TOO_SOON": return new OtpResendTooSoonException(message, code, status, details, headers);
             case "OTP_RATE_LIMITED": return new OtpRateLimitedException(message, code, status, details, headers);

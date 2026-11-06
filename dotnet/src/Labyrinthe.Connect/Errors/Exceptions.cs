@@ -74,8 +74,12 @@ public class ApiException : LabyrintheException
     /// <summary>Response headers (case-insensitive names).</summary>
     public IReadOnlyDictionary<string, string> Headers { get; }
 
-    /// <summary>Request identifier for support (<c>X-Request-Id</c>), when the API provides one.</summary>
-    public string? RequestId => Headers.TryGetValue("X-Request-Id", out var id) ? id : null;
+    /// <summary>Request identifier (<c>X-Request-Id</c>, on every API response since 1.2.0): give it to support. It is
+    /// yours when you sent one (<see cref="LabyrintheClient.WithRequestId(string)"/>).</summary>
+    public string? RequestId => Headers.TryGetValue("X-Request-Id", out var id) && id.Length > 0 ? id : null;
+
+    /// <summary>Major API version that answered (<c>X-Api-Version</c>, e.g. <c>"1"</c>), when the API provides it.</summary>
+    public string? ApiVersion => Headers.TryGetValue("X-Api-Version", out var version) && version.Length > 0 ? version : null;
 }
 
 /// <summary>401 <c>UNAUTHENTICATED</c>: missing, invalid or revoked API key.</summary>
@@ -88,11 +92,23 @@ public class AuthenticationException : ApiException
     }
 }
 
-/// <summary>403: IP not allowed for this key (<c>FORBIDDEN</c>) or OTP disabled for the account (<c>OTP_DISABLED_FOR_ACCOUNT</c>).</summary>
+/// <summary>403: IP not allowed for this key (<c>FORBIDDEN</c>), account suspended (<c>ACCOUNT_SUSPENDED</c>, see
+/// <see cref="AccountSuspendedException"/>) or OTP disabled for the account (<c>OTP_DISABLED_FOR_ACCOUNT</c>).</summary>
 public class PermissionException : ApiException
 {
     /// <inheritdoc cref="ApiException(string, string, int, IReadOnlyDictionary{string, JsonElement}?, IReadOnlyDictionary{string, string}?)"/>
     public PermissionException(string message, string code, int statusCode, IReadOnlyDictionary<string, JsonElement>? details = null, IReadOnlyDictionary<string, string>? headers = null)
+        : base(message, code, statusCode, details, headers)
+    {
+    }
+}
+
+/// <summary>403 <c>ACCOUNT_SUSPENDED</c>: the account was suspended by the platform; the whole API is closed until it is
+/// reactivated. Never retried.</summary>
+public class AccountSuspendedException : PermissionException
+{
+    /// <inheritdoc cref="ApiException(string, string, int, IReadOnlyDictionary{string, JsonElement}?, IReadOnlyDictionary{string, string}?)"/>
+    public AccountSuspendedException(string message, string code, int statusCode, IReadOnlyDictionary<string, JsonElement>? details = null, IReadOnlyDictionary<string, string>? headers = null)
         : base(message, code, statusCode, details, headers)
     {
     }
@@ -214,6 +230,37 @@ public class IdempotencyKeyReusedException : ApiException
     }
 }
 
+/// <summary>409 <c>IDEMPOTENCY_KEY_UNRESOLVED</c>: the original request with this <c>Idempotency-Key</c> failed
+/// unexpectedly and its outcome is unknown (an SMS may have been sent).</summary>
+/// <remarks>Never retried by the SDK, and never retry it automatically yourself: first check whether the message
+/// went out (<c>GET /sms?reference=</c>, see <see cref="Resources.SmsResource"/>, or ask the user whether the code
+/// arrived), then send again with a NEW <c>Idempotency-Key</c> only if needed.</remarks>
+public class IdempotencyKeyUnresolvedException : ApiException
+{
+    /// <inheritdoc cref="ApiException(string, string, int, IReadOnlyDictionary{string, JsonElement}?, IReadOnlyDictionary{string, string}?)"/>
+    public IdempotencyKeyUnresolvedException(string message, string code, int statusCode, IReadOnlyDictionary<string, JsonElement>? details = null, IReadOnlyDictionary<string, string>? headers = null)
+        : base(message, code, statusCode, details, headers)
+    {
+    }
+}
+
+/// <summary>409 <c>IDEMPOTENCY_REQUEST_IN_PROGRESS</c>: the original request with this <c>Idempotency-Key</c> is still
+/// being processed.</summary>
+/// <remarks>Retrying with the same key is safe: the SDK already did so after <see cref="RetryAfter"/> (SMS and OTP
+/// sends), within <see cref="LabyrintheClientOptions.MaxRetries"/> and <see cref="LabyrintheClientOptions.MaxRetryWait"/>.</remarks>
+public class IdempotencyRequestInProgressException : ApiException
+{
+    /// <inheritdoc cref="ApiException(string, string, int, IReadOnlyDictionary{string, JsonElement}?, IReadOnlyDictionary{string, string}?)"/>
+    public IdempotencyRequestInProgressException(string message, string code, int statusCode, IReadOnlyDictionary<string, JsonElement>? details = null, IReadOnlyDictionary<string, string>? headers = null)
+        : base(message, code, statusCode, details, headers)
+    {
+    }
+
+    /// <summary>How long to wait before retrying with the same key (<c>Retry-After</c>, then <c>details.retry_after_seconds</c>);
+    /// <see langword="null"/> when unknown.</summary>
+    public TimeSpan? RetryAfter => Internal.Transport.RetryAfter(this);
+}
+
 /// <summary>429: too many requests.</summary>
 /// <remarks>The SDK already retried <c>TOO_MANY_REQUESTS</c> when it was safe to do so; when you get this error,
 /// wait <see cref="RetryAfter"/>.</remarks>
@@ -242,7 +289,8 @@ public class RateLimitException : ApiException
     }
 }
 
-/// <summary>429 <c>OTP_RESEND_TOO_SOON</c>: a code was sent to this number too recently. Never retried; show a countdown of <see cref="RateLimitException.RetryAfter"/>.</summary>
+/// <summary>429 <c>OTP_RESEND_TOO_SOON</c>: a code was sent to this number too recently. Never retried; show a countdown
+/// of <see cref="RateLimitException.RetryAfter"/> (<c>Retry-After</c> header, equal to <c>details.retry_after_seconds</c>).</summary>
 public class OtpResendTooSoonException : RateLimitException
 {
     /// <inheritdoc cref="ApiException(string, string, int, IReadOnlyDictionary{string, JsonElement}?, IReadOnlyDictionary{string, string}?)"/>
@@ -252,7 +300,8 @@ public class OtpResendTooSoonException : RateLimitException
     }
 }
 
-/// <summary>429 <c>OTP_RATE_LIMITED</c>: hourly cap reached for this phone number or the whole account. Never retried.</summary>
+/// <summary>429 <c>OTP_RATE_LIMITED</c>: hourly cap reached for this phone number or the whole account. Never retried;
+/// <see cref="RateLimitException.RetryAfter"/> tells when the sliding hour goes back under the cap.</summary>
 public class OtpRateLimitedException : RateLimitException
 {
     /// <inheritdoc cref="ApiException(string, string, int, IReadOnlyDictionary{string, JsonElement}?, IReadOnlyDictionary{string, string}?)"/>
@@ -279,8 +328,8 @@ public class ServiceUnavailableException : ApiException
 }
 
 /// <summary>The API could not be reached (DNS, TLS, connection refused…). Code <c>CONNECTION_ERROR</c>.</summary>
-/// <remarks>For OTP sends and verifications the request may or may not have been processed: the SDK never retries
-/// them after a network error.</remarks>
+/// <remarks>For OTP verifications the request may or may not have been processed: the SDK never retries them after a
+/// network error. SMS and OTP sends carry an <c>Idempotency-Key</c>: they are retried safely.</remarks>
 public class ApiConnectionException : LabyrintheException
 {
     /// <summary>Creates a connection error.</summary>

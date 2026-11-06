@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Labyrinthe.Connect.Internal;
@@ -24,6 +25,18 @@ public sealed class OtpResource
     /// <summary>Longest code accepted by <see cref="VerifyAsync"/>.</summary>
     public const int MaxCodeLength = 20;
 
+    /// <summary>Longest <see cref="SendOtpRequest.WebOtpDomain"/>.</summary>
+    public const int MaxWebOtpDomainLength = 253;
+
+    /// <summary>Longest idempotency key.</summary>
+    public const int MaxIdempotencyKeyLength = 255;
+
+    /// <summary>Nom d'hôte d'au moins deux libellés, sans schéma, port ni chemin (motif de la spec, longueur vérifiée à part).</summary>
+    private static readonly Regex HostName = new(
+        @"^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
+        RegexOptions.CultureInvariant,
+        TimeSpan.FromSeconds(1));
+
     private readonly Transport transport;
     private readonly string defaultCountryCode;
 
@@ -34,11 +47,15 @@ public sealed class OtpResource
     }
 
     /// <summary>Generates a code and sends it by SMS (billed like any SMS).</summary>
-    /// <remarks>A new send to the same number invalidates the previous code. Never retried automatically, except on
-    /// 429 <c>TOO_MANY_REQUESTS</c> (refused before processing): a second success would send a second, billed SMS.
+    /// <remarks>A new send to the same number invalidates the previous code. An <c>Idempotency-Key</c> is always sent (a
+    /// <see cref="Guid"/> when you give none) and reused by every retry, so the send is retried safely after a network
+    /// error, a 5xx, 429 <c>TOO_MANY_REQUESTS</c> or 409 <c>IDEMPOTENCY_REQUEST_IN_PROGRESS</c>: a replay returns the
+    /// same <see cref="OtpSendResult.OtpId"/> (<see cref="OtpSendResult.Replayed"/>) without a second SMS.
+    /// <c>OTP_RESEND_TOO_SOON</c> and <c>OTP_RATE_LIMITED</c> are never retried.
     /// With a test key, <see cref="OtpSendResult.TestCode"/> holds the code.</remarks>
-    /// <param name="request">Phone number, optional template and locale.</param>
+    /// <param name="request">Phone number and options.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
+    /// <exception cref="ArgumentException">Invalid input, detected before any network call.</exception>
     /// <exception cref="OtpResendTooSoonException">A code was sent to this number too recently.</exception>
     /// <exception cref="OtpRateLimitedException">Hourly cap reached.</exception>
     public async Task<OtpSendResult> SendAsync(SendOtpRequest request, CancellationToken cancellationToken = default)
@@ -64,14 +81,37 @@ public sealed class OtpResource
             throw new ArgumentException("Locale must be Fr or En.", nameof(request));
         }
 
+        var domain = request.WebOtpDomain?.Trim();
+        if (domain is not null && (domain.Length is 0 or > MaxWebOtpDomainLength || !HostName.IsMatch(domain)))
+        {
+            throw new ArgumentException("WebOtpDomain must be a host name such as app.example.com (no scheme, port or path).", nameof(request));
+        }
+
+        var idempotencyKey = request.IdempotencyKey;
+        if (idempotencyKey is not null && (idempotencyKey.Length == 0 || idempotencyKey.Length > MaxIdempotencyKeyLength))
+        {
+            throw new ArgumentException($"IdempotencyKey must be 1 to {MaxIdempotencyKeyLength} characters.", nameof(request));
+        }
+
         var body = Json.Write(new[]
         {
             new KeyValuePair<string, object?>("phone", phone),
             new KeyValuePair<string, object?>("template", request.Template),
             new KeyValuePair<string, object?>("locale", request.Locale?.ToApiString()),
+            new KeyValuePair<string, object?>("web_otp_domain", domain),
+            new KeyValuePair<string, object?>("strip_accents", request.StripAccents ? true : null),
         });
-        var response = await transport.SendAsync(HttpMethod.Post, "/otp/send", RetryMode.ThrottledOnly, null, body, null, cancellationToken).ConfigureAwait(false);
-        return Mapping.ToOtpSendResult(Json.Api.Obj(response.Body, "data"));
+
+        // Générée une fois et réutilisée par chaque relance : un rejeu ne renvoie jamais un second SMS.
+        var key = idempotencyKey ?? Guid.NewGuid().ToString();
+        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Idempotency-Key"] = key };
+        var response = await transport.SendAsync(HttpMethod.Post, "/otp/send", RetryMode.Safe, null, body, headers, cancellationToken).ConfigureAwait(false);
+        return Mapping.ToOtpSendResult(Json.Api.Obj(response.Body, "data")) with
+        {
+            IdempotencyKey = key,
+            Replayed = response.Replayed,
+            RequestId = response.RequestId,
+        };
     }
 
     /// <summary>Generates a code and sends it by SMS, with the account's template and language.</summary>
@@ -81,7 +121,8 @@ public sealed class OtpResource
         SendAsync(new SendOtpRequest { Phone = phone }, cancellationToken);
 
     /// <summary>Checks a code. A wrong code is NOT an exception: <see cref="OtpVerifyResult.Verified"/> is false with a reason.</summary>
-    /// <remarks>One attempt is consumed per wrong code. Free. Never retried after a network error or a 5xx.</remarks>
+    /// <remarks>One attempt is consumed per wrong code (<see cref="OtpVerifyResult.AttemptsRemaining"/>). Free. Retried
+    /// only on 429 <c>TOO_MANY_REQUESTS</c>, never after a network error or a 5xx (an attempt may have been consumed).</remarks>
     /// <param name="otpId">The <see cref="OtpSendResult.OtpId"/> kept server-side.</param>
     /// <param name="code">The code typed by the user (spaces and case are ignored by the API).</param>
     /// <param name="cancellationToken">Cancels the call.</param>
@@ -105,7 +146,7 @@ public sealed class OtpResource
             new KeyValuePair<string, object?>("code", code),
         });
         var response = await transport.SendAsync(HttpMethod.Post, "/otp/verify", RetryMode.ThrottledOnly, null, body, null, cancellationToken).ConfigureAwait(false);
-        return Mapping.ToOtpVerifyResult(Json.Api.Obj(response.Body, "data"));
+        return Mapping.ToOtpVerifyResult(Json.Api.Obj(response.Body, "data")) with { RequestId = response.RequestId };
     }
 
     /// <inheritdoc/>

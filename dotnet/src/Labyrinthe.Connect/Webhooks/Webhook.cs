@@ -173,8 +173,16 @@ public static class Webhook
                         Status = ApiValues.ParseMessageStatus(Reader.String(data, "status")),
                         ProviderMessageId = Reader.NullableString(data, "provider_message_id"),
                         CampaignId = Reader.NullableString(data, "campaign_id"),
+                        // Ajoutés en 1.2.0 : absents des livraisons plus anciennes.
+                        Reference = Reader.NullableString(data, "reference"),
+                        ErrorCode = Reader.NullableString(data, "error_code"),
+                        ErrorMessage = Reader.NullableString(data, "error_message"),
                     },
                 };
+            case WebhookEventType.OtpVerified:
+                return new OtpVerified { Id = id, Type = name, Timestamp = sentAt, Raw = envelope, Data = OtpData(data) };
+            case WebhookEventType.OtpFailed:
+                return new OtpFailed { Id = id, Type = name, Timestamp = sentAt, Raw = envelope, Data = OtpData(data) };
             case WebhookEventType.CampaignCompleted:
                 var counts = new Dictionary<string, int>(StringComparer.Ordinal);
                 var byStatus = Reader.OptionalObj(data, "messages_by_status");
@@ -213,6 +221,19 @@ public static class Webhook
             default:
                 return new UnknownEvent { Id = id, Type = name, Timestamp = sentAt, Raw = envelope, Data = data };
         }
+    }
+
+    private static OtpWebhookData OtpData(JsonElement data)
+    {
+        var reason = Reader.NullableString(data, "reason");
+        return new OtpWebhookData
+        {
+            OtpId = Reader.String(data, "otp_id"),
+            Phone = Reader.String(data, "phone"),
+            Status = ApiValues.ParseOtpWebhookStatus(Reader.String(data, "status")),
+            Reason = reason is null ? null : ApiValues.ParseOtpFailureReason(reason),
+            VerifiedAt = Reader.NullableDate(data, "verified_at"),
+        };
     }
 
     private static byte[] Digest(byte[] body, string secret)

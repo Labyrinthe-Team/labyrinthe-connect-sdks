@@ -19,7 +19,7 @@ public sealed class BalanceResource
     public async Task<Balance> GetAsync(CancellationToken cancellationToken = default)
     {
         var response = await transport.SendAsync(HttpMethod.Get, "/balance", RetryMode.Safe, null, null, null, cancellationToken).ConfigureAwait(false);
-        return Mapping.ToBalance(Json.Api.Obj(response.Body, "data"));
+        return Mapping.ToBalance(Json.Api.Obj(response.Body, "data")) with { RequestId = response.RequestId };
     }
 
     /// <inheritdoc/>

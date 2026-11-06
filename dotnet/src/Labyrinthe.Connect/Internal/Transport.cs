@@ -16,11 +16,13 @@ namespace Labyrinthe.Connect.Internal;
 /// <summary>
 /// Quand une requête peut être renvoyée automatiquement.
 /// <list type="bullet">
-/// <item><see cref="Safe"/> : le rejeu ne peut pas produire deux fois un effet (GET, estimate, POST /sms avec
-/// Idempotency-Key). Relancée sur erreur réseau, 5xx et 429 TOO_MANY_REQUESTS.</item>
-/// <item><see cref="ThrottledOnly"/> : POST /otp/send et /otp/verify. Relancée seulement sur 429 TOO_MANY_REQUESTS
-/// (refusée avant traitement), jamais sur erreur réseau ni 5xx (risque d'un second SMS ou d'une tentative consommée).</item>
+/// <item><see cref="Safe"/> : le rejeu ne peut pas produire deux fois un effet (GET, estimate, POST /sms et
+/// POST /otp/send avec Idempotency-Key). Relancée sur erreur réseau, 5xx, 429 TOO_MANY_REQUESTS et
+/// 409 IDEMPOTENCY_REQUEST_IN_PROGRESS (même clé).</item>
+/// <item><see cref="ThrottledOnly"/> : POST /otp/verify. Relancée seulement sur 429 TOO_MANY_REQUESTS (refusée avant
+/// traitement), jamais sur erreur réseau ni 5xx (risque d'une tentative consommée).</item>
 /// </list>
+/// Les limites métier (OTP_RESEND_TOO_SOON, OTP_RATE_LIMITED) ne sont jamais relancées.
 /// </summary>
 internal enum RetryMode
 {
@@ -28,7 +30,12 @@ internal enum RetryMode
     ThrottledOnly,
 }
 
-internal sealed record ApiResponse(int Status, JsonElement Body, IReadOnlyDictionary<string, string> Headers);
+internal sealed record ApiResponse(int Status, JsonElement Body, IReadOnlyDictionary<string, string> Headers)
+{
+    public string? RequestId => Headers.TryGetValue("X-Request-Id", out var id) && id.Length > 0 ? id : null;
+
+    public bool Replayed => Headers.TryGetValue("Idempotent-Replayed", out var replayed) && replayed == "true";
+}
 
 /// <summary>
 /// Envoi des requêtes, politique de relance et conversion des erreurs. Mêmes règles que les SDK PHP, Node et Python
@@ -46,7 +53,7 @@ internal sealed class Transport
     private readonly HttpClient http;
     private readonly ILabyrintheLogger? logger;
 
-    public Transport(string apiKey, string baseUrl, TimeSpan timeout, int maxRetries, TimeSpan maxRetryWait, HttpClient http, ILabyrintheLogger? logger)
+    public Transport(string apiKey, string baseUrl, TimeSpan timeout, int maxRetries, TimeSpan maxRetryWait, HttpClient http, ILabyrintheLogger? logger, string? requestId = null)
     {
         this.apiKey = apiKey;
         BaseUrl = baseUrl;
@@ -55,7 +62,15 @@ internal sealed class Transport
         MaxRetryWait = maxRetryWait;
         this.http = http;
         this.logger = logger;
+        RequestId = requestId;
     }
+
+    /// <summary>X-Request-Id envoyé avec chaque requête (et chaque relance) de ce transport ; <see langword="null"/> : l'API en génère un.</summary>
+    public string? RequestId { get; }
+
+    /// <summary>Même transport (connexions, réglages, attente et jitter) avec un X-Request-Id fixé.</summary>
+    public Transport WithRequestId(string requestId) =>
+        new(apiKey, BaseUrl, Timeout, MaxRetries, MaxRetryWait, http, logger, requestId) { Delay = Delay, Jitter = Jitter };
 
     public static string UserAgent { get; } = BuildUserAgent();
 
@@ -235,6 +250,12 @@ internal sealed class Transport
             return error.Code == "TOO_MANY_REQUESTS";
         }
 
+        // Requête d'origine encore en cours : relancer avec la même Idempotency-Key est sans risque.
+        if (error is IdempotencyRequestInProgressException)
+        {
+            return mode == RetryMode.Safe;
+        }
+
         return mode == RetryMode.Safe && error.StatusCode >= 500;
     }
 
@@ -300,6 +321,11 @@ internal sealed class Transport
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         request.Headers.TryAddWithoutValidation("User-Agent", UserAgent);
+        if (RequestId is not null)
+        {
+            request.Headers.TryAddWithoutValidation("X-Request-Id", RequestId);
+        }
+
         if (headers is not null)
         {
             foreach (var header in headers)
@@ -348,7 +374,9 @@ internal sealed class Transport
         TimeSpan elapsed)
     {
         var replayed = headers.TryGetValue("Idempotent-Replayed", out var r) && r == "true";
-        Log(LabyrintheLogLevel.Debug, $"Labyrinthe Connect response {method} {logPath}: HTTP {status} in {(long)elapsed.TotalMilliseconds} ms{(replayed ? " (idempotent replay)" : string.Empty)}");
+        // L'identifiant de requête (à communiquer au support) n'est pas une donnée sensible.
+        var requestId = headers.TryGetValue("X-Request-Id", out var id) && id.Length > 0 ? $" [request {Redact.StripQueryStrings(id)}]" : string.Empty;
+        Log(LabyrintheLogLevel.Debug, $"Labyrinthe Connect response {method} {logPath}: HTTP {status} in {(long)elapsed.TotalMilliseconds} ms{(replayed ? " (idempotent replay)" : string.Empty)}{requestId}");
 
         if (status is >= 200 and < 300)
         {
@@ -361,19 +389,19 @@ internal sealed class Transport
             var delay = RetryDelay(error, attempt);
             if (delay is { } wait)
             {
-                Log(LabyrintheLogLevel.Warning, $"Labyrinthe Connect request failed, retrying {method} {logPath}: HTTP {status} {error.Code} (attempt {attempt + 1}, in {wait.TotalSeconds:0.##} s)");
+                Log(LabyrintheLogLevel.Warning, $"Labyrinthe Connect request failed, retrying {method} {logPath}: HTTP {status} {error.Code} (attempt {attempt + 1}, in {wait.TotalSeconds:0.##} s){requestId}");
                 return (null, wait);
             }
         }
 
-        Log(LabyrintheLogLevel.Information, $"Labyrinthe Connect API error on {method} {logPath}: HTTP {status} {error.Code}");
+        Log(LabyrintheLogLevel.Information, $"Labyrinthe Connect API error on {method} {logPath}: HTTP {status} {error.Code}{requestId}");
         throw error;
     }
 
     /// <summary>Délai avant la prochaine tentative ; <see langword="null"/> pour abandonner (attente demandée trop longue).</summary>
     private TimeSpan? RetryDelay(ApiException error, int attempt)
     {
-        if (error.StatusCode == 429 && RetryAfter(error) is { } retryAfter)
+        if ((error.StatusCode == 429 || error is IdempotencyRequestInProgressException) && RetryAfter(error) is { } retryAfter)
         {
             return retryAfter <= MaxRetryWait ? retryAfter : null;
         }

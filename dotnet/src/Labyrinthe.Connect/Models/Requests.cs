@@ -22,6 +22,10 @@ public sealed record SendSmsRequest
     /// <summary>Idempotency key (1 to 255 characters). A <see cref="Guid"/> is generated when you give none.</summary>
     /// <remarks>Derive it from your business event (e.g. <c>"order-1042-ready"</c>) to also protect against your own retries.</remarks>
     public string? IdempotencyKey { get; init; }
+
+    /// <summary>Replace accents and typographic characters with their ASCII equivalent before sending: the message
+    /// becomes GSM-7, often half the price. The transliteration is done by the server (API 1.2.0).</summary>
+    public bool StripAccents { get; init; }
 }
 
 /// <summary>The same SMS to up to 1000 recipients, all or nothing (<see cref="Resources.SmsResource.SendManyAsync"/>).</summary>
@@ -41,6 +45,9 @@ public sealed record SendManySmsRequest
 
     /// <summary>Idempotency key (1 to 255 characters). A <see cref="Guid"/> is generated when you give none.</summary>
     public string? IdempotencyKey { get; init; }
+
+    /// <inheritdoc cref="SendSmsRequest.StripAccents"/>
+    public bool StripAccents { get; init; }
 }
 
 /// <summary>Cost estimate of a send (<see cref="Resources.SmsResource.EstimateAsync"/>).</summary>
@@ -49,8 +56,11 @@ public sealed record EstimateSmsRequest
     /// <summary>The text, 1 to 1600 characters.</summary>
     public string Body { get; init; } = string.Empty;
 
-    /// <summary>At least one recipient. Invalid numbers are ignored by the API, not rejected.</summary>
+    /// <summary>At least one recipient. Normalised and deduplicated like a send; invalid numbers are ignored by the API, not rejected.</summary>
     public IReadOnlyList<string> Recipients { get; init; } = Array.Empty<string>();
+
+    /// <summary>Estimate the text with accents stripped, as <see cref="SendSmsRequest.StripAccents"/> would send it.</summary>
+    public bool StripAccents { get; init; }
 }
 
 /// <summary>Filters of <see cref="Resources.SmsResource.ListAsync"/>. Every filter is optional.</summary>
@@ -89,6 +99,18 @@ public sealed record SendOtpRequest
 
     /// <summary>Language of the standard template; defaults to the account's OTP settings.</summary>
     public OtpLocale? Locale { get; init; }
+
+    /// <summary><see href="https://developer.mozilla.org/docs/Web/API/WebOTP_API">Web OTP API</see>: host name of the site
+    /// that reads the code (e.g. <c>app.example.com</c>, at least two labels, no scheme, port or path). Adds the last line
+    /// <c>@app.example.com #123456</c> to the SMS for automatic filling (Chrome, Android).</summary>
+    public string? WebOtpDomain { get; init; }
+
+    /// <inheritdoc cref="SendSmsRequest.StripAccents"/>
+    public bool StripAccents { get; init; }
+
+    /// <summary>Idempotency key (1 to 255 characters). A <see cref="Guid"/> is generated when you give none and reused by
+    /// every retry: a retried send never sends a second SMS.</summary>
+    public string? IdempotencyKey { get; init; }
 }
 
 /// <summary>A date filter: a whole day (<see cref="Day(int, int, int)"/>) or an exact instant (any <see cref="DateTimeOffset"/>).</summary>

@@ -17,11 +17,13 @@ namespace Labyrinthe.Connect;
 public sealed class LabyrintheClient : IDisposable
 {
     /// <summary>Version of this SDK (also in the <c>User-Agent</c> header).</summary>
-    public const string Version = "1.0.0";
+    public const string Version = "1.1.1";
 
     private readonly string apiKey;
     private readonly HttpClient httpClient;
     private readonly bool ownsHttpClient;
+    private readonly string defaultCountryCode;
+    private readonly string? defaultSender;
     private bool disposed;
 
     /// <summary>Creates a client.</summary>
@@ -53,12 +55,30 @@ public sealed class LabyrintheClient : IDisposable
         ownsHttpClient = httpClient is null;
         this.httpClient = httpClient ?? CreateHttpClient();
 
+        defaultCountryCode = options.DefaultCountryCode;
+        defaultSender = options.DefaultSender;
         var transport = new Transport(key, baseUrl, options.Timeout, options.MaxRetries, options.MaxRetryWait, this.httpClient, options.Logger);
         Transport = transport;
-        Sms = new SmsResource(transport, options.DefaultCountryCode, options.DefaultSender);
+        Sms = new SmsResource(transport, defaultCountryCode, defaultSender);
         Balance = new BalanceResource(transport);
         SenderIds = new SenderIdsResource(transport);
-        Otp = new OtpResource(transport, options.DefaultCountryCode);
+        Otp = new OtpResource(transport, defaultCountryCode);
+    }
+
+    /// <summary>Vue d'un client existant sur un autre transport (mêmes connexions, jamais propriétaire du HttpClient).</summary>
+    private LabyrintheClient(LabyrintheClient parent, Transport transport)
+    {
+        apiKey = parent.apiKey;
+        BaseUrl = parent.BaseUrl;
+        httpClient = parent.httpClient;
+        ownsHttpClient = false;
+        defaultCountryCode = parent.defaultCountryCode;
+        defaultSender = parent.defaultSender;
+        Transport = transport;
+        Sms = new SmsResource(transport, defaultCountryCode, defaultSender);
+        Balance = new BalanceResource(transport);
+        SenderIds = new SenderIdsResource(transport);
+        Otp = new OtpResource(transport, defaultCountryCode);
     }
 
     /// <summary>Send and track SMS.</summary>
@@ -82,7 +102,28 @@ public sealed class LabyrintheClient : IDisposable
     /// <summary>The API root used by this client.</summary>
     public string BaseUrl { get; }
 
+    /// <summary>The <c>X-Request-Id</c> sent with every request of this client (see <see cref="WithRequestId"/>), or <see langword="null"/>.</summary>
+    public string? RequestId => Transport.RequestId;
+
     internal Transport Transport { get; }
+
+    /// <summary>A lightweight view of this client that sends your own <c>X-Request-Id</c> with its requests (and their
+    /// retries), to correlate them with your logs and traces. The API echoes it in the response
+    /// (<see cref="ApiException.RequestId"/>, <c>RequestId</c> of the results).</summary>
+    /// <remarks>Shares the connections and settings of this client: create one per call or per operation, no need to
+    /// dispose it (disposing it does nothing).</remarks>
+    /// <example><code>var batch = await client.WithRequestId("order-1042").Sms.SendManyAsync(request);</code></example>
+    /// <param name="requestId">1 to 128 characters among <c>A-Z a-z 0-9 . _ : -</c> (otherwise the API would replace it).</param>
+    /// <exception cref="ArgumentException">Invalid identifier.</exception>
+    public LabyrintheClient WithRequestId(string requestId)
+    {
+        if (!IsValidRequestId(requestId))
+        {
+            throw new ArgumentException("The request id must be 1 to 128 characters among A-Z a-z 0-9 . _ : -", nameof(requestId));
+        }
+
+        return new LabyrintheClient(this, Transport.WithRequestId(requestId));
+    }
 
     /// <summary>Closes the HTTP connections (not those of an <see cref="HttpClient"/> you passed).</summary>
     public void Dispose()
@@ -100,6 +141,25 @@ public sealed class LabyrintheClient : IDisposable
     /// <inheritdoc/>
     public override string ToString() =>
         $"LabyrintheClient {{ ApiKey = {Redact.ApiKey(apiKey)}, BaseUrl = {BaseUrl}, IsTestMode = {(IsTestMode ? "true" : "false")} }}";
+
+    /// <summary>Même règle que l'API : <c>^[A-Za-z0-9._:-]{1,128}$</c>.</summary>
+    private static bool IsValidRequestId(string? requestId)
+    {
+        if (requestId is null || requestId.Length is 0 or > 128)
+        {
+            return false;
+        }
+
+        foreach (var c in requestId)
+        {
+            if (!(c is (>= 'A' and <= 'Z') or (>= 'a' and <= 'z') or (>= '0' and <= '9') or '.' or '_' or ':' or '-'))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     private static HttpClient CreateHttpClient()
     {

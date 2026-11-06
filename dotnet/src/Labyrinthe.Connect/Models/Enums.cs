@@ -142,4 +142,39 @@ public enum WebhookEventType
 
     /// <summary><c>test.ping</c>.</summary>
     TestPing,
+
+    /// <summary><c>otp.verified</c> (API 1.2.0).</summary>
+    OtpVerified,
+
+    /// <summary><c>otp.failed</c> (API 1.2.0).</summary>
+    OtpFailed,
+}
+
+/// <summary>Alphabet of an OTP code (<see cref="OtpSendResult.CodeType"/>).</summary>
+public enum OtpCodeType
+{
+    /// <summary>Type not known by this SDK version (or not returned by an older API).</summary>
+    Unknown = 0,
+
+    /// <summary><c>numeric</c>: digits 0-9.</summary>
+    Numeric,
+
+    /// <summary><c>alphanumeric</c>: upper-case letters and digits without ambiguous characters; typing is case-insensitive.</summary>
+    Alphanumeric,
+}
+
+/// <summary>Outcome of an OTP verification in the <c>otp.verified</c> / <c>otp.failed</c> webhooks.</summary>
+public enum OtpWebhookStatus
+{
+    /// <summary>Status not known by this SDK version.</summary>
+    Unknown = 0,
+
+    /// <summary><c>verified</c>: the right code was given (<c>otp.verified</c>).</summary>
+    Verified,
+
+    /// <summary><c>failed</c>: attempts exhausted (<c>otp.failed</c>, reason <c>max_attempts_reached</c>).</summary>
+    Failed,
+
+    /// <summary><c>expired</c>: the code expired (<c>otp.failed</c>, reason <c>expired</c>).</summary>
+    Expired,
 }

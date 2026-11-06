@@ -44,7 +44,24 @@ public static class ApiValues
         (WebhookEventType.MessageStatusChanged, "message.status_changed"),
         (WebhookEventType.CampaignCompleted, "campaign.completed"),
         (WebhookEventType.BalanceLow, "balance.low"),
-        (WebhookEventType.TestPing, "test.ping"));
+        (WebhookEventType.TestPing, "test.ping"),
+        (WebhookEventType.OtpVerified, "otp.verified"),
+        (WebhookEventType.OtpFailed, "otp.failed"));
+
+    private static readonly EnumMap<OtpCodeType> CodeTypes = new((OtpCodeType.Numeric, "numeric"), (OtpCodeType.Alphanumeric, "alphanumeric"));
+
+    private static readonly EnumMap<OtpWebhookStatus> OtpWebhookStatuses = new(
+        (OtpWebhookStatus.Verified, "verified"),
+        (OtpWebhookStatus.Failed, "failed"),
+        (OtpWebhookStatus.Expired, "expired"));
+
+    /// <summary>The API value: <c>"numeric"</c> or <c>"alphanumeric"</c>.</summary>
+    /// <param name="value">The enum value.</param>
+    public static string ToApiString(this OtpCodeType value) => CodeTypes.ToApi(value);
+
+    /// <summary>The API value: <c>"verified"</c>, <c>"failed"</c> or <c>"expired"</c>.</summary>
+    /// <param name="value">The enum value.</param>
+    public static string ToApiString(this OtpWebhookStatus value) => OtpWebhookStatuses.ToApi(value);
 
     /// <summary>The API value, e.g. <c>"delivered"</c>; <c>"unknown"</c> for <see cref="MessageStatus.Unknown"/>.</summary>
     /// <param name="value">The enum value.</param>
@@ -108,6 +125,10 @@ public static class ApiValues
 
     internal static WebhookEventType ParseEventType(string? value) => EventTypes.Parse(value);
 
+    internal static OtpCodeType ParseOtpCodeType(string? value) => CodeTypes.Parse(value);
+
+    internal static OtpWebhookStatus ParseOtpWebhookStatus(string? value) => OtpWebhookStatuses.Parse(value);
+
     /// <summary>Every known API value of an enum (contract tests).</summary>
     internal static IReadOnlyCollection<string> Known<TEnum>()
         where TEnum : struct, Enum
@@ -122,6 +143,8 @@ public static class ApiValues
             var t when t == typeof(OtpRateLimitScope) => Scopes,
             var t when t == typeof(OtpLocale) => Locales,
             var t when t == typeof(WebhookEventType) => EventTypes,
+            var t when t == typeof(OtpCodeType) => CodeTypes,
+            var t when t == typeof(OtpWebhookStatus) => OtpWebhookStatuses,
             _ => throw new ArgumentException("Not an API enum.", nameof(TEnum)),
         };
         return ((EnumMap<TEnum>)map).Values;

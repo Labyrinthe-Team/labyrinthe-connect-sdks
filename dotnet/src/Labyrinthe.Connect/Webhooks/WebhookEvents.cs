@@ -53,13 +53,24 @@ public sealed record MessageStatusChangedData
     /// <summary>Campaign of origin.</summary>
     public string? CampaignId { get; init; }
 
+    /// <summary>The <c>Reference</c> given at send time (API 1.2.0).</summary>
+    public string? Reference { get; init; }
+
+    /// <summary>Error code of the provider or the platform when the message failed (API 1.2.0).</summary>
+    public string? ErrorCode { get; init; }
+
+    /// <summary>Error message when the message failed (API 1.2.0).</summary>
+    public string? ErrorMessage { get; init; }
+
     private bool PrintMembers(StringBuilder builder)
     {
         builder.Append("MessageId = ").Append(MessageId)
             .Append(", Recipient = ").Append(PhoneNumber.Mask(Recipient))
             .Append(", Status = ").Append(Status)
             .Append(", ProviderMessageId = ").Append(ProviderMessageId)
-            .Append(", CampaignId = ").Append(CampaignId);
+            .Append(", CampaignId = ").Append(CampaignId)
+            .Append(", Reference = ").Append(Reference)
+            .Append(", ErrorCode = ").Append(ErrorCode);
         return true;
     }
 }
@@ -124,6 +135,57 @@ public sealed record BalanceLow : WebhookEvent
 
     /// <summary>Typed data.</summary>
     public BalanceLowData Data { get; init; } = new();
+}
+
+/// <summary>Data of <c>otp.verified</c> and <c>otp.failed</c>: the outcome of an OTP verification (never the code).</summary>
+public sealed record OtpWebhookData
+{
+    /// <summary>The <see cref="OtpSendResult.OtpId"/> of the send.</summary>
+    public string OtpId { get; init; } = string.Empty;
+
+    /// <summary>Normalised number (international without "+"). Personal data: <see cref="object.ToString"/> masks it.</summary>
+    public string Phone { get; init; } = string.Empty;
+
+    /// <summary><see cref="OtpWebhookStatus.Verified"/> with <c>otp.verified</c>; <see cref="OtpWebhookStatus.Failed"/> or
+    /// <see cref="OtpWebhookStatus.Expired"/> with <c>otp.failed</c>.</summary>
+    public OtpWebhookStatus Status { get; init; }
+
+    /// <summary><see langword="null"/> when verified; <see cref="OtpFailureReason.MaxAttemptsReached"/> or
+    /// <see cref="OtpFailureReason.Expired"/> otherwise.</summary>
+    public OtpFailureReason? Reason { get; init; }
+
+    /// <summary>Verification time; <see langword="null"/> for <c>otp.failed</c>.</summary>
+    public DateTimeOffset? VerifiedAt { get; init; }
+
+    private bool PrintMembers(StringBuilder builder)
+    {
+        builder.Append("OtpId = ").Append(OtpId)
+            .Append(", Phone = ").Append(PhoneNumber.Mask(Phone))
+            .Append(", Status = ").Append(Status)
+            .Append(", Reason = ").Append(Reason)
+            .Append(", VerifiedAt = ").Append(VerifiedAt);
+        return true;
+    }
+}
+
+/// <summary><c>otp.verified</c>: an OTP code was verified (sent once, API and client-area OTP console).</summary>
+public sealed record OtpVerified : WebhookEvent
+{
+    /// <inheritdoc/>
+    public override WebhookEventType EventType => WebhookEventType.OtpVerified;
+
+    /// <summary>Typed data.</summary>
+    public OtpWebhookData Data { get; init; } = new();
+}
+
+/// <summary><c>otp.failed</c>: an OTP verification failed for good (attempts exhausted or code expired; sent once).</summary>
+public sealed record OtpFailed : WebhookEvent
+{
+    /// <inheritdoc/>
+    public override WebhookEventType EventType => WebhookEventType.OtpFailed;
+
+    /// <summary>Typed data.</summary>
+    public OtpWebhookData Data { get; init; } = new();
 }
 
 /// <summary><c>test.ping</c>: sent by the <i>Test</i> button of the client area.</summary>

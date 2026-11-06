@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 
 namespace Labyrinthe.Connect.Internal;
@@ -187,11 +188,17 @@ internal sealed class Json
         return document.RootElement.Clone();
     }
 
+    /// <summary>
+    /// Échappement minimal (JSON en UTF-8, jamais inséré dans du HTML) : le "+" des numéros E.164 part tel quel
+    /// (<c>"+243812345678"</c>) au lieu de <c>"+243812345678"</c>.
+    /// </summary>
+    private static readonly JsonWriterOptions WriterOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
     /// <summary>Corps de requête JSON écrit sans réflexion (compatible trimming / AOT).</summary>
     public static byte[] Write(IEnumerable<KeyValuePair<string, object?>> fields)
     {
         using var stream = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(stream))
+        using (var writer = new Utf8JsonWriter(stream, WriterOptions))
         {
             writer.WriteStartObject();
             foreach (var field in fields)
@@ -205,6 +212,9 @@ internal sealed class Json
                         break;
                     case int n:
                         writer.WriteNumber(field.Key, n);
+                        break;
+                    case bool b:
+                        writer.WriteBoolean(field.Key, b);
                         break;
                     case IEnumerable<string> list:
                         writer.WriteStartArray(field.Key);

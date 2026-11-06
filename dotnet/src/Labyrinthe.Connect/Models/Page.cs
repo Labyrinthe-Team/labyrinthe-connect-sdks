@@ -11,7 +11,7 @@ public sealed class Page<T>
 {
     private readonly Func<int, CancellationToken, Task<Page<T>>> fetchPage;
 
-    internal Page(IReadOnlyList<T> data, int currentPage, int lastPage, int perPage, int total, Func<int, CancellationToken, Task<Page<T>>> fetchPage)
+    internal Page(IReadOnlyList<T> data, int currentPage, int lastPage, int perPage, int total, Func<int, CancellationToken, Task<Page<T>>> fetchPage, string? requestId = null)
     {
         Data = data;
         CurrentPage = currentPage;
@@ -19,6 +19,7 @@ public sealed class Page<T>
         PerPage = perPage;
         Total = total;
         this.fetchPage = fetchPage;
+        RequestId = requestId;
     }
 
     /// <summary>Items of this page only.</summary>
@@ -35,6 +36,9 @@ public sealed class Page<T>
 
     /// <summary>Items of every page.</summary>
     public int Total { get; }
+
+    /// <summary>Identifier of the API request that returned this page (<c>X-Request-Id</c>), for support.</summary>
+    public string? RequestId { get; }
 
     /// <summary>True when a next page exists.</summary>
     public bool HasMore => CurrentPage < LastPage;
