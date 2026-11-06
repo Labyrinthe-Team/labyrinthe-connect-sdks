@@ -37,6 +37,9 @@ final class Order_Notifications {
 	/** Tentatives au plus (la première comprise) pour une erreur temporaire. */
 	public const MAX_ATTEMPTS = 4;
 
+	/** Préfixe de la référence des SMS d'une commande (order-1042). */
+	public const REFERENCE_PREFIX = 'order-';
+
 	/**
 	 * Réglages.
 	 *
@@ -175,7 +178,7 @@ final class Order_Notifications {
 				'context'         => 'order_status',
 				'order_id'        => $order->get_id(),
 				'idempotency_key' => self::idempotency_key( $order->get_id(), $status ),
-				'reference'       => 'order-' . $order->get_order_number(),
+				'reference'       => self::reference( $order->get_id() ),
 				'country'         => '' !== $order->get_billing_country() ? $order->get_billing_country() : $order->get_shipping_country(),
 			)
 		);
@@ -209,11 +212,34 @@ final class Order_Notifications {
 					'context'         => 'admin_new_order',
 					'order_id'        => $order->get_id(),
 					'idempotency_key' => self::idempotency_key( $order->get_id(), 'admin-' . $phone ),
-					'reference'       => 'order-' . $order->get_order_number(),
+					'reference'       => self::reference( $order->get_id() ),
 				)
 			);
 			$this->record( $order, $key, __( 'new order (shop manager)', 'labyrinthe-connect' ), $result, $attempt, self::HOOK_ADMIN, array( $order->get_id() ) );
 		}
+	}
+
+	/**
+	 * Référence passée à l'API avec les SMS d'une commande (« order-<identifiant> ») : renvoyée
+	 * par le webhook message.status_changed, elle relie l'accusé de remise à la commande.
+	 *
+	 * @param int $order_id Commande.
+	 */
+	public static function reference( int $order_id ): string {
+		return self::REFERENCE_PREFIX . $order_id;
+	}
+
+	/**
+	 * Commande d'une référence « order-<identifiant> », ou 0.
+	 *
+	 * @param string|null $reference Référence renvoyée par l'API.
+	 */
+	public static function order_id_from_reference( ?string $reference ): int {
+		if ( null === $reference || 1 !== preg_match( '/^' . preg_quote( self::REFERENCE_PREFIX, '/' ) . '([1-9]\d{0,19})$/', $reference, $matches ) ) {
+			return 0;
+		}
+
+		return (int) $matches[1];
 	}
 
 	/**
@@ -276,7 +302,7 @@ final class Order_Notifications {
 					$result->recipient,
 					$result->error_code,
 					(int) ( $delay / MINUTE_IN_SECONDS )
-				)
+				) . self::request_id_note( $result )
 			);
 
 			return;
@@ -290,8 +316,18 @@ final class Order_Notifications {
 				$result->recipient,
 				$result->error_code,
 				$result->error_message
-			)
+			) . self::request_id_note( $result )
 		);
+	}
+
+	/**
+	 * « Identifiant de requête : … » ajouté aux notes d'échec (à communiquer au support).
+	 *
+	 * @param Send_Result $result Résultat de l'envoi.
+	 */
+	private static function request_id_note( Send_Result $result ): string {
+		/* translators: %s: request ID (X-Request-Id), to give to the support. */
+		return '' !== $result->request_id ? ' ' . sprintf( __( 'Request ID: %s', 'labyrinthe-connect' ), $result->request_id ) : '';
 	}
 
 	/**
