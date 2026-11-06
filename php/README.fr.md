@@ -1,14 +1,35 @@
 # Labyrinthe Connect — SDK PHP
 
-Client PHP officiel de [Labyrinthe Connect](https://labyrinthe-rdc.com) : envoi de SMS et vérification de numéros
-par code à usage unique (OTP), en RDC et en Afrique centrale.
+[![Packagist](https://img.shields.io/packagist/v/labyrinthe/connect-php.svg)](https://packagist.org/packages/labyrinthe/connect-php)
+[![CI](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/actions/workflows/php.yml/badge.svg)](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/actions/workflows/php.yml)
+[![Licence : MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
+![PHP](https://img.shields.io/badge/php-%E2%89%A5%208.1-777bb4)
 
-*English version: [README.md](README.md). Sous Laravel, utilisez [`labyrinthe/connect-laravel`](../laravel).*
+Client PHP officiel de [Labyrinthe Connect](https://labyrinthe-rdc.com), la plateforme SMS et OTP de la RD Congo et
+de l'Afrique centrale : envoyer des SMS, consulter le solde et les Sender IDs, vérifier des numéros de téléphone avec
+un code à usage unique (OTP) et recevoir des webhooks signés. Réponses et exceptions typées, nouvelles tentatives
+automatiques **uniquement** quand elles ne peuvent pas envoyer un SMS deux fois, Guzzle par défaut ou n'importe quel
+client PSR-18, et ni la clé API, ni les codes OTP, ni les numéros complets n'atteignent les journaux ou les dumps.
+SDK 1.2.0, construit sur la spécification de l'API 1.3.0.
 
-- Entièrement typé : objets de réponse immuables, enums, une classe d'exception par erreur.
-- Sûr par défaut : nouvelles tentatives automatiques **uniquement** quand elles ne peuvent pas envoyer un SMS deux fois.
-- Fonctionne avec Guzzle sans configuration, ou avec n'importe quel client PSR-18.
-- Ne journalise ni n'affiche jamais votre clé API, les codes OTP ou les numéros complets.
+*English version: [README.md](README.md). Laravel ? Utilisez [`labyrinthe/connect-laravel`](../laravel).
+WordPress ? Utilisez le [plugin](../wordpress).*
+
+[Prérequis](#prérequis) · [Installation](#installation) · [Démarrage rapide](#démarrage-rapide) ·
+[Configuration](#configuration) · [Envoyer des SMS](#envoyer-des-sms) · [Solde et Sender IDs](#solde-et-sender-ids) ·
+[OTP](#otp--vérifier-un-numéro) · [Webhooks](#webhooks) · [Erreurs](#erreurs) ·
+[Nouvelles tentatives et idempotence](#nouvelles-tentatives-et-idempotence) ·
+[Mode test, journaux et sécurité](#mode-test-journaux-et-sécurité) · [Sans le SDK](#sans-le-sdk-http-brut) ·
+[Mise à jour](#mise-à-jour)
+
+## Prérequis
+
+| | |
+|---|---|
+| PHP | 8.1 ou plus, avec les extensions `json` et `mbstring` |
+| HTTP | `guzzlehttp/guzzle` ^7.5 (installé et utilisé par défaut), ou tout client PSR-18 avec des fabriques PSR-17 |
+| Journaux | facultatif, tout logger PSR-3 (`psr/log` ^2 ou ^3) |
+| API | API publique Labyrinthe Connect v1 (spécification 1.3.0) |
 
 ## Installation
 
@@ -16,75 +37,94 @@ par code à usage unique (OTP), en RDC et en Afrique centrale.
 composer require labyrinthe/connect-php
 ```
 
-PHP 8.1 ou plus, extensions `json` et `mbstring`.
+Créez une clé API dans l'espace client (*Développeurs > Clés API*). **Gardez-la côté serveur** : jamais dans un
+navigateur, une application mobile ou un dépôt Git.
 
 ## Démarrage rapide
 
 ```php
 use Labyrinthe\Connect\Client;
 
-$client = new Client('lsk_test_…');                 // ou Client::fromEnv()
-$message = $client->sms->send(to: '0812345678', body: 'Votre commande 1042 est prête.');
-echo $message->status->value;                         // "queued"
+$client = new Client('lsk_test_…');                    // clé de test : rien n'est envoyé, rien n'est facturé
+$message = $client->sms->send(to: '0812345678', body: 'Votre commande 1042 est prete.');
+echo $message->status->value;                           // "queued"
 ```
 
-Les clés se créent dans l'espace client (*Développeurs > Clés API*). **Gardez-les côté serveur**, jamais dans un
-navigateur ni une application mobile.
+## Configuration
 
-| Clé | Mode | Effet |
+```php
+$client = new Client(
+    apiKey: getenv('LABYRINTHE_API_KEY'),
+    baseUrl: null,                 // par défaut https://api.labyrinthe-rdc.com/api/public/v1
+    timeout: 30.0,
+    connectTimeout: 10.0,
+    maxRetries: 2,
+    maxRetryWait: 10.0,
+    defaultCountryCode: '243',
+    defaultSender: 'MABOUTIQUE',
+    httpClient: $clientPsr18,
+    requestFactory: $fabriquePsr17,
+    streamFactory: $fabriquePsr17,
+    logger: $loggerPsr3,
+);
+
+$client = Client::fromEnv();       // LABYRINTHE_API_KEY, et LABYRINTHE_BASE_URL si elle est définie
+```
+
+| Option | Défaut | Rôle |
 |---|---|---|
-| `lsk_test_…` | Bac à sable | Rien n'est envoyé, aucun crédit consommé. Réponses identiques à la production. L'envoi d'OTP renvoie le code (`testCode()`). |
-| `lsk_live_…` | Production | Les SMS partent réellement et consomment des crédits. |
+| `apiKey` | — (obligatoire) | `lsk_test_…` (bac à sable) ou `lsk_live_…` (production) |
+| `baseUrl` | `https://api.labyrinthe-rdc.com/api/public/v1` | racine de l'API ; un hôte seul comme `http://localhost:8000` est complété par `/api/public/v1` |
+| `timeout` / `connectTimeout` | `30.0` / `10.0` s | délais du client Guzzle par défaut (à régler vous-même sur votre propre client PSR-18) |
+| `maxRetries` | `2` | nouvelles tentatives automatiques quand elles sont sans risque (0 à 10 ; `0` les désactive) |
+| `maxRetryWait` | `10.0` s | plus longue attente (`Retry-After` ou backoff) acceptée par le SDK ; au-delà, l'exception est levée |
+| `defaultCountryCode` | `243` | ajouté aux numéros locaux : `0812345678` → `243812345678` |
+| `defaultSender` | `null` | Sender ID utilisé quand `send()` / `sendMany()` n'en reçoivent pas (sinon celui du compte) |
+| `httpClient`, `requestFactory`, `streamFactory` | Guzzle | tout client PSR-18 et toutes fabriques PSR-17 |
+| `logger` | aucun | logger PSR-3 (voir [journaux](#mode-test-journaux-et-sécurité)) |
+| `userAgentSuffix` | `null` | ajouté à `User-Agent: labyrinthe-php/1.2.0 PHP/x.y` (pour les intégrations) |
 
-`$client->isTestMode()` indique le mode utilisé. Tous les exemples ci-dessous fonctionnent avec une clé de test.
+| Variable d'environnement | Lue par | |
+|---|---|---|
+| `LABYRINTHE_API_KEY` | `Client::fromEnv()` | obligatoire |
+| `LABYRINTHE_BASE_URL` | `Client::fromEnv()` | facultative, par ex. `http://localhost:8000` pour un backend local |
+
+`Client::fromEnv()` accepte aussi `timeout`, `maxRetries`, `defaultCountryCode`, `defaultSender`, `httpClient` et
+`logger`.
+
+**Numéros de téléphone.** `+243…`, `00243…`, `243…`, `0812…` et `812…` sont acceptés ; espaces, tirets et
+parenthèses sont ignorés. Les numéros internationaux (`+33…`, `+1…`) ne sont jamais bloqués. Sans `+`, 11 chiffres
+ou plus ne commençant pas par 0 sont déjà internationaux (`33612345678`) ; un numéro étranger de 10 chiffres ou moins
+doit garder son `+`. Utilitaires aux mêmes règles que l'API : `PhoneNumber::normalize('0812345678')` →
+`"243812345678"` (ou `null`), `PhoneNumber::toE164()` → `"+243812345678"` (le format envoyé à l'API),
+`PhoneNumber::isValid()`, `PhoneNumber::mask()`.
+
+**Les dates** sont lues au format de l'API (`2026-11-06T09:39:11+00:00`) en `DateTimeImmutable`. Chaque objet de
+réponse garde le JSON décodé dans `raw()`.
 
 ## Envoyer des SMS
 
+### Un destinataire
+
 ```php
 $message = $client->sms->send(
-    to: '+243 81 234 5678',        // +243…, 00243…, 243…, 0812…, 812… sont acceptés
-    body: 'Votre commande 1042 est prête.',
-    sender: 'MABOUTIQUE',          // facultatif : un Sender ID approuvé ($client->senderIds->list())
-    reference: 'commande-1042',    // facultatif : votre référence, 64 caractères max.
+    to: '+243 81 234 5678',
+    body: 'Votre commande 1042 est prete.',
+    sender: 'MABOUTIQUE',          // facultatif : un Sender ID approuvé
+    reference: 'order-1042',       // facultatif : votre référence, 64 caractères max., filtrable
+    stripAccents: false,           // facultatif : accents → ASCII (voir plus bas)
+    idempotencyKey: null,          // facultatif : générée si absente (voir Nouvelles tentatives et idempotence)
 );
 
 $message->id;               // "9d5c0a3e-…"
 $message->recipient;        // "243812345678"
 $message->status;           // MessageStatus::Queued
+$message->segments;         // 1
 $message->creditsCharged;   // 1
 ```
 
-L'envoi est asynchrone : `202 Accepted` signifie *mis en file et débité*, pas *remis*. Suivez le statut par webhook
-(`message.status_changed`, recommandé) ou en interrogeant l'API :
-
-```php
-$message = $client->sms->get($message->id);
-if ($message->status->isFinal()) {
-    echo $message->status->isSuccessful() ? 'Remis' : 'Échec : '.$message->errorCode;
-}
-```
-
-### Coût avant envoi
-
-1 crédit = 1 segment SMS. Un message 100 % ASCII (GSM-7) tient en 160 caractères (153 par segment au-delà). **Tout
-caractère non ASCII** (é, à, ç, emoji, guillemets typographiques…) fait passer le message en UCS-2 : 70 caractères
-(67 par segment au-delà), soit un coût souvent doublé. Écrire « reunion » plutôt que « réunion » peut diviser la
-facture par deux.
-
-```php
-$estimation = $client->sms->estimate('Réunion demain à 9h', ['0812345678', '0899999999']);
-$estimation->encoding;       // Encoding::Ucs2
-$estimation->totalCredits;   // 2
-$estimation->isAffordable(); // le solde suffit ?
-
-// stripAccents : accents et caractères typographiques remplacés par de l'ASCII → GSM-7, souvent deux fois moins cher.
-$client->sms->estimate('Réunion demain à 9h', '0812345678', stripAccents: true)->encoding; // Encoding::Gsm7
-$client->sms->send('0812345678', 'Réunion demain à 9h', stripAccents: true);
-```
-
-Les destinataires sont comptés comme à l'envoi (normalisés, doublons fusionnés). `stripAccents` (aussi sur
-`sendMany()` et `otp->send()`) n'est jamais appliqué sans le demander ; la translittération dépend du serveur
-(`Café` peut devenir `Cafe` ou `Caf'e`) : ne pas en dépendre pour un texte exact.
+L'envoi est asynchrone : `202 Accepted` signifie *mis en file et payé*, pas *remis*. Suivez le statut avec le webhook
+`message.status_changed` (recommandé) ou en interrogeant `get()`. Un texte compte de 1 à 1600 caractères.
 
 ### Plusieurs destinataires : tout ou rien
 
@@ -92,133 +132,163 @@ Les destinataires sont comptés comme à l'envoi (normalisés, doublons fusionn�
 use Labyrinthe\Connect\Exception\RecipientNotSendableException;
 
 try {
-    $lot = $client->sms->sendMany(['0812345678', '0899999999'], 'Réunion demain à 9h.');
-    count($lot);             // un Message par numéro distinct (les doublons sont fusionnés)
+    $batch = $client->sms->sendMany(['0812345678', '0899999999'], 'Reunion demain a 9h.');
+    count($batch);          // un Message par numéro distinct (doublons fusionnés après normalisation)
+    $batch->first();        // ?Message
 } catch (RecipientNotSendableException $e) {
-    // RIEN n'a été envoyé : corrigez la liste puis réessayez.
-    foreach ($e->getRejected() as $refus) {
-        echo $refus->recipient.' : '.$refus->reason->value; // invalid_phone, blacklisted, opted_out
+    // RIEN n'a été envoyé : corrigez la liste et recommencez.
+    foreach ($e->getRejected() as $rejected) {
+        echo $rejected->recipient.' : '.$rejected->reason->value; // invalid_phone, blacklisted, opted_out
     }
 }
 ```
 
-Jusqu'à 1000 destinataires par appel. Tous les destinataires, le Sender ID et le solde sont vérifiés **avant** le
-moindre envoi : un seul numéro refusé (ou un solde insuffisant) et aucun SMS ne part. Les numéros que le SDK sait déjà
-invalides sont refusés localement (`InvalidArgumentException`), sans appel réseau.
+Jusqu'à 1000 destinataires par appel. Chaque destinataire, le Sender ID et le solde sont vérifiés **avant** tout
+envoi : un seul numéro refusé ou un solde insuffisant, et aucun SMS ne part. Les numéros que le SDK sait déjà
+invalides sont refusés localement (`InvalidArgumentException`), avant tout appel réseau.
 
-### Idempotence (pas de double envoi)
+### Coût avant l'envoi, `stripAccents`
 
-Chaque envoi porte un en-tête `Idempotency-Key`. Si vous n'en donnez pas, le SDK génère un UUID v4 et le réutilise
-pour ses propres nouvelles tentatives : une erreur réseau ne produit jamais un second SMS.
-
-Pour vous protéger aussi de **vos** reprises (jobs relancés, double clic, plantage), passez une clé tirée de votre
-événement métier. Un rejeu dans les 24 h renvoie les messages d'origine sans rien renvoyer ni débiter :
+1 crédit = 1 segment SMS. Un message en ASCII pur (GSM-7) tient en 160 caractères (153 par segment au-delà).
+**Tout caractère non ASCII** (é, à, ç, emoji, guillemets typographiques…) passe en UCS-2 : 70 caractères (67 par
+segment au-delà), soit un coût souvent doublé.
 
 ```php
-$lot = $client->sms->sendMany(['0812345678'], 'Votre commande 1042 est prête.', idempotencyKey: 'commande-1042-prete');
-$lot->replayed;   // true s'il s'agit d'un rejeu
+$estimate = $client->sms->estimate('Réunion demain à 9h', ['0812345678', '0899999999']);
+$estimate->encoding;           // Encoding::Ucs2
+$estimate->characters;         // 19
+$estimate->segmentsPerMessage; // 1
+$estimate->recipientsCount;    // 2 (normalisés, doublons fusionnés, invalides ignorés)
+$estimate->totalCredits;       // 2
+$estimate->balanceAfter;       // ?int
+$estimate->isAffordable();     // le solde suffit-il ?
+
+$client->sms->estimate('Réunion demain à 9h', '0812345678', stripAccents: true)->encoding; // Encoding::Gsm7
 ```
 
-La même clé avec un autre contenu (destinataires, texte, expéditeur, référence ou `stripAccents`) est refusée :
-`IdempotencyKeyReusedException` (409). Les destinataires sont comparés après normalisation : `0812345678` puis
-`243812345678` avec la même clé est un rejeu. Tant que la requête d'origine est en cours, l'API répond
-`409 IDEMPOTENCY_REQUEST_IN_PROGRESS` : le SDK attend `Retry-After` (5 s) et la renvoie avec la même clé.
+`estimate()` n'envoie rien et est gratuit. `stripAccents: true` (sur `send()`, `sendMany()`, `estimate()` et
+`otp->send()`) demande à l'API de remplacer accents et caractères typographiques par leur équivalent ASCII. Ce n'est
+jamais appliqué sans demande explicite, et la translittération dépend du serveur (`Café` peut devenir `Cafe`) : ne
+comptez pas dessus pour un texte exact.
 
-**Résultat inconnu.** `IdempotencyKeyUnresolvedException` (409 `IDEMPOTENCY_KEY_UNRESOLVED`, `send()`, `sendMany()`
-et `otp->send()`) : la requête d'origine avec cette clé a échoué de façon inattendue côté API et son résultat est
-inconnu — **un SMS a pu partir**. Le SDK ne la relance jamais, et vous ne devez pas la relancer avec la même clé.
-Vérifiez d'abord (`$client->sms->list(reference: …)` pour un SMS, ou demandez à l'utilisateur s'il a reçu le code),
-puis, si rien n'est parti, renvoyez avec une **nouvelle** `idempotencyKey`. Journalisez `getRequestId()` pour le support.
-
-### Lister les messages
+### Lire un message, lister les messages
 
 ```php
 use Labyrinthe\Connect\Enum\MessageStatus;
 
-$page = $client->sms->list(status: MessageStatus::Failed, from: '2026-11-01', to: new DateTime(), perPage: 50);
+$message = $client->sms->get($message->id);
+if ($message->status->isFinal()) {
+    echo $message->status->isSuccessful() ? 'Remis' : 'Échec : '.$message->errorCode;
+}
 
-foreach ($page->autoPaging() as $message) {   // toutes les pages, chargées à la demande
+$page = $client->sms->list(
+    status: MessageStatus::Failed,  // ou 'failed'
+    recipient: '0812345678',        // tous formats
+    reference: 'order-1042',        // correspondance exacte
+    from: '2026-11-01',             // une date couvre toute la journée ; DateTimeInterface accepté
+    to: new DateTimeImmutable(),
+    page: 1,
+    perPage: 50,                    // 1 à 100, 15 par défaut
+);
+
+$page->total; $page->currentPage; $page->lastPage; $page->hasMore();
+$next = $page->nextPage();          // ?Page
+
+foreach ($page->autoPaging() as $message) {   // cette page et toutes les suivantes, chargées à la demande
     // …
 }
 ```
 
-Filtres : `status`, `recipient` (tout format), `reference`, `from`, `to` (une date couvre la journée), `page`,
-`perPage` (100 max.). La liste ne contient que les messages envoyés **avec la clé API appelante**.
+`get()` retrouve tout message du compte par son `id`. `list()` ne renvoie que les messages envoyés **avec la clé API
+appelante**, du plus récent au plus ancien. Statuts (`MessageStatus`) : `queued`, `submitted`, `sent`, `delivered`,
+`failed`, `rejected`, `expired`, `undeliverable`, et `unknown` pour une valeur ajoutée plus tard.
 
-### Solde et Sender IDs
+## Solde et Sender IDs
 
 ```php
-$client->balance->get()->balance;      // crédits disponibles
+$balance = $client->balance->get();
+$balance->balance;                        // crédits disponibles
+$balance->held;                           // crédits réservés par les campagnes en cours
+
 foreach ($client->senderIds->list() as $senderId) {
-    echo $senderId->value;              // noms approuvés, utilisables dans `sender`
+    echo $senderId->value;                // nom approuvé, utilisable comme `sender`
+    $senderId->isDefault;                 // Sender ID par défaut du compte ?
 }
 ```
 
+Seuls les Sender IDs approuvés sont listés. Demandez-en de nouveaux dans l'espace client ; un `sender` non approuvé
+est refusé avec `SenderIdNotApprovedException`.
+
 ## OTP : vérifier un numéro
 
-Le code est généré, envoyé par SMS et vérifié par Labyrinthe Connect. Il n'est jamais renvoyé par l'API (sauf avec
-une clé de test) et jamais journalisé par le SDK.
+Labyrinthe Connect génère le code, l'envoie par SMS (facturé comme un SMS) et le vérifie (gratuit). Le code n'est
+jamais renvoyé par l'API en production et jamais journalisé par le SDK.
 
 ```php
-// 1. Envoyer le code. Conserver otp_id CÔTÉ SERVEUR (session, cache, base) — jamais dans un champ caché.
+use Labyrinthe\Connect\Enum\OtpFailureReason;
+
+// 1. Envoyer le code. Garder otp_id CÔTÉ SERVEUR (session, cache, base), jamais dans un champ de formulaire.
 $otp = $client->otp->send('0812345678');
 $_SESSION['otp_id'] = $otp->otpId;
-$otp->codeLength;          // 6 : taille du champ de saisie
-$otp->codeType;            // OtpCodeType::Numeric (pavé numérique) ou OtpCodeType::Alphanumeric
-$otp->resendAfterSeconds;  // compte à rebours avant « Renvoyer le code »
+$otp->expiresAt;           // DateTimeImmutable
+$otp->maxAttempts;         // 5
+$otp->codeLength;          // 6 : taille du champ
+$otp->codeType;            // OtpCodeType::Numeric (clavier numérique) ou OtpCodeType::Alphanumeric
+$otp->resendAfterSeconds;  // compte à rebours avant « Renvoyer le code » (aussi resendAvailableAt())
+$otp->testCode();          // le code avec une clé lsk_test_, toujours null en production
 
 // 2. L'utilisateur saisit le code reçu par SMS.
 
-// 3. Vérifier.
-$resultat = $client->otp->verify($_SESSION['otp_id'], $_POST['code']);
-if ($resultat->isValid()) {
+// 3. Le vérifier.
+$result = $client->otp->verify($_SESSION['otp_id'], $_POST['code']);
+if ($result->isValid()) {
     unset($_SESSION['otp_id']);
     // connecter l'utilisateur / marquer le numéro comme vérifié
 } else {
-    match ($resultat->reason) {
-        OtpFailureReason::InvalidCode => "Code incorrect, encore {$resultat->attemptsRemaining} essai(s).",  // une tentative consommée
+    $error = match ($result->reason) {
+        OtpFailureReason::InvalidCode => "Code incorrect, {$result->attemptsRemaining} essai(s) restant(s).",
         OtpFailureReason::Expired, OtpFailureReason::AlreadyUsed,
         OtpFailureReason::MaxAttemptsReached => 'Demandez un nouveau code.',
-        default => 'Vérification impossible.',
+        default => 'Le code n\'a pas pu être vérifié.',
     };
 }
 ```
 
-- Un code faux n'est **pas** une exception : `verify()` renvoie `verified: false` et un motif.
-- Un nouvel envoi au même numéro invalide le code précédent.
-- Longueur, validité, tentatives, Sender ID et modèle viennent des paramètres OTP du compte (espace client >
-  *Vérification OTP*). Vous pouvez imposer le modèle (`template: 'Votre code MaBoutique : {code}'`, qui doit contenir
-  `{code}` ; jetons facultatifs `{app_name}`, `{minutes}`) et la langue (`locale: 'fr'|'en'`).
-- `attemptsRemaining` : tentatives restantes après `invalid_code`, `0` avec `max_attempts_reached`, `null` sinon.
-- Limites : `OtpResendTooSoonException` (attendre `getRetryAfter()` secondes avant de renvoyer à ce numéro ; un renvoi
-  est accepté tout de suite une fois le code vérifié) et `OtpRateLimitedException` (plafond horaire par numéro ou par
-  compte, `getScope()`, `getLimit()`, `getRetryAfter()`). Les deux lisent l'en-tête `Retry-After`.
-- **Web OTP API** (remplissage automatique sous Chrome / Android) : `webOtpDomain: 'app.exemple.com'` ajoute la
-  dernière ligne `@app.exemple.com #123456` au SMS ; à lire dans le navigateur avec
-  `navigator.credentials.get({ otp: { transport: ['sms'] } })`. `stripAccents: true` garde le message en GSM-7.
-- **Mode test** : avec une clé `lsk_test_`, aucun SMS ne part et `$otp->testCode()` renvoie le code pour tester tout le
-  parcours. Toujours `null` avec une clé live, masqué dans `var_dump()` et `json_encode()`.
+| Paramètre de `otp->send()` | |
+|---|---|
+| `phone` | tout format accepté |
+| `template` | votre message, doit contenir `{code}` ; `{app_name}`, `{minutes}` facultatifs (par défaut : le modèle OTP du compte) |
+| `locale` | `'fr'` ou `'en'`, langue du modèle standard |
+| `webOtpDomain` | nom d'hôte comme `'app.exemple.com'` : ajoute la dernière ligne `@app.exemple.com #123456` pour que Chrome / Android remplisse le code (`navigator.credentials.get({ otp: { transport: ['sms'] } })`) |
+| `stripAccents` | garder le message en GSM-7 |
+| `idempotencyKey`, `requestId` | voir [Nouvelles tentatives et idempotence](#nouvelles-tentatives-et-idempotence) |
 
-**Idempotence.** `otp->send()` porte toujours une `Idempotency-Key` (un UUID v4 généré, ou la vôtre), réutilisée par
-chaque relance : une erreur réseau, une 5xx ou `IDEMPOTENCY_REQUEST_IN_PROGRESS` est relancée sans second SMS, et le
-rejeu renvoie le même `otpId` (`$otp->replayed === true`, et le même `testCode()` en mode test). Votre propre clé
-doit désigner **un** envoi (ex. `"inscription-{$tentativeId}"`) : réutilisée pendant 24 h, elle renvoie le même code,
-jamais un nouveau.
+- Un code faux n'est **pas** une exception : `verify()` renvoie `verified: false` avec un motif `reason`
+  (`invalid_code`, `expired`, `already_used`, `max_attempts_reached`) ; `$result->reason?->canRetry()` indique si
+  l'utilisateur peut réessayer.
+- `attemptsRemaining` : essais restants après `invalid_code`, `0` avec `max_attempts_reached`, `null` sinon.
+- Longueur et alphabet du code, validité, nombre d'essais, délai de renvoi, Sender ID et modèle par défaut viennent
+  des paramètres OTP du compte (espace client > *Vérification OTP*) ; `codeLength`, `codeType` et
+  `resendAfterSeconds` les reflètent.
+- Un nouvel `send()` au même numéro invalide le code précédent. Un renvoi est accepté tout de suite après une
+  vérification réussie.
+- **Limites** : 10 envois / minute par clé API (`RateLimitException`) ; un délai minimal entre deux envois au même
+  numéro (`OtpResendTooSoonException`, `getRetryAfter()`) ; un plafond horaire par numéro et par compte
+  (`OtpRateLimitedException`, `getScope()` = `OtpRateLimitScope::Phone` ou `Account`, `getLimit()`,
+  `getRetryAfter()`).
+- **Mode test** : avec une clé `lsk_test_`, aucun SMS ne part et `$otp->testCode()` renvoie le code, pour tester tout
+  le parcours. Il est masqué dans `var_dump()` et `json_encode()`.
 
-```php
-$otp = $client->otp->send($telephone, idempotencyKey: "inscription-{$tentativeId}", webOtpDomain: 'app.exemple.com');
-$otp->replayed;        // true si l'API a rejoué un envoi précédent (ni nouveau SMS, ni nouveau débit)
-```
-
-`otp->verify()` n'est jamais relancé après une erreur réseau ou une 5xx (une tentative a pu être consommée) :
-affichez une erreur et laissez l'utilisateur ressaisir le code.
+Un parcours de connexion complet (deux points d'entrée, session PHP) est dans
+[`examples/otp-login.php`](examples/otp-login.php).
 
 ## Webhooks
 
-Déclarez un endpoint dans l'espace client (*Développeurs > Webhooks*) et copiez son secret. Les événements arrivent
-en `POST` JSON, signés (`X-Signature: sha256=<HMAC-SHA256 du corps brut>`).
+Ajoutez un point d'entrée dans l'espace client (*Développeurs > Webhooks*) et copiez son secret. Les événements sont
+envoyés en `POST` JSON `{ id, event, data, timestamp }`, signés par `X-Signature: sha256=<HMAC-SHA256 du corps brut>`.
 
 ```php
+use Labyrinthe\Connect\Enum\MessageStatus;
 use Labyrinthe\Connect\Exception\InvalidWebhookPayloadException;
 use Labyrinthe\Connect\Exception\SignatureVerificationException;
 use Labyrinthe\Connect\Webhook\Event\BalanceLow;
@@ -228,10 +298,10 @@ use Labyrinthe\Connect\Webhook\Event\OtpFailed;
 use Labyrinthe\Connect\Webhook\Event\OtpVerified;
 use Labyrinthe\Connect\Webhook\Webhook;
 
-$corpsBrut = file_get_contents('php://input');        // le corps BRUT : ne jamais ré-encoder un tableau décodé
+$rawBody = file_get_contents('php://input');          // le corps BRUT : ne jamais réencoder un tableau décodé
 
 try {
-    $event = Webhook::constructEvent($corpsBrut, $_SERVER['HTTP_X_SIGNATURE'] ?? '', getenv('LABYRINTHE_WEBHOOK_SECRET'));
+    $event = Webhook::constructEvent($rawBody, $_SERVER['HTTP_X_SIGNATURE'] ?? '', getenv('LABYRINTHE_WEBHOOK_SECRET'));
 } catch (SignatureVerificationException | InvalidWebhookPayloadException) {
     http_response_code(400);
     exit;
@@ -247,150 +317,216 @@ match (true) {
     $event instanceof CampaignCompleted => prevenir_equipe($event->name, $event->countFor(MessageStatus::Delivered)),
     $event instanceof BalanceLow => acheter_credits($event->balance, $event->threshold),
     $event instanceof OtpVerified => marquer_verifie($event->otpId, $event->phone, $event->verifiedAt),
-    $event instanceof OtpFailed => alerter_securite($event->otpId, $event->status, $event->reason),
+    $event instanceof OtpFailed => alerte_securite($event->otpId, $event->status, $event->reason),
     default => null,                                    // TestPing, ou UnknownEvent pour un type futur
 };
 
-http_response_code(200);                                // répondre 2xx sous 10 s ; traitements longs en file
+http_response_code(200);                                // répondre 2xx sous 10 s ; mettre le travail lent en file
 ```
 
-- La signature est vérifiée en temps constant, puis le `timestamp` signé doit dater de moins de 5 minutes
-  (4e argument ; `0` désactive le contrôle) contre le rejeu.
-- Une livraison échouée est retentée jusqu'à 5 fois (30 s, 2 min, 5 min, 15 min) : le même `id` peut arriver plusieurs
-  fois, et l'ordre n'est pas garanti.
-- Un type d'événement ajouté plus tard arrive en `UnknownEvent` (vérifié, jamais rejeté) : répondez 2xx.
-- `MessageStatusChanged` porte `reference` (passée à l'envoi), `errorCode` et `errorMessage` (en cas d'échec).
-- `OtpVerified` / `OtpFailed` (`otp.verified`, `otp.failed`) sont émis une fois par vérification, jamais avec le code :
-  `otpId`, `phone`, `status` (`OtpWebhookStatus::Verified`, `Failed` ou `Expired`), `reason` (`null`,
-  `OtpFailureReason::MaxAttemptsReached` ou `Expired`) et `verifiedAt`.
-- `Webhook::sign($corps, $secret)` construit un en-tête valide pour tester votre endpoint.
+| Événement | Classe | Propriétés principales |
+|---|---|---|
+| `message.status_changed` | `MessageStatusChanged` | `messageId`, `recipient`, `status`, `providerMessageId`, `campaignId`, `reference`, `errorCode`, `errorMessage` |
+| `campaign.completed` | `CampaignCompleted` | `campaignId`, `name`, `recipientsCount`, `messagesByStatus`, `countFor()`, `creditsCharged`, `completedAt` |
+| `balance.low` | `BalanceLow` | `balance`, `threshold` |
+| `otp.verified` | `OtpVerified` | `otpId`, `phone`, `status` (`OtpWebhookStatus::Verified`), `verifiedAt` |
+| `otp.failed` | `OtpFailed` | `otpId`, `phone`, `status` (`Failed` ou `Expired`), `reason` (`MaxAttemptsReached`, `Expired` ou `null`) |
+| `test.ping` | `TestPing` | — |
+| un type ajouté plus tard | `UnknownEvent` | `data()` ; vérifié, jamais rejeté : l'acquitter par un 2xx |
+
+Chaque événement offre `id()`, `type()`, `eventType()` (`?WebhookEvent`), `timestamp()` et `raw()`.
+
+- La signature est vérifiée en temps constant sur le corps brut, puis l'horodatage signé (`timestamp`) doit dater de
+  moins de 5 minutes (4ᵉ argument `toleranceSeconds` ; `0` désactive le contrôle) pour bloquer les rejeux.
+  `Webhook::verifySignature()` ne vérifie que la signature ; `Webhook::sign($body, $secret)` fabrique un en-tête
+  valide pour tester votre point d'entrée.
+- Une livraison en échec est retentée jusqu'à 5 fois : le même `id` peut arriver plusieurs fois et l'ordre n'est pas
+  garanti. Conservez les `id` traités (24 h suffisent) et répondez 2xx aux doublons.
+- Les événements OTP ne contiennent jamais le code.
+
+Exemples par framework : PHP natif dans [`examples/webhook-receiver.php`](examples/webhook-receiver.php) ; Laravel a
+une route et des événements prêts à l'emploi avec [`labyrinthe/connect-laravel`](../laravel). Avec Symfony, passez
+`$request->getContent()` (corps brut) et `$request->headers->get('X-Signature', '')` à `Webhook::constructEvent()`.
 
 ## Erreurs
 
 Toutes les exceptions implémentent `Labyrinthe\Connect\Exception\LabyrintheException`. Les erreurs de l'API héritent
-d'`ApiException` et exposent `getErrorCode()` (stable, pour votre code), `getMessage()` (en français, pour les
-humains), `getStatusCode()`, `getDetails()`, `getRequestId()` (l'en-tête `X-Request-Id`, à donner au support) et
-`getApiVersion()`.
+de `ApiException` : `getErrorCode()` (stable, pour votre code), `getMessage()` (en français, pour les humains),
+`getStatusCode()`, `getDetails()`, `getRequestId()` (le `X-Request-Id`, pour le support), `getApiVersion()` et
+`getHeader()`.
 
-| Exception | Cas |
-|---|---|
-| `AuthenticationException` | 401 — clé absente, invalide ou révoquée |
-| `PermissionException` | 403 — IP non autorisée (`FORBIDDEN`), OTP désactivé pour le compte (`OTP_DISABLED_FOR_ACCOUNT`) |
-| `AccountSuspendedException` | 403 `ACCOUNT_SUSPENDED` — hérite de `PermissionException` ; toute l'API est fermée jusqu'à réactivation |
-| `NotFoundException` | 404 — message ou `otp_id` inconnu |
-| `ValidationException` | 422 `VALIDATION_ERROR` — `getErrors()` / `getFieldErrors('body')` |
-| `RecipientNotSendableException` | 422 — `getRejected()`, `getReason()` ; rien n'a été envoyé |
-| `SenderIdNotApprovedException` | 422 — `sender` n'est pas un Sender ID approuvé |
-| `InvalidPhoneException` | 422 `INVALID_PHONE` (OTP) |
-| `InsufficientCreditsException` | 409 — `getAvailable()`, `getRequired()` ; rien n'a été envoyé |
-| `IdempotencyKeyReusedException` | 409 — même clé, requête différente |
-| `IdempotencyRequestInProgressException` | 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` — déjà relancée par le SDK ; `getRetryAfter()` |
-| `IdempotencyKeyUnresolvedException` | 409 `IDEMPOTENCY_KEY_UNRESOLVED` — résultat inconnu (un SMS a pu partir) ; jamais relancée : vérifier, puis renvoyer avec une nouvelle clé |
-| `RateLimitException` | 429 `TOO_MANY_REQUESTS` — `getRetryAfter()` |
-| `OtpResendTooSoonException` | 429 — hérite de `RateLimitException` |
-| `OtpRateLimitedException` | 429 — hérite de `RateLimitException`, `getScope()`, `getLimit()` |
-| `ServiceUnavailableException` | 5xx — erreur serveur ou service momentanément indisponible |
-| `FeatureDisabledException` | 503 `FEATURE_DISABLED` / `OTP_SERVICE_DISABLED` — maintenance, rien n'a été fait ; étend `ServiceUnavailableException` ; `getFeature()`, `getBlockedBy()`, `getAdminMessage()`, `getUntil()`, `getRetryAfter()` |
-| `ApiException` | tout autre code (liste ouverte : de nouveaux codes peuvent apparaître) |
-| `ConnectionException` | erreur réseau ou délai dépassé (`isTimeout()`) |
-| `InvalidArgumentException` | saisie invalide détectée par le SDK, avant tout appel |
+| Exception | HTTP | Code | Que faire |
+|---|---|---|---|
+| `AuthenticationException` | 401 | `UNAUTHENTICATED` | vérifier la clé (absente, invalide ou révoquée) |
+| `PermissionException` | 403 | `FORBIDDEN`, `OTP_DISABLED_FOR_ACCOUNT` | IP non autorisée pour cette clé, ou OTP désactivé pour le compte |
+| `AccountSuspendedException` | 403 | `ACCOUNT_SUSPENDED` | toute l'API est fermée jusqu'à réactivation : contacter le support (hérite de `PermissionException`) |
+| `NotFoundException` | 404 | `NOT_FOUND` | identifiant de message ou `otp_id` inconnu |
+| `ValidationException` | 422 | `VALIDATION_ERROR` | corriger la saisie : `getErrors()`, `getFieldErrors('body')` |
+| `RecipientNotSendableException` | 422 | `RECIPIENT_NOT_SENDABLE` | rien n'est parti : `getRejected()`, `getReason()` |
+| `SenderIdNotApprovedException` | 422 | `SENDER_ID_NOT_APPROVED` | utiliser un Sender ID approuvé (`senderIds->list()`) |
+| `InvalidPhoneException` | 422 | `INVALID_PHONE` | OTP : demander un autre numéro |
+| `InsufficientCreditsException` | 409 | `INSUFFICIENT_CREDITS` | rien n'est parti : acheter des crédits ; `getAvailable()`, `getRequired()` (jamais en mode test) |
+| `IdempotencyKeyReusedException` | 409 | `IDEMPOTENCY_KEY_REUSED` | même clé, contenu différent : utiliser une nouvelle clé |
+| `IdempotencyRequestInProgressException` | 409 | `IDEMPOTENCY_REQUEST_IN_PROGRESS` | déjà relancée par le SDK ; réessayer plus tard avec la même clé (`getRetryAfter()`) |
+| `IdempotencyKeyUnresolvedException` | 409 | `IDEMPOTENCY_KEY_UNRESOLVED` | résultat inconnu, un SMS a pu partir : vérifier (`sms->list(reference: …)`), puis envoyer avec une **nouvelle** clé |
+| `RateLimitException` | 429 | `TOO_MANY_REQUESTS` | ralentir ; `getRetryAfter()` |
+| `OtpResendTooSoonException` | 429 | `OTP_RESEND_TOO_SOON` | afficher un compte à rebours de `getRetryAfter()` secondes (hérite de `RateLimitException`) |
+| `OtpRateLimitedException` | 429 | `OTP_RATE_LIMITED` | plafond horaire : `getScope()`, `getLimit()`, `getRetryAfter()` (hérite de `RateLimitException`) |
+| `FeatureDisabledException` | 503 | `FEATURE_DISABLED`, `OTP_SERVICE_DISABLED` | maintenance, rien n'a été fait : [voir plus bas](#maintenance-503-feature_disabled) |
+| `ServiceUnavailableException` | 5xx | tous | erreur serveur temporaire (déjà relancée quand c'est sans risque) |
+| `ApiException` | tous | tout autre code (ex. `INVALID_OTP_TEMPLATE`, `HTTP_ERROR`) | la liste est ouverte : traiter un code inconnu de façon générique |
+| `ConnectionException` | — | `CONNECTION_ERROR`, `TIMEOUT` | erreur réseau ou délai dépassé (`isTimeout()`) |
+| `InvalidArgumentException` | — | — | saisie invalide détectée par le SDK, avant tout appel |
+| `SignatureVerificationException`, `InvalidWebhookPayloadException` | — | — | webhook refusé : répondre 400 |
+
+```php
+use Labyrinthe\Connect\Exception\ApiException;
+use Labyrinthe\Connect\Exception\ConnectionException;
+use Labyrinthe\Connect\Exception\InsufficientCreditsException;
+
+try {
+    $client->sms->send('0812345678', 'Bonjour');
+} catch (InsufficientCreditsException $e) {
+    alerter_finance($e->getAvailable(), $e->getRequired());
+} catch (ApiException $e) {
+    journaliser($e->getErrorCode(), $e->getStatusCode(), $e->getRequestId());
+} catch (ConnectionException $e) {
+    journaliser($e->getErrorCode(), $e->isTimeout());
+}
+```
 
 ### Maintenance (503 `FEATURE_DISABLED`)
 
 Un administrateur de la plateforme peut couper temporairement toute l'API (`api`) ou une fonction (`api.sms_send`,
-`api.otp_send`, `api.otp_verify` ; `otp` pour tout le service OTP, code `OTP_SERVICE_DISABLED`). Rien n'a été fait :
-aucun SMS envoyé, aucun crédit débité. Le SDK ne relance que si une réactivation automatique est programmée dans la
-limite de `maxRetryWait` (`Retry-After`) ; sinon, ne relancez pas en boucle : mettez le travail en file d'attente ou
-prévenez l'utilisateur.
+`api.otp_send`, `api.otp_verify` ; `otp` pour tout le service OTP, code `OTP_SERVICE_DISABLED`). **Rien n'a été
+fait** : aucun SMS envoyé, aucun crédit débité. `FeatureDisabledException` hérite de `ServiceUnavailableException` :
+les `catch` existants continuent de fonctionner.
+
+| Accesseur | |
+|---|---|
+| `getFeature()` | fonction demandée par l'appel (`api.sms_send`…), ou `null` |
+| `getBlockedBy()` | fonction réellement coupée (elle-même ou une parente, ex. `api`), ou `null` |
+| `getAdminMessage()` | message de l'administrateur (en français), ou `null` ; `getMessage()` le reprend ou donne un texte générique |
+| `getUntil()` | réactivation programmée (`DateTimeImmutable`), ou `null` si inconnue |
+| `getRetryAfter()` | secondes avant cette réactivation (`Retry-After`), ou `null` |
+
+Le SDK ne la relance que si l'API envoie un `Retry-After` inférieur ou égal à `maxRetryWait`, après exactement ce
+délai. Sinon, ne relancez pas en boucle : mettez le travail en file ou prévenez l'utilisateur.
 
 ```php
 use Labyrinthe\Connect\Exception\FeatureDisabledException;
 
 try {
-    $client->sms->send('0812345678', 'Votre commande est expédiée');
+    $client->sms->send('0812345678', 'Votre commande est expediee');
 } catch (FeatureDisabledException $e) {
-    // $e->getAdminMessage() : texte de l'administrateur ou null ; $e->getUntil() : DateTimeImmutable ou null
-    $delai = $e->getRetryAfter() ?? 900; // retour inconnu : nouvel essai dans 15 minutes
-    $file->plusTard($delai, new EnvoyerSms('0812345678', 'Votre commande est expédiée'));
+    $delai = $e->getRetryAfter() ?? 900;          // retour inconnu : réessayer dans 15 minutes
+    $file->later($delai, new EnvoyerSms('0812345678', 'Votre commande est expediee'));
+    afficher_avis($e->getAdminMessage() ?? 'L\'envoi de SMS est momentanément indisponible.');
 }
 ```
 
-## Nouvelles tentatives et délais
+## Nouvelles tentatives et idempotence
 
-Le SDK relance automatiquement (2 fois par défaut, attente exponentielle 0,5 s → 1 s → 2 s avec gigue) **uniquement
-quand un rejeu ne peut pas provoquer deux fois le même effet** :
+**Jamais de double SMS.** `send()`, `sendMany()` et `otp->send()` portent toujours une `Idempotency-Key`. Si vous
+n'en donnez pas, le SDK génère un UUID v4 et le réutilise pour ses propres relances. Un rejeu dans les 24 h renvoie
+la réponse d'origine sans nouvel envoi ni débit (`$batch->replayed`, `$otp->replayed` ; pour l'OTP, même `otpId` et
+même `testCode()`).
+
+Pour vous protéger aussi de **vos** relances (jobs en file, double clic, plantage), passez une clé dérivée de
+l'événement métier : `idempotencyKey: 'order-1042-ready'` (255 caractères max.). Une clé = une intention d'envoi : la
+même clé avec un autre contenu est refusée (`IdempotencyKeyReusedException`) ; les destinataires sont comparés après
+normalisation (`0812345678` puis `243812345678` est un rejeu). Pour l'OTP, réutiliser une clé pendant 24 h renvoie le
+même code, jamais un nouveau.
+
+Les relances automatiques (2 par défaut, backoff exponentiel 0,5 s → 1 s → 2 s avec gigue) n'ont lieu **que quand un
+rejeu ne peut pas produire deux fois un effet** :
 
 | Requête | Erreur réseau / délai | 5xx | 429 `TOO_MANY_REQUESTS` | 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` |
 |---|---|---|---|---|
-| `GET` (get, list, solde, Sender IDs), `estimate()` | relancée | relancée | relancée après `Retry-After` | — |
-| `send()` / `sendMany()` (toujours avec `Idempotency-Key`) | relancée, même clé | relancée, même clé | relancée après `Retry-After` | relancée après `Retry-After`, même clé |
-| `otp->send()` (toujours avec `Idempotency-Key`, depuis 1.1.0) | relancée, même clé | relancée, même clé | relancée après `Retry-After` | relancée après `Retry-After`, même clé |
-| `otp->verify()` | **jamais** | **jamais** | relancée (requête refusée avant traitement) | — |
+| `get()`, `list()`, `balance`, `senderIds`, `estimate()` | relancée | relancée | après `Retry-After` | — |
+| `send()` / `sendMany()` | relancée, même clé | relancée, même clé | après `Retry-After` | après `Retry-After`, même clé |
+| `otp->send()` | relancée, même clé | relancée, même clé | après `Retry-After` | après `Retry-After`, même clé |
+| `otp->verify()` | **jamais** | **jamais** | après `Retry-After` | — |
 
-Les erreurs métier (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`, `ACCOUNT_SUSPENDED`, `IDEMPOTENCY_KEY_UNRESOLVED`)
-ne sont jamais relancées. Les 503 `FEATURE_DISABLED` / `OTP_SERVICE_DISABLED` (maintenance) ne suivent pas la
-colonne 5xx : sur toute requête, `otp->verify()` compris, elles ne sont relancées que si l'API envoie un `Retry-After`,
-après exactement ce délai, et levées immédiatement sinon (depuis la 1.2.0).
-Si l'API demande d'attendre plus que `maxRetryWait` (10 s par défaut), le SDK lève l'exception (`RateLimitException`,
-`IdempotencyRequestInProgressException`, `FeatureDisabledException`) au lieu de bloquer.
+- Les erreurs métier (autres 4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`, `ACCOUNT_SUSPENDED`,
+  `IDEMPOTENCY_KEY_UNRESOLVED`) ne sont jamais relancées.
+- Les 503 `FEATURE_DISABLED` / `OTP_SERVICE_DISABLED` ne suivent pas la colonne 5xx : sur toute opération,
+  `otp->verify()` compris, elles ne sont relancées qu'après un `Retry-After`, jamais par backoff.
+- Quand l'API demande d'attendre plus que `maxRetryWait` (10 s par défaut), le SDK lève l'exception au lieu de
+  bloquer.
+- `otp->verify()` n'est jamais relancée après une erreur réseau ou une 5xx (un essai a pu être consommé) : affichez
+  une erreur et laissez l'utilisateur ressaisir le code.
 
-**Identifiant de requête.** Chaque réponse porte `X-Request-Id`. Passez le vôtre avec `requestId:` sur n'importe quel
-appel (1 à 128 caractères parmi `A-Z a-z 0-9 . _ : -`, renvoyé à chaque relance) pour relier vos journaux à ceux de
-l'API ; lisez-le sur toute exception avec `getRequestId()`, ou sur la dernière réponse avec
+## Mode test, journaux et sécurité
+
+| Clé | Mode | Effet |
+|---|---|---|
+| `lsk_test_…` | Bac à sable | Rien n'est envoyé, aucun crédit n'est consommé, réponses identiques à la production. Le solde n'est pas vérifié (jamais `INSUFFICIENT_CREDITS`) et `otp->send()` renvoie le code (`testCode()`). |
+| `lsk_live_…` | Production | Les SMS partent réellement et consomment des crédits. |
+
+`$client->isTestMode()` et `$client->isLiveMode()` indiquent le mode utilisé.
+
+**Journaux.** Passez un `logger` PSR-3 pour obtenir des journaux de debug des requêtes et réponses, des warnings à
+chaque relance et des infos sur les erreurs de l'API, toujours avec le `request_id`. La clé API, les codes OTP et les
+textes des messages ne sont jamais journalisés ; les numéros sont masqués. `var_dump($client)` montre une clé
+masquée, `serialize($client)` est refusé, et `testCode()` est masqué dans les dumps et `json_encode()`.
+
+**Identifiants de requête.** Chaque réponse porte `X-Request-Id`. Passez le vôtre avec `requestId:` sur n'importe
+quel appel (1 à 128 caractères parmi `A-Z a-z 0-9 . _ : -`, renvoyé à chaque relance) pour relier vos journaux à
+ceux de l'API. Lisez-le sur toute exception avec `getRequestId()`, ou sur la dernière réponse avec
 `$client->lastResponse()?->requestId()` (`lastResponse()` donne aussi le statut, `apiVersion()`, `isReplayed()`,
-`rateLimitRemaining()` et tous les en-têtes).
+`rateLimitLimit()`, `rateLimitRemaining()` et tous les en-têtes). Communiquez-le au support :
+connect@labyrinthe-rdc.com.
 
 ```php
 try {
-    $client->sms->send('0812345678', 'Bonjour', requestId: 'commande-1042');
+    $client->sms->send('0812345678', 'Bonjour', requestId: 'order-1042');
 } catch (ApiException $e) {
-    journaliser($e->getErrorCode(), $e->getRequestId()); // "commande-1042"
+    journaliser($e->getErrorCode(), $e->getRequestId()); // "order-1042"
 }
 ```
 
-## Configuration
+## Sans le SDK (HTTP brut)
 
-```php
-$client = new Client(
-    apiKey: getenv('LABYRINTHE_API_KEY'),
-    baseUrl: 'https://api.labyrinthe-rdc.com/api/public/v1', // défaut ; "http://localhost:8000" est complété
-    timeout: 30.0,                 // secondes (client Guzzle par défaut)
-    connectTimeout: 10.0,
-    maxRetries: 2,                 // 0 désactive les relances
-    maxRetryWait: 10.0,            // Retry-After maximal attendu par le SDK
-    defaultCountryCode: '243',     // ajouté aux numéros locaux : 0812345678 → 243812345678
-    defaultSender: 'MABOUTIQUE',   // utilisé quand send() ne reçoit pas de sender
-    httpClient: $clientPsr18,      // n'importe quel client PSR-18 (réglez ses délais vous-même)
-    requestFactory: $fabriquePsr17,
-    streamFactory: $fabriquePsr17,
-    logger: $loggerPsr3,           // journaux debug/warning, numéros masqués, ni clé, ni code, ni corps
-);
+Le SDK est une fine couche sur une API REST JSON. Le même envoi avec cURL :
 
-$client = Client::fromEnv();       // LABYRINTHE_API_KEY, LABYRINTHE_BASE_URL facultatif
+```bash
+curl https://api.labyrinthe-rdc.com/api/public/v1/sms \
+  -H "Authorization: Bearer lsk_test_…" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: 6f1c2d0e-8a4b-4c3d-9e2f-1a2b3c4d5e6f" \
+  -d '{"recipient": "+243812345678", "body": "Votre commande 1042 est prete."}'
 ```
 
-Numéros : `Labyrinthe\Connect\PhoneNumber::normalize('0812345678')` renvoie `"243812345678"` (ou `null`) avec les mêmes
-règles que l'API ; `isValid()` et `mask()` sont aussi disponibles. Les numéros internationaux (`+33…`, `+1…`) ne sont
-jamais bloqués. Sans `+`, 11 chiffres ou plus ne commençant pas par 0 sont déjà internationaux (`33612345678` reste
-`33612345678`) ; un numéro étranger de 10 chiffres ou moins exige le `+`. Les requêtes portent le numéro au format
-E.164 avec `+` (`PhoneNumber::toE164('0812345678')` → `"+243812345678"`) : `+2481234567` garde son indicatif. Chaque objet de réponse garde le JSON décodé
-dans `raw()`.
+La réponse est un `202` avec `{ "data": [ { "id": "…", "status": "queued", … } ] }` ; les erreurs ont la forme
+`{ "error": { "code", "message", "details" } }`. Chaque route, champ et erreur est décrit dans la spécification
+OpenAPI [`openapi/openapi.yaml`](../openapi/openapi.yaml).
 
-Les dates de l'API (`2026-11-06T09:39:11+00:00` ; `Z` et microsecondes acceptés aussi) sont lues en
-`DateTimeImmutable`, et `list()` envoie ses filtres `DateTimeInterface` au même format.
+## Mise à jour
 
-## Développement
+Voir le [CHANGELOG.md](CHANGELOG.md) (en anglais). Les versions 1.x sont rétrocompatibles. De 1.1 à 1.2 : les erreurs
+de maintenance sont désormais des `FeatureDisabledException` (sous-classe de `ServiceUnavailableException` : les
+`catch` existants fonctionnent toujours) et ne sont plus relancées par backoff.
+
+## Contribuer
+
+Tickets et pull requests vont dans le monorepo
+[Labyrinthe-Team/labyrinthe-connect-sdks](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks) (le dépôt
+`labyrinthe-connect-php` est un miroir en lecture seule). Voir [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ```bash
 composer install
-composer test          # tests unitaires + contrat OpenAPI (sans réseau)
-composer analyse       # PHPStan niveau max
-composer lint          # PHP-CS-Fixer (vérification) ; `composer format` pour corriger
+composer check         # PHP-CS-Fixer (sans modification) + PHPStan niveau max + tests unitaires et de contrat OpenAPI
+composer format        # corriger le style
 
 # tests d'intégration contre un backend local, avec une clé de TEST uniquement
 LABYRINTHE_API_KEY=lsk_test_… LABYRINTHE_BASE_URL=http://localhost:8000 composer test:integration
 ```
 
+Exemples : [`examples/send-sms.php`](examples/send-sms.php), [`examples/otp-login.php`](examples/otp-login.php),
+[`examples/webhook-receiver.php`](examples/webhook-receiver.php).
+
 ## Licence
 
-MIT — voir [LICENSE](LICENSE).
+MIT — voir [LICENSE](LICENSE). Failles de sécurité : écrivez à connect@labyrinthe-rdc.com plutôt que d'ouvrir un
+ticket public.
