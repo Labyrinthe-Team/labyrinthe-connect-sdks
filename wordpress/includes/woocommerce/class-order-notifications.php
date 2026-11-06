@@ -292,7 +292,9 @@ final class Order_Notifications {
 		}
 
 		if ( $result->retryable && $attempt < self::MAX_ATTEMPTS && function_exists( 'as_schedule_single_action' ) ) {
-			$delay = 5 * MINUTE_IN_SECONDS * $attempt;
+			// Maintenance avec retour programmé (Retry-After) : nouvel essai à ce moment-là, sans
+			// relancer l'API avant ; sinon attente croissante (5, 10, 15 minutes).
+			$delay = $result->retry_after > 0 ? max( MINUTE_IN_SECONDS, $result->retry_after ) : 5 * MINUTE_IN_SECONDS * $attempt;
 			as_schedule_single_action( time() + $delay, $hook, array_merge( $args, array( $attempt + 1 ) ), self::GROUP );
 			$order->add_order_note(
 				sprintf(
@@ -301,7 +303,7 @@ final class Order_Notifications {
 					$label,
 					$result->recipient,
 					$result->error_code,
-					(int) ( $delay / MINUTE_IN_SECONDS )
+					(int) ceil( $delay / MINUTE_IN_SECONDS )
 				) . self::request_id_note( $result )
 			);
 
