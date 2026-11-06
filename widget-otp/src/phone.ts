@@ -14,6 +14,7 @@ export const DEFAULT_COUNTRY_CODE = '243';
  *  - "+243 81 234 5678", "00243812345678", "243812345678" → "243812345678"
  *  - "0812345678", "812345678" → "243812345678" (default country code added)
  *  - "+33 6 12 34 56 78" → "33612345678" (other countries are never blocked)
+ *  - "33612345678" → "33612345678" (no "+", 11 digits or more not starting with 0: already international)
  */
 export function normalizePhone(raw: string, defaultCountryCode: string = DEFAULT_COUNTRY_CODE): string | null {
   if (!isCountryCode(defaultCountryCode)) {
@@ -29,10 +30,15 @@ export function normalizePhone(raw: string, defaultCountryCode: string = DEFAULT
 
   if (explicitInternational) {
     digits = input.startsWith('00') ? digits.slice(2) : digits;
-  } else if (!(digits.startsWith(defaultCountryCode) && digits.length > 10)) {
+  } else if (digits.startsWith(defaultCountryCode) && digits.length > 10) {
+    // Déjà préfixé de l'indicatif par défaut, sans « + » (243812345678).
+  } else if (digits.length >= 11 && !digits.startsWith('0')) {
+    // Déjà international, autre indicatif, sans « + » (33612345678) : spec 1.2.0.
+  } else {
     // Format local : on retire le « 0 » national et on ajoute l'indicatif par défaut.
     digits = defaultCountryCode + digits.replace(/^0+/, '');
   }
+
 
   return digits.length >= 8 && digits.length <= 15 ? digits : null;
 }

@@ -3,7 +3,7 @@
  * (`@labyrinthe/otp-widget/server`). Le navigateur ne voit jamais la clé API,
  * ni `otp_id`, ni le code envoyé : seulement ce qui suit.
  *
- *     POST {sendUrl}    { "phone": "243812345678" }
+ *     POST {sendUrl}    { "phone": "+243812345678", "locale": "fr", "send_id": "…" }
  *       200 → SendSuccessBody            erreur → ErrorBody
  *     POST {verifyUrl}  { "code": "482913" }
  *       200 → VerifySuccessBody | VerifyFailureBody     erreur → ErrorBody
@@ -28,6 +28,13 @@ export type ServerErrorCode =
   | 'invalid_request'
   /** OTP service unavailable (Labyrinthe unreachable, misconfiguration, no credits…). */
   | 'service_unavailable'
+  /** The integrator's Labyrinthe account is suspended (ACCOUNT_SUSPENDED): nothing the user can do. */
+  | 'account_suspended'
+  /**
+   * The send failed unexpectedly on the Labyrinthe side and its outcome is unknown (IDEMPOTENCY_KEY_UNRESOLVED):
+   * a code may have been sent. Never retried automatically; the user may ask for a new code (sent with a new key).
+   */
+  | 'send_failed'
   /** Unexpected server error. */
   | 'server_error';
 
@@ -43,9 +50,9 @@ export interface SendSuccessBody {
   /** ISO 8601. */
   expires_at: string;
   max_attempts: number;
-  /** Seconds before "Resend" is enabled (account's anti-resend delay, as configured on the server). */
+  /** Seconds before "Resend" is enabled (account's anti-resend delay, returned by the API). */
   resend_after_seconds: number;
-  /** Code length / alphabet hints, as configured on the server (the API does not return them). */
+  /** Code length / alphabet (account's OTP settings, returned by the API 1.2.0, or the server's override). */
   code_length?: number;
   code_type?: CodeType;
   /** ONLY when the integrator enabled `exposeTestCode` in development, with a `lsk_test_` key. */
@@ -61,8 +68,9 @@ export interface VerifySuccessBody {
 export interface VerifyFailureBody {
   verified: false;
   reason: OtpFailureReason;
-  /** Attempts left for this code, tracked by the server helper; null when unknown. */
+  /** Attempts left for this code (`attempts_remaining` of the API; estimated with an older SDK); null when unknown. */
   attempts_left: number | null;
+
 }
 
 export interface ErrorBody {

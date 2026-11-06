@@ -66,6 +66,8 @@ const SERVER_CODES: readonly ServerErrorCode[] = [
   'forbidden',
   'invalid_request',
   'service_unavailable',
+  'account_suspended',
+  'send_failed',
   'server_error',
 ];
 
@@ -157,6 +159,8 @@ export function createElementClass(): CustomElementConstructor {
     #lastAutoSubmitted = '';
     #errorCode: OtpWidgetErrorCode | null = null;
     #errorValues: Record<string, string | number> = {};
+    /** Jeton du dernier envoi sans réponse exploitable : réutilisé pour ce numéro (Idempotency-Key côté serveur). */
+    #pendingSend: { phone: string; id: string } | null = null;
 
     constructor() {
       super();
@@ -316,17 +320,32 @@ export function createElementClass(): CustomElementConstructor {
       // La langue du widget sert de langue du SMS, sauf si le serveur en impose une.
       const locale = this.getAttribute('locale')?.toLowerCase().startsWith('en') === true ? 'en' : 'fr';
       // « + » explicite : le serveur ne doit pas ajouter son indicatif par défaut à un numéro déjà international.
-      const result = await this.#post(this.getAttribute('send-url') ?? '/api/otp/send', { phone: `+${phone}`, locale });
+      // Même jeton tant que l'envoi à ce numéro n'a pas abouti : une réponse perdue
+      // (réseau) puis un nouveau clic ne déclenchent pas un second SMS.
+      if (this.#pendingSend?.phone !== phone) {
+        this.#pendingSend = { phone, id: sendId() };
+      }
+      const result = await this.#post(this.getAttribute('send-url') ?? '/api/otp/send', {
+        phone: `+${phone}`,
+        locale,
+        send_id: this.#pendingSend.id,
+      });
       this.#setBusy(false);
       if (result === null) {
         return;
       }
       const body = result.body as Partial<SendSuccessBody> | null;
       if (result.status >= 200 && result.status < 300 && body?.sent === true) {
+        this.#pendingSend = null;
         this.#onSent(phone, body);
         return;
       }
       const { code, retryAfterSeconds } = readError(result);
+      if (code === 'send_failed') {
+        // Résultat inconnu côté Labyrinthe (un SMS a pu partir) : la même clé serait refusée à jamais.
+        // Un nouvel envoi, demandé par l'utilisateur, part avec un nouveau jeton (donc une nouvelle clé).
+        this.#pendingSend = null;
+      }
       if (code === 'resend_too_soon' && retryAfterSeconds !== undefined) {
         this.#resendAt = Date.now() + retryAfterSeconds * 1000;
         this.#startTimer();
@@ -784,7 +803,13 @@ export function createElementClass(): CustomElementConstructor {
   return LabyrintheOtp;
 }
 
+/** Jeton aléatoire de 128 bits, en hexadécimal (32 caractères). */
+function sendId(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 /** Lit `{ error: { code, retry_after_seconds } }` ; repli sur le statut HTTP. */
+
 function readError(result: HttpResult): { code: ServerErrorCode; retryAfterSeconds?: number } {
   const error = (result.body as { error?: { code?: unknown; retry_after_seconds?: unknown } } | null)?.error;
   const retry = error?.retry_after_seconds;
