@@ -2,8 +2,10 @@
  * Page de réglages de Labyrinthe Connect : test de connexion, SMS de test, Sender IDs,
  * aperçu de l'encodage et du nombre de segments des modèles.
  *
- * Même règle que l'API : tout caractère hors ASCII passe le SMS en Unicode (UCS-2),
- * 70 caractères (67 par segment au-delà) au lieu de 160 (153).
+ * Le nombre de segments est compté par l'API (POST /sms/estimate, avec le retrait des accents
+ * du réglage) ; en attendant sa réponse, ou sans clé API, calcul local avec la même règle :
+ * tout caractère hors ASCII passe le SMS en Unicode (UCS-2), 70 caractères (67 par segment
+ * au-delà) au lieu de 160 (153).
  */
 ( function () {
 	'use strict';
@@ -59,32 +61,7 @@
 		} );
 	}
 
-	/* Encodage et segments */
-
-	var specials = {
-		'’': "'",
-		'‘': "'",
-		'«': '"',
-		'»': '"',
-		'“': '"',
-		'”': '"',
-		'—': '-',
-		'–': '-',
-		'…': '...',
-		' ': ' ',
-		' ': ' ',
-		'€': 'EUR',
-		'°': 'o',
-	};
-
-	function strip( text ) {
-		return text
-			.replace( /[’‘«»“”—–…  €°]/g, function ( c ) {
-				return specials[ c ];
-			} )
-			.normalize( 'NFD' )
-			.replace( /[̀-ͯ]/g, '' );
-	}
+	/* Encodage et segments : compte de l'API (POST /sms/estimate), calcul local en attendant ou à défaut */
 
 	function analyse( text ) {
 		var unicode = /[^\x00-\x7F]/.test( text );
@@ -108,22 +85,56 @@
 		}, template );
 	}
 
+	function describe( counter, info, counted ) {
+		var line;
+		if ( ! info.unicode ) {
+			line = format( i18n.gsm, info.characters, info.segments );
+		} else if ( counted && config.stripAccents ) {
+			// Encore en Unicode après le retrait des accents : emoji ou écriture non latine.
+			line = format( i18n.unicodeStripped, info.characters, info.segments );
+		} else {
+			line = format( i18n.unicode, info.characters, info.segments, info.offending.join( ' ' ) );
+		}
+		if ( ! counted && config.stripAccents && info.unicode ) {
+			line += ' ' + i18n.stripped;
+		}
+		counter.textContent = line + ' ' + ( counted ? i18n.counted : i18n.estimate );
+		counter.classList.toggle( 'labyrinthe-counter--unicode', info.unicode );
+	}
+
 	function updateCounter( textarea ) {
 		var counter = document.getElementById( textarea.getAttribute( 'data-counter' ) );
 		if ( ! counter ) {
 			return;
 		}
 		var text = render( textarea.value || textarea.getAttribute( 'placeholder' ) || '' );
-		var stripped = config.stripAccents ? strip( text ) : text;
-		var info = analyse( stripped );
-		var line = info.unicode
-			? format( i18n.unicode, info.characters, info.segments, info.offending.join( ' ' ) )
-			: format( i18n.gsm, info.characters, info.segments );
-		if ( config.stripAccents && stripped !== text ) {
-			line += ' ' + i18n.stripped;
+		describe( counter, analyse( text ), false );
+
+		if ( ! config.canEstimate || ! text.trim() ) {
+			return;
 		}
-		counter.textContent = line + ' ' + i18n.estimate;
-		counter.classList.toggle( 'labyrinthe-counter--unicode', info.unicode );
+		// Le compte exact (accents retirés par l'API si le réglage est actif), une fois la saisie arrêtée.
+		window.clearTimeout( textarea.labyrintheTimer );
+		textarea.labyrintheTimer = window.setTimeout( function () {
+			var sent = text;
+			post( 'labyrinthe_connect_estimate', { message: sent } ).then( function ( response ) {
+				var current = render( textarea.value || textarea.getAttribute( 'placeholder' ) || '' );
+				if ( ! response.success || current !== sent ) {
+					return;
+				}
+				var data = response.data || {};
+				describe(
+					counter,
+					{
+						unicode: 'ucs2' === data.encoding,
+						characters: data.characters,
+						segments: data.segments,
+						offending: analyse( text ).offending,
+					},
+					true
+				);
+			} );
+		}, 800 );
 	}
 
 	function init() {

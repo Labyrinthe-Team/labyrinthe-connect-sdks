@@ -3,6 +3,10 @@
  *
  * Le navigateur n'envoie que le numéro puis le code à admin-ajax.php ; l'identifiant
  * du code (otp_id) reste côté serveur. Aucune dépendance (ni jQuery ni React).
+ *
+ * Le champ du code suit la forme renvoyée par l'API (longueur, chiffres ou lettres) ; le
+ * compte à rebours « Renvoyer » suit resend_after_seconds ; avec Web OTP (Chrome sur
+ * Android), le code reçu par SMS est rempli et vérifié automatiquement.
  */
 ( function () {
 	'use strict';
@@ -53,6 +57,7 @@
 		var testCode = root.querySelector( '.labyrinthe-otp__test-code' );
 		var remember = root.querySelector( '.labyrinthe-otp__remember-input' );
 		var timer = null;
+		var webOtp = null;
 
 		function phone() {
 			if ( phoneSource ) {
@@ -60,6 +65,55 @@
 				return source ? source.value.trim() : '';
 			}
 			return phoneInput ? phoneInput.value.trim() : '';
+		}
+
+		// Forme du code : longueur, clavier numérique (numeric) ou texte (alphanumeric).
+		function shape( length, type ) {
+			var size = parseInt( length, 10 );
+			if ( size >= 4 && size <= 8 ) {
+				codeInput.maxLength = size;
+				codeInput.size = size;
+				codeInput.setAttribute( 'data-code-length', String( size ) );
+				codeInput.title = format( i18n.codeLength, size );
+			}
+			if ( 'numeric' === type || 'alphanumeric' === type ) {
+				codeInput.inputMode = 'alphanumeric' === type ? 'text' : 'numeric';
+				codeInput.setAttribute( 'autocapitalize', 'alphanumeric' === type ? 'characters' : 'off' );
+				codeInput.setAttribute( 'data-code-type', type );
+			}
+		}
+
+		// Code collé ou saisi : sans espaces ; chiffres seuls pour un code numérique, majuscules sinon.
+		function clean( value ) {
+			var text = String( value || '' ).replace( /\s+/g, '' );
+			return 'alphanumeric' === codeInput.getAttribute( 'data-code-type' )
+				? text.toUpperCase()
+				: text.replace( /\D/g, '' );
+		}
+
+		// Web OTP : le navigateur lit le SMS (dernière ligne « @domaine #code ») et propose le code.
+		function listenForSms() {
+			stopListening();
+			if ( ! ( 'OTPCredential' in window ) || ! window.AbortController || ! navigator.credentials ) {
+				return;
+			}
+			webOtp = new window.AbortController();
+			navigator.credentials
+				.get( { otp: { transport: [ 'sms' ] }, signal: webOtp.signal } )
+				.then( function ( credential ) {
+					if ( credential && credential.code && ! codeStep.hidden ) {
+						codeInput.value = clean( credential.code );
+						verify();
+					}
+				} )
+				.catch( function () {} );
+		}
+
+		function stopListening() {
+			if ( webOtp ) {
+				webOtp.abort();
+				webOtp = null;
+			}
 		}
 
 		function say( text, isError ) {
@@ -101,8 +155,11 @@
 					if ( response.success ) {
 						codeStep.hidden = false;
 						sendButton.hidden = true;
+						shape( data.code_length, data.code_type );
+						codeInput.value = '';
 						codeInput.focus();
 						wait( data.resend_in, resendButton );
+						listenForSms();
 						if ( data.test_code ) {
 							testCode.hidden = false;
 							testCode.textContent = format( i18n.testCode, data.test_code );
@@ -129,7 +186,7 @@
 		}
 
 		function verify() {
-			var code = codeInput.value.replace( /\s+/g, '' );
+			var code = clean( codeInput.value );
 			if ( ! code ) {
 				say( i18n.codeMissing, true );
 				return;
@@ -146,6 +203,7 @@
 					var data = response.data || {};
 					say( data.message, ! response.success );
 					if ( response.success ) {
+						stopListening();
 						testCode.hidden = true;
 						if ( data.redirect ) {
 							window.location.assign( data.redirect );
@@ -159,8 +217,13 @@
 					verifyButton.disabled = false;
 					if ( 'invalid_code' !== data.code ) {
 						// Code expiré, déjà utilisé ou bloqué : il faut en demander un autre.
+						stopListening();
 						codeInput.value = '';
 						resendButton.disabled = false;
+						window.clearInterval( timer );
+						countdown.textContent = '';
+					} else {
+						codeInput.select();
 					}
 				},
 				function () {
@@ -180,6 +243,14 @@
 				}
 			} );
 		}
+		codeInput.addEventListener( 'paste', function ( event ) {
+			var text = event.clipboardData ? event.clipboardData.getData( 'text' ) : '';
+			if ( text ) {
+				// Sans cela, maxlength tronquerait « 123 456 » en « 123 45 ».
+				event.preventDefault();
+				codeInput.value = clean( text ).slice( 0, codeInput.maxLength > 0 ? codeInput.maxLength : 20 );
+			}
+		} );
 		sendButton.addEventListener( 'click', send );
 		resendButton.addEventListener( 'click', send );
 		verifyButton.addEventListener( 'click', verify );
