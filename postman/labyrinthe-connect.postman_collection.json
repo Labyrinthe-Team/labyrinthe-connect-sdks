@@ -13,7 +13,7 @@
   "info": {
     "_postman_id": "7f8a06b0-d8ac-47fc-a902-2071f871bdb0",
     "description": {
-      "content": "Generated from `openapi/openapi.yaml` (spec 1.1.0). Do not edit by hand: run `npm run generate` in `postman/`.\n\nSet the `apiKey` variable (secret) to a **test key** (`lsk_test_…`): nothing is sent, nothing is billed, and\n`POST /otp/send` returns `test_code`, saved automatically so that `POST /otp/verify` can be run right after.\nRun the whole collection in order (Collection Runner or Newman) to play the nominal flow.\n\n---\n\nAPI REST JSON pour envoyer des SMS, consulter le solde de crédits et les Sender IDs\napprouvés, et vérifier des numéros de téléphone par OTP (code à usage unique envoyé par SMS).\n\n## Authentification\nChaque requête porte une clé API créée dans l'espace client (Développeurs > Clés API) :\n\n    Authorization: Bearer lsk_live_xxxxxxxxxxxxxxxx\n\n- `lsk_live_…` : production. Les SMS partent réellement et consomment des crédits.\n- `lsk_test_…` : bac à sable. Fournisseur simulé, **rien n'est envoyé, aucun crédit n'est consommé**.\n  Les réponses ont la même forme qu'en production.\n\nUne clé peut être restreinte à une liste d'adresses IP (403 `FORBIDDEN` sinon).\nLa clé n'est affichée qu'une fois à sa création ; elle doit rester côté serveur,\n**jamais dans une application mobile ou un navigateur**.\n\n## Numéros de téléphone\nFormat international sans `+` (ex. `243812345678`). L'API accepte aussi `+243812345678`,\n`00243812345678` et le format local RDC (`0812345678`, `812345678`), complété avec l'indicatif\npar défaut de la plateforme (243). Les réponses renvoient toujours le format international sans `+`.\n\n## Crédits et segments\n1 crédit = 1 segment SMS. Un message en ASCII (GSM-7) tient en 160 caractères (153 par segment\nau-delà). **Tout caractère non ASCII** (é, à, ç, emoji, tiret long, guillemets typographiques…)\npasse le message en UCS-2 : 70 caractères (67 par segment au-delà), soit un coût souvent doublé.\nUtiliser `POST /sms/estimate` avant un envoi important.\n\n## Erreurs\nToutes les erreurs ont la même forme :\n\n    { \"error\": { \"code\": \"INSUFFICIENT_CREDITS\", \"message\": \"…\", \"details\": { … } } }\n\n`code` est stable et destiné au code ; `message` est en français et destiné aux humains ;\n`details` dépend du code (erreurs par champ pour `VALIDATION_ERROR`).\n\n## Limites de débit\n- 120 requêtes / minute **par clé API** sur l'ensemble de l'API ;\n- 10 requêtes / minute **par clé API** sur `POST /otp/send` (compteur séparé) ;\n- 120 requêtes / minute par adresse IP, toutes clés confondues ;\n- limites métier OTP par numéro et par compte (voir `/otp/send`).\n\nAu-delà : `429 TOO_MANY_REQUESTS`, avec l'en-tête `Retry-After` (secondes) et\n`details.retry_after_seconds`. Les réponses portent aussi `X-RateLimit-Limit` et\n`X-RateLimit-Remaining`.\n\n## Webhooks\nVoir la section `webhooks` : événements envoyés en POST JSON, signés en HMAC-SHA256.",
+      "content": "Generated from `openapi/openapi.yaml` (spec 1.2.0). Do not edit by hand: run `npm run generate` in `postman/`.\n\nSet the `apiKey` variable (secret) to a **test key** (`lsk_test_…`): nothing is sent, nothing is billed, and\n`POST /otp/send` returns `test_code`, saved automatically so that `POST /otp/verify` can be run right after.\nRun the whole collection in order (Collection Runner or Newman) to play the nominal flow.\n\n---\n\nAPI REST JSON pour envoyer des SMS, consulter le solde de crédits et les Sender IDs\napprouvés, et vérifier des numéros de téléphone par OTP (code à usage unique envoyé par SMS).\n\n## Authentification\nChaque requête porte une clé API créée dans l'espace client (Développeurs > Clés API) :\n\n    Authorization: Bearer lsk_live_xxxxxxxxxxxxxxxx\n\n- `lsk_live_…` : production. Les SMS partent réellement et consomment des crédits.\n- `lsk_test_…` : bac à sable. Fournisseur simulé, **rien n'est envoyé, aucun crédit n'est consommé**.\n  Les réponses ont la même forme qu'en production, à deux différences près : le solde n'est pas\n  vérifié (`INSUFFICIENT_CREDITS` n'est jamais renvoyé en bac à sable) et `POST /otp/send`\n  renvoie le code (`test_code`).\n\nUne clé peut être restreinte à une liste d'adresses IP (403 `FORBIDDEN` sinon).\nLa clé n'est affichée qu'une fois à sa création ; elle doit rester côté serveur,\n**jamais dans une application mobile ou un navigateur**.\n\n## Numéros de téléphone\nFormat international sans `+` (ex. `243812345678`). Les espaces, tirets et parenthèses sont ignorés.\nL'API accepte :\n- `+243812345678` ou `00243812345678` : l'indicatif fourni est conservé (tous pays) ;\n- `243812345678` : déjà international ;\n- sans `+`, **11 chiffres ou plus ne commençant pas par 0** : déjà international, autre pays\n  (`33612345678` reste `33612345678`) ;\n- sinon, format local RDC (`0812345678`, `812345678`), complété avec l'indicatif par défaut de la\n  plateforme (243) : `243812345678`.\n\nUn numéro normalisé doit compter de 8 à 15 chiffres. Pour un numéro étranger court (10 chiffres\nou moins), toujours utiliser le `+`. Les réponses renvoient toujours le format international sans `+`.\n\n## Crédits et segments\n1 crédit = 1 segment SMS. Un message en ASCII (GSM-7) tient en 160 caractères (153 par segment\nau-delà). **Tout caractère non ASCII** (é, à, ç, emoji, tiret long, guillemets typographiques…)\npasse le message en UCS-2 : 70 caractères (67 par segment au-delà), soit un coût souvent doublé.\nLe paramètre `strip_accents` (`POST /sms`, `/sms/estimate`, `/otp/send`) remplace accents et\ncaractères typographiques par leur équivalent ASCII. Utiliser `POST /sms/estimate` avant un envoi\nimportant.\n\n## Idempotence\n`POST /sms` et `POST /otp/send` acceptent l'en-tête `Idempotency-Key` (UUID recommandé, 255 caractères\nau maximum). Une requête rejouée avec la même clé dans les 24 h renvoie la même réponse, sans nouvel\nenvoi ni débit, avec l'en-tête `Idempotent-Replayed: true`. La clé est propre à la clé API et à\nl'opération (`/sms` et `/otp/send` ont des espaces de clés séparés), et liée au contenu **normalisé**\nde la requête : la même clé avec un autre contenu renvoie `409 IDEMPOTENCY_KEY_REUSED`. Si la requête\nd'origine est encore en cours, `409 IDEMPOTENCY_REQUEST_IN_PROGRESS` (en-tête `Retry-After`) :\nrelancer avec la même clé est sans risque. Une requête en erreur n'enregistre pas la clé.\n\n## Erreurs\nToutes les erreurs ont la même forme :\n\n    { \"error\": { \"code\": \"INSUFFICIENT_CREDITS\", \"message\": \"…\", \"details\": { … } } }\n\n`code` est stable et destiné au code ; `message` est en français et destiné aux humains ;\n`details` est **toujours un objet** (`{}` quand il est vide), dont le contenu dépend du code\n(erreurs par champ pour `VALIDATION_ERROR`). Un SDK doit accepter un code inconnu.\n\nErreurs communes à toutes les routes :\n- `404 NOT_FOUND`, message « Route introuvable. » : chemin inexistant ;\n- `405 HTTP_ERROR` : méthode non autorisée sur ce chemin (ex. `DELETE /balance`), avec\n  `details.allowed_methods` et l'en-tête `Allow`.\n\nCes deux réponses sont décrites dans l'extension `x-common-responses` de ce document.\n\n## Identifiant de requête\nChaque réponse, erreurs comprises, porte l'en-tête `X-Request-Id`, à communiquer au support. Un\n`X-Request-Id` envoyé avec la requête est réutilisé s'il compte 1 à 128 caractères parmi\n`A-Z a-z 0-9 . _ : -` ; sinon un UUID est généré.\n\n## Versions\nChaque réponse de `/api/public/v1` porte l'en-tête `X-Api-Version: 1`. Les **ajouts compatibles**\n(champ de réponse, en-tête, paramètre facultatif, code d'erreur, événement de webhook) arrivent sans\npréavis dans la v1 : une intégration doit ignorer ce qu'elle ne connaît pas. Toute **rupture**\n(champ retiré ou renommé, type ou sens changé, paramètre devenu obligatoire, code HTTP changé) passe\npar une nouvelle version `/api/public/v2`, la v1 restant servie pendant une période de dépréciation\nannoncée. `info.version` de ce document suit SemVer.\n\n## Dates\nISO 8601 avec décalage, à la seconde : `2026-11-06T09:39:11+00:00`.\n\n## Limites de débit\n- 120 requêtes / minute **par clé API** sur l'ensemble de l'API ;\n- 10 requêtes / minute **par clé API** sur `POST /otp/send` (compteur séparé) ;\n- 120 requêtes / minute par adresse IP, toutes clés confondues ;\n- limites métier OTP par numéro et par compte (voir `/otp/send`).\n\nAu-delà : `429 TOO_MANY_REQUESTS`, avec l'en-tête `Retry-After` (secondes) et\n`details.retry_after_seconds`. Les réponses réussies portent aussi `X-RateLimit-Limit` et\n`X-RateLimit-Remaining`.\n\n## Webhooks\nVoir la section `webhooks` : événements envoyés en POST JSON, signés en HMAC-SHA256.\n\n## Nouveautés 1.2.0\nToutes compatibles avec la 1.1.0 (ajouts et précisions).\n- En-têtes de réponse `X-Request-Id` (réutilise celui de la requête s'il est valide) et `X-Api-Version: 1` ;\n  politique de version documentée.\n- `error.details` toujours un objet (`{}`, jamais `[]`) ; schéma `Error` corrigé (`details` de type objet\n  uniquement, `type: string` à côté des `const` des sous-schémas).\n- Messages d'erreur et de validation en français (« Le champ body est obligatoire. ») ; 404 de route\n  inconnue « Route introuvable. » ; 405 `HTTP_ERROR` avec `details.allowed_methods` et en-tête `Allow`.\n- Numéros : sans `+`, 11 chiffres ou plus ne commençant pas par 0 = déjà international (`33612345678`\n  n'est plus préfixé de 243).\n- Idempotence `POST /sms` : empreinte calculée après normalisation et dédoublonnage des destinataires\n  (`0812345678` puis `243812345678` avec la même clé = rejeu) ; nouveau `409 IDEMPOTENCY_REQUEST_IN_PROGRESS`\n  (`Retry-After: 5`, `details.retry_after_seconds`).\n- `POST /otp/send` : `Idempotency-Key` ; nouveaux champs de réponse `code_length`, `code_type`,\n  `resend_after_seconds` ; nouveaux paramètres `web_otp_domain` (Web OTP API) et `strip_accents` ;\n  renvoi accepté tout de suite après une vérification réussie (plus de `OTP_RESEND_TOO_SOON`).\n- `OTP_RESEND_TOO_SOON` et `OTP_RATE_LIMITED` : en-tête `Retry-After` égal à `details.retry_after_seconds`\n  (nouveau dans `OTP_RATE_LIMITED`).\n- `POST /otp/verify` : nouveau champ `attempts_remaining`.\n- `POST /sms` et `POST /sms/estimate` : paramètre `strip_accents`. L'estimation dédoublonne les\n  destinataires comme l'envoi (`recipients_count` et `total_credits` cohérents avec l'envoi réel).\n- `GET /sms/{id}` : recherche par `id` uniquement.\n- `Message.encoding` jamais `null` ; dates au format `2026-11-06T09:39:11+00:00` partout.\n- Webhook `message.status_changed` enrichi (`reference`, `error_code`, `error_message`) ; nouveaux\n  webhooks `otp.verified` et `otp.failed`.",
       "type": "text/markdown"
     },
     "name": "Labyrinthe Connect API",
@@ -40,6 +40,10 @@
                   "pm.test('JSON body with data', function () {",
                   "  pm.expect(pm.response.json()).to.have.property('data');",
                   "});",
+                  "pm.test('X-Request-Id and X-Api-Version headers', function () {",
+                  "  pm.response.to.have.header('X-Request-Id');",
+                  "  pm.expect(pm.response.headers.get('X-Api-Version')).to.eql('1');",
+                  "});",
                   "const messages = pm.response.json().data || [];",
                   "pm.test('At least one message', function () { pm.expect(messages.length).to.be.above(0); });",
                   "if (messages[0]) { pm.collectionVariables.set('messageId', messages[0].id); }"
@@ -65,14 +69,20 @@
               "raw": "{\n  \"recipient\": \"243812345678\",\n  \"body\": \"Votre commande 1042 est prête.\"\n}"
             },
             "description": {
-              "content": "Envoi asynchrone : `202 Accepted` confirme la mise en file et le débit des crédits,\npas la livraison. Suivre ensuite le statut par webhook `message.status_changed`\nou par `GET /sms/{id}`.\n\nFournir `recipient` (un numéro) **ou** `recipients` (jusqu'à 1000), pas les deux.\nUn message est créé par destinataire ; les doublons de la liste sont fusionnés.\n\n**Tout ou rien** : tous les destinataires, le Sender ID et le solde sont vérifiés avant\nle moindre envoi. Si un seul destinataire est refusé, rien n'est envoyé et l'erreur\n`RECIPIENT_NOT_SENDABLE` liste tous les refus (`details.rejected`). Si le solde ne couvre pas\ntout l'envoi, rien n'est envoyé (`INSUFFICIENT_CREDITS`).\n\n**Idempotence** : avec l'en-tête `Idempotency-Key`, une requête rejouée dans les 24 h renvoie\nles mêmes messages sans rien renvoyer ni débiter (en-tête de réponse `Idempotent-Replayed: true`).\nLa clé est propre à la clé API, et liée au contenu : la même clé avec un autre contenu renvoie\n`409 IDEMPOTENCY_KEY_REUSED`. Deux requêtes simultanées avec la même clé n'envoient qu'une fois.\nUne requête en erreur n'enregistre pas la clé (elle peut être rejouée après correction).\n",
+              "content": "Envoi asynchrone : `202 Accepted` confirme la mise en file et le débit des crédits,\npas la livraison. Suivre ensuite le statut par webhook `message.status_changed`\nou par `GET /sms/{id}`.\n\nFournir `recipient` (un numéro) **ou** `recipients` (jusqu'à 1000), pas les deux.\nUn message est créé par destinataire ; les doublons de la liste sont fusionnés après\nnormalisation (`0812345678` et `243812345678` sont le même numéro).\n\n**Tout ou rien** : tous les destinataires, le Sender ID et le solde sont vérifiés avant\nle moindre envoi. Si un seul destinataire est refusé, rien n'est envoyé et l'erreur\n`RECIPIENT_NOT_SENDABLE` liste tous les refus (`details.rejected`). Si le solde ne couvre pas\ntout l'envoi, rien n'est envoyé (`INSUFFICIENT_CREDITS`, jamais avec une clé de test).\n\n**Idempotence** (voir l'introduction) : l'empreinte porte sur les destinataires normalisés et\ndédoublonnés, `body` (après `strip_accents`), `sender` et `reference`.\n",
               "type": "text/plain"
             },
             "header": [
               {
-                "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API.",
+                "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API et par\nopération. Plus de 255 caractères : `422 VALIDATION_ERROR`.\n",
                 "disabled": false,
                 "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                "disabled": true,
+                "key": "X-Request-Id",
                 "value": "{{$guid}}"
               },
               {
@@ -100,21 +110,33 @@
           "response": [
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"data\": [\n    {\n      \"id\": \"51886b6a-0fcc-dbc5-c1ef-21d7cedf1a29\",\n      \"reference\": \"string\",\n      \"recipient\": \"243812345678\",\n      \"sender\": \"string\",\n      \"encoding\": \"gsm7\",\n      \"status\": \"undeliverable\",\n      \"segments\": 2842,\n      \"credits_charged\": 8208,\n      \"campaign_id\": \"string\",\n      \"provider_message_id\": \"string\",\n      \"error_code\": \"string\",\n      \"error_message\": \"string\",\n      \"created_at\": \"1961-02-01T06:36:30.614Z\",\n      \"submitted_at\": \"1989-07-30T01:25:11.411Z\",\n      \"delivered_at\": \"2013-03-03T01:04:37.131Z\"\n    },\n    {\n      \"id\": \"a07e5048-9b53-ca79-abec-2ff62a615c2a\",\n      \"reference\": \"string\",\n      \"recipient\": \"243812345678\",\n      \"sender\": \"string\",\n      \"encoding\": \"gsm7\",\n      \"status\": \"undeliverable\",\n      \"segments\": 7990,\n      \"credits_charged\": 3142,\n      \"campaign_id\": \"string\",\n      \"provider_message_id\": \"string\",\n      \"error_code\": \"string\",\n      \"error_message\": \"string\",\n      \"created_at\": \"1988-01-02T06:36:41.755Z\",\n      \"submitted_at\": \"1950-01-02T02:57:33.807Z\",\n      \"delivered_at\": \"2017-09-19T09:40:47.057Z\"\n    }\n  ]\n}",
+              "body": "{\n  \"data\": [\n    {\n      \"id\": \"9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10\",\n      \"reference\": null,\n      \"recipient\": \"243812345678\",\n      \"sender\": \"LabConnect\",\n      \"encoding\": \"ucs2\",\n      \"status\": \"queued\",\n      \"segments\": 1,\n      \"credits_charged\": 1,\n      \"campaign_id\": null,\n      \"provider_message_id\": null,\n      \"error_code\": null,\n      \"error_message\": null,\n      \"created_at\": \"2026-11-06T09:39:11+00:00\",\n      \"submitted_at\": null,\n      \"delivered_at\": null\n    }\n  ]\n}",
               "code": 202,
               "cookie": [],
               "header": [
                 {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
                   "description": "Nombre de requêtes autorisées par minute.",
                   "disabled": false,
                   "key": "X-RateLimit-Limit",
-                  "value": "8169"
+                  "value": "8850"
                 },
                 {
                   "description": "Requêtes restantes dans la minute en cours.",
                   "disabled": false,
                   "key": "X-RateLimit-Remaining",
-                  "value": "8169"
+                  "value": "8850"
                 },
                 {
                   "description": "`true` si la réponse est le rejeu d'une requête précédente (même `Idempotency-Key`).",
@@ -141,10 +163,16 @@
                 },
                 "header": [
                   {
-                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API.",
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API et par\nopération. Plus de 255 caractères : `422 VALIDATION_ERROR`.\n",
                     "disabled": false,
                     "key": "Idempotency-Key",
                     "value": "string"
+                  },
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
                   },
                   {
                     "key": "Accept",
@@ -172,12 +200,24 @@
               "cookie": [],
               "header": [
                 {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
                   "key": "Content-Type",
                   "value": "application/json"
                 }
               ],
               "id": "0182f966-f65a-4eb6-a13a-a156096bc7e8",
-              "name": "`UNAUTHENTICATED` : clé absente, invalide ou révoquée.",
+              "name": "`UNAUTHENTICATED` : clé absente (« Clé API manquante. »), invalide ou révoquée.",
               "originalRequest": {
                 "body": {
                   "mode": "raw",
@@ -190,10 +230,16 @@
                 },
                 "header": [
                   {
-                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API.",
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API et par\nopération. Plus de 255 caractères : `422 VALIDATION_ERROR`.\n",
                     "disabled": false,
                     "key": "Idempotency-Key",
                     "value": "string"
+                  },
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
                   },
                   {
                     "key": "Accept",
@@ -216,10 +262,22 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"FORBIDDEN\",\n    \"message\": \"Adresse IP non autorisée pour cette clé API.\",\n    \"details\": {}\n  }\n}",
               "code": 403,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
@@ -239,10 +297,16 @@
                 },
                 "header": [
                   {
-                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API.",
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API et par\nopération. Plus de 255 caractères : `422 VALIDATION_ERROR`.\n",
                     "disabled": false,
                     "key": "Idempotency-Key",
                     "value": "string"
+                  },
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
                   },
                   {
                     "key": "Accept",
@@ -265,17 +329,35 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"INSUFFICIENT_CREDITS\",\n    \"message\": \"Solde de crédits insuffisant pour cet envoi. Aucun message envoyé.\",\n    \"details\": {\n      \"available\": 3,\n      \"required\": 4\n    }\n  }\n}",
               "code": 409,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Avec `IDEMPOTENCY_REQUEST_IN_PROGRESS` uniquement : secondes à attendre (5) avant de relancer avec la même clé.",
+                  "disabled": false,
+                  "key": "Retry-After",
+                  "value": "4099"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
                 }
               ],
               "id": "66abb6ad-3efa-4069-a3e8-5f43a6bccbc6",
-              "name": "- `INSUFFICIENT_CREDITS` : le solde ne couvre pas l'envoi (rien n'est envoyé) ;\n- `IDEMPOTENCY_KEY_REUSED` : `Idempotency-Key` déjà utilisée pour une requête différente.\n",
+              "name": "- `INSUFFICIENT_CREDITS` : le solde ne couvre pas l'envoi (rien n'est envoyé) ;\n- `IDEMPOTENCY_KEY_REUSED` : `Idempotency-Key` déjà utilisée pour une requête différente ;\n- `IDEMPOTENCY_REQUEST_IN_PROGRESS` : la requête d'origine avec cette clé est encore en cours\n  (en-tête `Retry-After`) ; relancer avec la même clé.\n",
               "originalRequest": {
                 "body": {
                   "mode": "raw",
@@ -288,10 +370,16 @@
                 },
                 "header": [
                   {
-                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API.",
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API et par\nopération. Plus de 255 caractères : `422 VALIDATION_ERROR`.\n",
                     "disabled": false,
                     "key": "Idempotency-Key",
                     "value": "string"
+                  },
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
                   },
                   {
                     "key": "Accept",
@@ -314,17 +402,29 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"message\": \"Les données envoyées sont invalides.\",\n    \"details\": {\n      \"body\": [\n        \"Le champ body est obligatoire.\"\n      ]\n    }\n  }\n}",
               "code": 422,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
                 }
               ],
               "id": "acbc6794-167d-4c44-a031-0c6d612a9a3a",
-              "name": "- `VALIDATION_ERROR` : champ manquant ou invalide (`details` par champ) ;\n- `RECIPIENT_NOT_SENDABLE` : un ou plusieurs numéros invalides, en liste noire ou désinscrits\n  (`details.rejected`, rien n'est envoyé) ;\n- `SENDER_ID_NOT_APPROVED` : `sender` n'est pas un Sender ID approuvé du compte.\n",
+              "name": "- `VALIDATION_ERROR` : champ manquant ou invalide (`details` par champ), ou\n  `Idempotency-Key` de plus de 255 caractères (`details[\"Idempotency-Key\"]`) ;\n- `RECIPIENT_NOT_SENDABLE` : un ou plusieurs numéros invalides, en liste noire ou désinscrits\n  (`details.rejected`, rien n'est envoyé) ;\n- `SENDER_ID_NOT_APPROVED` : `sender` n'est pas un Sender ID approuvé du compte.\n",
               "originalRequest": {
                 "body": {
                   "mode": "raw",
@@ -337,10 +437,16 @@
                 },
                 "header": [
                   {
-                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API.",
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API et par\nopération. Plus de 255 caractères : `422 VALIDATION_ERROR`.\n",
                     "disabled": false,
                     "key": "Idempotency-Key",
                     "value": "string"
+                  },
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
                   },
                   {
                     "key": "Accept",
@@ -363,15 +469,27 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"TOO_MANY_REQUESTS\",\n    \"message\": \"Trop de requêtes, réessayez plus tard.\",\n    \"details\": {\n      \"retry_after_seconds\": 37\n    }\n  }\n}",
               "code": 429,
               "cookie": [],
               "header": [
                 {
-                  "description": "Secondes à attendre avant de réessayer.",
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Secondes à attendre avant de réessayer (égal à `details.retry_after_seconds`).",
                   "disabled": false,
                   "key": "Retry-After",
-                  "value": "8169"
+                  "value": "4099"
                 },
                 {
                   "key": "Content-Type",
@@ -392,10 +510,16 @@
                 },
                 "header": [
                   {
-                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API.",
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API et par\nopération. Plus de 255 caractères : `422 VALIDATION_ERROR`.\n",
                     "disabled": false,
                     "key": "Idempotency-Key",
                     "value": "string"
+                  },
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
                   },
                   {
                     "key": "Accept",
@@ -429,6 +553,10 @@
                   "});",
                   "pm.test('JSON body with data', function () {",
                   "  pm.expect(pm.response.json()).to.have.property('data');",
+                  "});",
+                  "pm.test('X-Request-Id and X-Api-Version headers', function () {",
+                  "  pm.response.to.have.header('X-Request-Id');",
+                  "  pm.expect(pm.response.headers.get('X-Api-Version')).to.eql('1');",
                   "});"
                 ],
                 "id": "e603be35-b276-414b-a6a5-a4c18f52f7d2",
@@ -443,10 +571,16 @@
           },
           "request": {
             "description": {
-              "content": "Messages créés par **la clé API appelante** (pas ceux des autres clés ni de l'espace client),\ndu plus récent au plus ancien.\n",
+              "content": "Messages créés par **la clé API appelante** (pas ceux des autres clés ni de l'espace client),\ndu plus récent au plus ancien : chaque intégration suit ses propres envois. Pour un message\nreçu autrement (webhook, support), `GET /sms/{id}` cherche dans tout le compte.\n",
               "type": "text/plain"
             },
             "header": [
+              {
+                "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                "disabled": true,
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
               {
                 "key": "Accept",
                 "value": "application/json"
@@ -475,7 +609,7 @@
                 {
                   "disabled": true,
                   "key": "status",
-                  "value": "submitted"
+                  "value": "queued"
                 },
                 {
                   "description": "Numéro (tous formats acceptés, normalisé avant la recherche).",
@@ -496,7 +630,7 @@
                   "value": "2026-11-01"
                 },
                 {
-                  "description": "Date (journée entière incluse) ou date-heure ISO 8601.",
+                  "description": "Date (journée entière incluse) ou date-heure ISO 8601. Postérieure ou égale à `from`.",
                   "disabled": true,
                   "key": "to",
                   "value": "2026-11-30"
@@ -508,10 +642,34 @@
           "response": [
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"data\": [\n    {\n      \"id\": \"aec4e414-795f-58fb-bd87-f2f0d001ef92\",\n      \"reference\": \"string\",\n      \"recipient\": \"243812345678\",\n      \"sender\": \"string\",\n      \"encoding\": \"ucs2\",\n      \"status\": \"expired\",\n      \"segments\": 1338,\n      \"credits_charged\": 1844,\n      \"campaign_id\": \"string\",\n      \"provider_message_id\": \"string\",\n      \"error_code\": \"string\",\n      \"error_message\": \"string\",\n      \"created_at\": \"2015-01-20T06:16:37.314Z\",\n      \"submitted_at\": \"2008-11-05T15:35:08.174Z\",\n      \"delivered_at\": \"1948-10-05T00:28:04.567Z\"\n    },\n    {\n      \"id\": \"6c0b158d-858f-455b-8da7-596ae8bd5fc5\",\n      \"reference\": \"string\",\n      \"recipient\": \"243812345678\",\n      \"sender\": \"string\",\n      \"encoding\": \"ucs2\",\n      \"status\": \"delivered\",\n      \"segments\": 3364,\n      \"credits_charged\": 544,\n      \"campaign_id\": \"string\",\n      \"provider_message_id\": \"string\",\n      \"error_code\": \"string\",\n      \"error_message\": \"string\",\n      \"created_at\": \"1956-06-04T21:20:03.651Z\",\n      \"submitted_at\": \"2011-11-23T13:12:49.403Z\",\n      \"delivered_at\": \"1978-10-03T09:21:55.151Z\"\n    }\n  ],\n  \"links\": {\n    \"first\": \"string\",\n    \"last\": \"string\",\n    \"prev\": \"string\",\n    \"next\": \"string\"\n  },\n  \"meta\": {\n    \"current_page\": 9605,\n    \"last_page\": 3558,\n    \"per_page\": 5976,\n    \"total\": 996,\n    \"from\": 4887,\n    \"path\": \"string\",\n    \"to\": 9826\n  }\n}",
+              "body": "{\n  \"data\": [\n    {\n      \"id\": \"153b199d-7623-71f6-e24d-7d36abaf2cf1\",\n      \"reference\": \"string\",\n      \"recipient\": \"243812345678\",\n      \"sender\": \"string\",\n      \"encoding\": \"ucs2\",\n      \"status\": \"expired\",\n      \"segments\": 8876,\n      \"credits_charged\": 1578,\n      \"campaign_id\": \"string\",\n      \"provider_message_id\": \"string\",\n      \"error_code\": \"string\",\n      \"error_message\": \"string\",\n      \"created_at\": \"2026-11-06T09:39:11+00:00\",\n      \"submitted_at\": \"1979-10-29T15:48:36.014Z\",\n      \"delivered_at\": \"1947-09-09T19:39:12.947Z\"\n    },\n    {\n      \"id\": \"7bd87af2-d001-f924-bc10-ab6c02926a69\",\n      \"reference\": \"string\",\n      \"recipient\": \"243812345678\",\n      \"sender\": \"string\",\n      \"encoding\": \"ucs2\",\n      \"status\": \"expired\",\n      \"segments\": 2268,\n      \"credits_charged\": 3463,\n      \"campaign_id\": \"string\",\n      \"provider_message_id\": \"string\",\n      \"error_code\": \"string\",\n      \"error_message\": \"string\",\n      \"created_at\": \"2026-11-06T09:39:11+00:00\",\n      \"submitted_at\": \"1986-06-20T04:19:09.754Z\",\n      \"delivered_at\": \"1984-10-17T02:13:15.622Z\"\n    }\n  ],\n  \"links\": {\n    \"first\": \"string\",\n    \"last\": \"string\",\n    \"prev\": \"string\",\n    \"next\": \"string\"\n  },\n  \"meta\": {\n    \"current_page\": 4005,\n    \"last_page\": 7485,\n    \"per_page\": 2947,\n    \"total\": 6618,\n    \"from\": 4293,\n    \"path\": \"string\",\n    \"to\": 869\n  }\n}",
               "code": 200,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Nombre de requêtes autorisées par minute.",
+                  "disabled": false,
+                  "key": "X-RateLimit-Limit",
+                  "value": "8850"
+                },
+                {
+                  "description": "Requêtes restantes dans la minute en cours.",
+                  "disabled": false,
+                  "key": "X-RateLimit-Remaining",
+                  "value": "8850"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
@@ -522,6 +680,12 @@
               "originalRequest": {
                 "body": {},
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -546,7 +710,7 @@
                     },
                     {
                       "key": "status",
-                      "value": "submitted"
+                      "value": "queued"
                     },
                     {
                       "key": "recipient",
@@ -577,15 +741,33 @@
               "cookie": [],
               "header": [
                 {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
                   "key": "Content-Type",
                   "value": "application/json"
                 }
               ],
               "id": "7cec889e-71e6-489c-a9f6-99b616145645",
-              "name": "`UNAUTHENTICATED` : clé absente, invalide ou révoquée.",
+              "name": "`UNAUTHENTICATED` : clé absente (« Clé API manquante. »), invalide ou révoquée.",
               "originalRequest": {
                 "body": {},
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -610,7 +792,7 @@
                     },
                     {
                       "key": "status",
-                      "value": "submitted"
+                      "value": "queued"
                     },
                     {
                       "key": "recipient",
@@ -636,10 +818,22 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"FORBIDDEN\",\n    \"message\": \"Adresse IP non autorisée pour cette clé API.\",\n    \"details\": {}\n  }\n}",
               "code": 403,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
@@ -650,6 +844,12 @@
               "originalRequest": {
                 "body": {},
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -674,7 +874,7 @@
                     },
                     {
                       "key": "status",
-                      "value": "submitted"
+                      "value": "queued"
                     },
                     {
                       "key": "recipient",
@@ -700,10 +900,22 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"message\": \"Les données envoyées sont invalides.\",\n    \"details\": {\n      \"per_page\": [\n        \"Le champ per_page ne doit pas être supérieur à 100.\"\n      ]\n    }\n  }\n}",
               "code": 422,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
@@ -714,6 +926,12 @@
               "originalRequest": {
                 "body": {},
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -738,7 +956,7 @@
                     },
                     {
                       "key": "status",
-                      "value": "submitted"
+                      "value": "queued"
                     },
                     {
                       "key": "recipient",
@@ -764,15 +982,27 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"TOO_MANY_REQUESTS\",\n    \"message\": \"Trop de requêtes, réessayez plus tard.\",\n    \"details\": {\n      \"retry_after_seconds\": 37\n    }\n  }\n}",
               "code": 429,
               "cookie": [],
               "header": [
                 {
-                  "description": "Secondes à attendre avant de réessayer.",
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Secondes à attendre avant de réessayer (égal à `details.retry_after_seconds`).",
                   "disabled": false,
                   "key": "Retry-After",
-                  "value": "8169"
+                  "value": "4099"
                 },
                 {
                   "key": "Content-Type",
@@ -784,6 +1014,12 @@
               "originalRequest": {
                 "body": {},
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -808,7 +1044,7 @@
                     },
                     {
                       "key": "status",
-                      "value": "submitted"
+                      "value": "queued"
                     },
                     {
                       "key": "recipient",
@@ -846,6 +1082,10 @@
                   "pm.test('JSON body with data', function () {",
                   "  pm.expect(pm.response.json()).to.have.property('data');",
                   "});",
+                  "pm.test('X-Request-Id and X-Api-Version headers', function () {",
+                  "  pm.response.to.have.header('X-Request-Id');",
+                  "  pm.expect(pm.response.headers.get('X-Api-Version')).to.eql('1');",
+                  "});",
                   "pm.test('Same message', function () { pm.expect(pm.response.json().data.id).to.eql(pm.collectionVariables.get('messageId')); });"
                 ],
                 "id": "0746face-8d6a-4bd2-a820-cdd52f81c683",
@@ -860,10 +1100,16 @@
           },
           "request": {
             "description": {
-              "content": "Recherche dans tous les messages du compte (quelle que soit la clé qui les a envoyés).",
+              "content": "Recherche **par `id` uniquement**, dans tous les messages du compte (quelle que soit la clé\nou l'espace qui les a envoyés : identifiant reçu par webhook, support). La liste `GET /sms`,\nelle, ne montre que les messages de la clé appelante.\n",
               "type": "text/plain"
             },
             "header": [
+              {
+                "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                "disabled": true,
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
               {
                 "key": "Accept",
                 "value": "application/json"
@@ -882,7 +1128,7 @@
               "query": [],
               "variable": [
                 {
-                  "description": "(Required) Identifiant du message (`id`).",
+                  "description": "(Required) Identifiant du message (`id`). Toute autre valeur renvoie 404.",
                   "disabled": false,
                   "key": "id",
                   "type": "any",
@@ -894,10 +1140,34 @@
           "response": [
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"data\": {\n    \"id\": \"7ea04f2a-105a-fd5a-215a-d2e067953b61\",\n    \"reference\": \"string\",\n    \"recipient\": \"243812345678\",\n    \"sender\": \"string\",\n    \"encoding\": \"gsm7\",\n    \"status\": \"submitted\",\n    \"segments\": 200,\n    \"credits_charged\": 7534,\n    \"campaign_id\": \"string\",\n    \"provider_message_id\": \"string\",\n    \"error_code\": \"string\",\n    \"error_message\": \"string\",\n    \"created_at\": \"2001-04-23T01:41:00.041Z\",\n    \"submitted_at\": \"1962-11-14T06:23:32.128Z\",\n    \"delivered_at\": \"1988-03-12T21:34:04.124Z\"\n  }\n}",
+              "body": "{\n  \"data\": {\n    \"id\": \"aec289c5-1873-4254-7c52-647f536f75c9\",\n    \"reference\": \"string\",\n    \"recipient\": \"243812345678\",\n    \"sender\": \"string\",\n    \"encoding\": \"ucs2\",\n    \"status\": \"expired\",\n    \"segments\": 6113,\n    \"credits_charged\": 6315,\n    \"campaign_id\": \"string\",\n    \"provider_message_id\": \"string\",\n    \"error_code\": \"string\",\n    \"error_message\": \"string\",\n    \"created_at\": \"2026-11-06T09:39:11+00:00\",\n    \"submitted_at\": \"1981-02-18T17:34:22.536Z\",\n    \"delivered_at\": \"2001-03-06T16:28:43.358Z\"\n  }\n}",
               "code": 200,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Nombre de requêtes autorisées par minute.",
+                  "disabled": false,
+                  "key": "X-RateLimit-Limit",
+                  "value": "8850"
+                },
+                {
+                  "description": "Requêtes restantes dans la minute en cours.",
+                  "disabled": false,
+                  "key": "X-RateLimit-Remaining",
+                  "value": "8850"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
@@ -908,6 +1178,12 @@
               "originalRequest": {
                 "body": {},
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -925,7 +1201,7 @@
                   "query": [],
                   "variable": [
                     {
-                      "description": "(Required) Identifiant du message (`id`).",
+                      "description": "(Required) Identifiant du message (`id`). Toute autre valeur renvoie 404.",
                       "disabled": false,
                       "key": "id",
                       "type": "any",
@@ -943,15 +1219,33 @@
               "cookie": [],
               "header": [
                 {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
                   "key": "Content-Type",
                   "value": "application/json"
                 }
               ],
               "id": "9b17264b-22a6-47f3-af0a-ef3a7d642a0a",
-              "name": "`UNAUTHENTICATED` : clé absente, invalide ou révoquée.",
+              "name": "`UNAUTHENTICATED` : clé absente (« Clé API manquante. »), invalide ou révoquée.",
               "originalRequest": {
                 "body": {},
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -969,7 +1263,7 @@
                   "query": [],
                   "variable": [
                     {
-                      "description": "(Required) Identifiant du message (`id`).",
+                      "description": "(Required) Identifiant du message (`id`). Toute autre valeur renvoie 404.",
                       "disabled": false,
                       "key": "id",
                       "type": "any",
@@ -982,10 +1276,22 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"FORBIDDEN\",\n    \"message\": \"Adresse IP non autorisée pour cette clé API.\",\n    \"details\": {}\n  }\n}",
               "code": 403,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
@@ -996,6 +1302,12 @@
               "originalRequest": {
                 "body": {},
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -1013,7 +1325,7 @@
                   "query": [],
                   "variable": [
                     {
-                      "description": "(Required) Identifiant du message (`id`).",
+                      "description": "(Required) Identifiant du message (`id`). Toute autre valeur renvoie 404.",
                       "disabled": false,
                       "key": "id",
                       "type": "any",
@@ -1026,10 +1338,22 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"NOT_FOUND\",\n    \"message\": \"Message introuvable.\",\n    \"details\": {}\n  }\n}",
               "code": 404,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
@@ -1040,6 +1364,12 @@
               "originalRequest": {
                 "body": {},
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -1057,7 +1387,7 @@
                   "query": [],
                   "variable": [
                     {
-                      "description": "(Required) Identifiant du message (`id`).",
+                      "description": "(Required) Identifiant du message (`id`). Toute autre valeur renvoie 404.",
                       "disabled": false,
                       "key": "id",
                       "type": "any",
@@ -1070,15 +1400,27 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"TOO_MANY_REQUESTS\",\n    \"message\": \"Trop de requêtes, réessayez plus tard.\",\n    \"details\": {\n      \"retry_after_seconds\": 37\n    }\n  }\n}",
               "code": 429,
               "cookie": [],
               "header": [
                 {
-                  "description": "Secondes à attendre avant de réessayer.",
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Secondes à attendre avant de réessayer (égal à `details.retry_after_seconds`).",
                   "disabled": false,
                   "key": "Retry-After",
-                  "value": "8169"
+                  "value": "4099"
                 },
                 {
                   "key": "Content-Type",
@@ -1090,6 +1432,12 @@
               "originalRequest": {
                 "body": {},
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -1107,7 +1455,7 @@
                   "query": [],
                   "variable": [
                     {
-                      "description": "(Required) Identifiant du message (`id`).",
+                      "description": "(Required) Identifiant du message (`id`). Toute autre valeur renvoie 404.",
                       "disabled": false,
                       "key": "id",
                       "type": "any",
@@ -1131,6 +1479,10 @@
                   "});",
                   "pm.test('JSON body with data', function () {",
                   "  pm.expect(pm.response.json()).to.have.property('data');",
+                  "});",
+                  "pm.test('X-Request-Id and X-Api-Version headers', function () {",
+                  "  pm.response.to.have.header('X-Request-Id');",
+                  "  pm.expect(pm.response.headers.get('X-Api-Version')).to.eql('1');",
                   "});"
                 ],
                 "id": "69fb4c59-2540-4219-a4cc-5755fa2542a2",
@@ -1151,13 +1503,19 @@
                   "language": "json"
                 }
               },
-              "raw": "{\n  \"body\": \"Votre code est 482913\",\n  \"recipients\": [\n    \"243812345678\",\n    \"0899999999\"\n  ]\n}"
+              "raw": "{\n  \"body\": \"Votre code est 482913\",\n  \"recipients\": [\n    \"243812345678\",\n    \"0812345678\",\n    \"0899999999\"\n  ]\n}"
             },
             "description": {
-              "content": "Calcule l'encodage, le nombre de segments et les crédits nécessaires, sans rien envoyer.\nLes numéros invalides sont ignorés dans `recipients_count` (pas d'erreur).\n",
+              "content": "Calcule l'encodage, le nombre de segments et les crédits nécessaires, sans rien envoyer.\nLes destinataires sont comptés comme à l'envoi : normalisés, doublons fusionnés, numéros\ninvalides ignorés (pas d'erreur). Les numéros en liste noire ou désinscrits sont comptés\n(`POST /sms` les refuserait).\n",
               "type": "text/plain"
             },
             "header": [
+              {
+                "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                "disabled": true,
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
               {
                 "key": "Content-Type",
                 "value": "application/json"
@@ -1184,10 +1542,34 @@
           "response": [
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"data\": {\n    \"encoding\": \"ucs2\",\n    \"characters\": 3169,\n    \"segments_per_message\": 4861,\n    \"recipients_count\": 5230,\n    \"total_credits\": 962,\n    \"balance_after\": 368\n  }\n}",
+              "body": "{\n  \"data\": {\n    \"encoding\": \"gsm7\",\n    \"characters\": 21,\n    \"segments_per_message\": 1,\n    \"recipients_count\": 2,\n    \"total_credits\": 2,\n    \"balance_after\": 98\n  }\n}",
               "code": 200,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Nombre de requêtes autorisées par minute.",
+                  "disabled": false,
+                  "key": "X-RateLimit-Limit",
+                  "value": "8850"
+                },
+                {
+                  "description": "Requêtes restantes dans la minute en cours.",
+                  "disabled": false,
+                  "key": "X-RateLimit-Remaining",
+                  "value": "8850"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
@@ -1203,9 +1585,15 @@
                       "language": "json"
                     }
                   },
-                  "raw": "{\n  \"body\": \"Votre code est 482913\",\n  \"recipients\": [\n    \"243812345678\",\n    \"0899999999\"\n  ]\n}"
+                  "raw": "{\n  \"body\": \"Votre code est 482913\",\n  \"recipients\": [\n    \"243812345678\",\n    \"0812345678\",\n    \"0899999999\"\n  ]\n}"
                 },
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -1233,12 +1621,24 @@
               "cookie": [],
               "header": [
                 {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
                   "key": "Content-Type",
                   "value": "application/json"
                 }
               ],
               "id": "1c63ab95-c518-444e-af0a-9f6aaa8bd85a",
-              "name": "`UNAUTHENTICATED` : clé absente, invalide ou révoquée.",
+              "name": "`UNAUTHENTICATED` : clé absente (« Clé API manquante. »), invalide ou révoquée.",
               "originalRequest": {
                 "body": {
                   "mode": "raw",
@@ -1247,9 +1647,15 @@
                       "language": "json"
                     }
                   },
-                  "raw": "{\n  \"body\": \"Votre code est 482913\",\n  \"recipients\": [\n    \"243812345678\",\n    \"0899999999\"\n  ]\n}"
+                  "raw": "{\n  \"body\": \"Votre code est 482913\",\n  \"recipients\": [\n    \"243812345678\",\n    \"0812345678\",\n    \"0899999999\"\n  ]\n}"
                 },
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -1272,10 +1678,22 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"FORBIDDEN\",\n    \"message\": \"Adresse IP non autorisée pour cette clé API.\",\n    \"details\": {}\n  }\n}",
               "code": 403,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
@@ -1291,9 +1709,15 @@
                       "language": "json"
                     }
                   },
-                  "raw": "{\n  \"body\": \"Votre code est 482913\",\n  \"recipients\": [\n    \"243812345678\",\n    \"0899999999\"\n  ]\n}"
+                  "raw": "{\n  \"body\": \"Votre code est 482913\",\n  \"recipients\": [\n    \"243812345678\",\n    \"0812345678\",\n    \"0899999999\"\n  ]\n}"
                 },
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -1316,10 +1740,22 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"message\": \"Les données envoyées sont invalides.\",\n    \"details\": {\n      \"per_page\": [\n        \"Le champ per_page ne doit pas être supérieur à 100.\"\n      ]\n    }\n  }\n}",
               "code": 422,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
@@ -1335,9 +1771,15 @@
                       "language": "json"
                     }
                   },
-                  "raw": "{\n  \"body\": \"Votre code est 482913\",\n  \"recipients\": [\n    \"243812345678\",\n    \"0899999999\"\n  ]\n}"
+                  "raw": "{\n  \"body\": \"Votre code est 482913\",\n  \"recipients\": [\n    \"243812345678\",\n    \"0812345678\",\n    \"0899999999\"\n  ]\n}"
                 },
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -1360,15 +1802,27 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"TOO_MANY_REQUESTS\",\n    \"message\": \"Trop de requêtes, réessayez plus tard.\",\n    \"details\": {\n      \"retry_after_seconds\": 37\n    }\n  }\n}",
               "code": 429,
               "cookie": [],
               "header": [
                 {
-                  "description": "Secondes à attendre avant de réessayer.",
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Secondes à attendre avant de réessayer (égal à `details.retry_after_seconds`).",
                   "disabled": false,
                   "key": "Retry-After",
-                  "value": "8169"
+                  "value": "4099"
                 },
                 {
                   "key": "Content-Type",
@@ -1385,9 +1839,15 @@
                       "language": "json"
                     }
                   },
-                  "raw": "{\n  \"body\": \"Votre code est 482913\",\n  \"recipients\": [\n    \"243812345678\",\n    \"0899999999\"\n  ]\n}"
+                  "raw": "{\n  \"body\": \"Votre code est 482913\",\n  \"recipients\": [\n    \"243812345678\",\n    \"0812345678\",\n    \"0899999999\"\n  ]\n}"
                 },
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -1432,6 +1892,10 @@
                   "});",
                   "pm.test('JSON body with data', function () {",
                   "  pm.expect(pm.response.json()).to.have.property('data');",
+                  "});",
+                  "pm.test('X-Request-Id and X-Api-Version headers', function () {",
+                  "  pm.response.to.have.header('X-Request-Id');",
+                  "  pm.expect(pm.response.headers.get('X-Api-Version')).to.eql('1');",
                   "});"
                 ],
                 "id": "aa2ff15a-5d5d-4d17-a164-b89873ba5d9a",
@@ -1447,6 +1911,12 @@
           "request": {
             "description": {},
             "header": [
+              {
+                "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                "disabled": true,
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
               {
                 "key": "Accept",
                 "value": "application/json"
@@ -1468,10 +1938,34 @@
           "response": [
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"data\": {\n    \"balance\": 1489,\n    \"held\": 8648\n  }\n}",
+              "body": "{\n  \"data\": {\n    \"balance\": 1250,\n    \"held\": 0\n  }\n}",
               "code": 200,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Nombre de requêtes autorisées par minute.",
+                  "disabled": false,
+                  "key": "X-RateLimit-Limit",
+                  "value": "8850"
+                },
+                {
+                  "description": "Requêtes restantes dans la minute en cours.",
+                  "disabled": false,
+                  "key": "X-RateLimit-Remaining",
+                  "value": "8850"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
@@ -1482,6 +1976,12 @@
               "originalRequest": {
                 "body": {},
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -1508,15 +2008,33 @@
               "cookie": [],
               "header": [
                 {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
                   "key": "Content-Type",
                   "value": "application/json"
                 }
               ],
               "id": "7d8022e2-9dd0-409c-aeb0-2273a1f196c6",
-              "name": "`UNAUTHENTICATED` : clé absente, invalide ou révoquée.",
+              "name": "`UNAUTHENTICATED` : clé absente (« Clé API manquante. »), invalide ou révoquée.",
               "originalRequest": {
                 "body": {},
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -1538,10 +2056,22 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"FORBIDDEN\",\n    \"message\": \"Adresse IP non autorisée pour cette clé API.\",\n    \"details\": {}\n  }\n}",
               "code": 403,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
@@ -1552,6 +2082,12 @@
               "originalRequest": {
                 "body": {},
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -1573,15 +2109,27 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"TOO_MANY_REQUESTS\",\n    \"message\": \"Trop de requêtes, réessayez plus tard.\",\n    \"details\": {\n      \"retry_after_seconds\": 37\n    }\n  }\n}",
               "code": 429,
               "cookie": [],
               "header": [
                 {
-                  "description": "Secondes à attendre avant de réessayer.",
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Secondes à attendre avant de réessayer (égal à `details.retry_after_seconds`).",
                   "disabled": false,
                   "key": "Retry-After",
-                  "value": "8169"
+                  "value": "4099"
                 },
                 {
                   "key": "Content-Type",
@@ -1593,6 +2141,12 @@
               "originalRequest": {
                 "body": {},
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -1625,6 +2179,10 @@
                   "});",
                   "pm.test('JSON body with data', function () {",
                   "  pm.expect(pm.response.json()).to.have.property('data');",
+                  "});",
+                  "pm.test('X-Request-Id and X-Api-Version headers', function () {",
+                  "  pm.response.to.have.header('X-Request-Id');",
+                  "  pm.expect(pm.response.headers.get('X-Api-Version')).to.eql('1');",
                   "});"
                 ],
                 "id": "cd5e0e8d-8c4c-466c-accc-4f44c451da3d",
@@ -1643,6 +2201,12 @@
               "type": "text/plain"
             },
             "header": [
+              {
+                "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                "disabled": true,
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
               {
                 "key": "Accept",
                 "value": "application/json"
@@ -1664,10 +2228,34 @@
           "response": [
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"data\": [\n    {\n      \"id\": \"29fd574c-38f9-9422-6bc3-e795465d28e6\",\n      \"value\": \"MABOUTIQUE\",\n      \"status\": \"pending\",\n      \"is_default\": true,\n      \"purpose\": \"string\",\n      \"rejection_reason\": \"string\",\n      \"created_at\": \"1998-02-10T19:59:34.841Z\"\n    },\n    {\n      \"id\": \"954211b8-453c-8844-8faf-4d7c04fd5631\",\n      \"value\": \"MABOUTIQUE\",\n      \"status\": \"pending\",\n      \"is_default\": false,\n      \"purpose\": \"string\",\n      \"rejection_reason\": \"string\",\n      \"created_at\": \"2024-07-26T20:04:27.031Z\"\n    }\n  ]\n}",
+              "body": "{\n  \"data\": [\n    {\n      \"id\": \"9105a3fd-d215-8d2e-6795-b61912ac8e33\",\n      \"value\": \"MABOUTIQUE\",\n      \"status\": \"approved\",\n      \"is_default\": true,\n      \"purpose\": \"string\",\n      \"rejection_reason\": \"string\",\n      \"created_at\": \"2026-11-06T09:39:11+00:00\"\n    },\n    {\n      \"id\": \"5c07129f-82bd-e95b-b837-429fd574c423\",\n      \"value\": \"MABOUTIQUE\",\n      \"status\": \"rejected\",\n      \"is_default\": true,\n      \"purpose\": \"string\",\n      \"rejection_reason\": \"string\",\n      \"created_at\": \"2026-11-06T09:39:11+00:00\"\n    }\n  ]\n}",
               "code": 200,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Nombre de requêtes autorisées par minute.",
+                  "disabled": false,
+                  "key": "X-RateLimit-Limit",
+                  "value": "8850"
+                },
+                {
+                  "description": "Requêtes restantes dans la minute en cours.",
+                  "disabled": false,
+                  "key": "X-RateLimit-Remaining",
+                  "value": "8850"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
@@ -1678,6 +2266,12 @@
               "originalRequest": {
                 "body": {},
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -1704,15 +2298,33 @@
               "cookie": [],
               "header": [
                 {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
                   "key": "Content-Type",
                   "value": "application/json"
                 }
               ],
               "id": "c90143a0-016b-418d-ab48-5b752cc6f796",
-              "name": "`UNAUTHENTICATED` : clé absente, invalide ou révoquée.",
+              "name": "`UNAUTHENTICATED` : clé absente (« Clé API manquante. »), invalide ou révoquée.",
               "originalRequest": {
                 "body": {},
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -1734,10 +2346,22 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"FORBIDDEN\",\n    \"message\": \"Adresse IP non autorisée pour cette clé API.\",\n    \"details\": {}\n  }\n}",
               "code": 403,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
@@ -1748,6 +2372,12 @@
               "originalRequest": {
                 "body": {},
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -1769,15 +2399,27 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"TOO_MANY_REQUESTS\",\n    \"message\": \"Trop de requêtes, réessayez plus tard.\",\n    \"details\": {\n      \"retry_after_seconds\": 37\n    }\n  }\n}",
               "code": 429,
               "cookie": [],
               "header": [
                 {
-                  "description": "Secondes à attendre avant de réessayer.",
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Secondes à attendre avant de réessayer (égal à `details.retry_after_seconds`).",
                   "disabled": false,
                   "key": "Retry-After",
-                  "value": "8169"
+                  "value": "4099"
                 },
                 {
                   "key": "Content-Type",
@@ -1789,6 +2431,12 @@
               "originalRequest": {
                 "body": {},
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -1815,7 +2463,7 @@
     },
     {
       "description": {
-        "content": "OTP as a service. Parcours type, depuis le serveur de l'intégrateur :\n1. `POST /otp/send` avec le numéro → conserver `otp_id` (session côté serveur) ;\n2. l'utilisateur saisit le code reçu par SMS ;\n3. `POST /otp/verify` avec `otp_id` et le code → `verified: true` ou un motif d'échec.\n\nLe code n'est jamais renvoyé par l'API (il est stocké haché). Longueur, alphabet, validité,\nnombre de tentatives, délai anti-renvoi, Sender ID et modèle de message viennent des\nparamètres OTP du compte (espace client > Vérification OTP), dans les bornes de la plateforme.",
+        "content": "OTP as a service. Parcours type, depuis le serveur de l'intégrateur :\n1. `POST /otp/send` avec le numéro → conserver `otp_id` (session côté serveur) ;\n2. l'utilisateur saisit le code reçu par SMS (`code_length` et `code_type` indiquent sa forme) ;\n3. `POST /otp/verify` avec `otp_id` et le code → `verified: true` ou un motif d'échec.\n\nLe code n'est jamais renvoyé par l'API en production (il est stocké haché). Longueur, alphabet,\nvalidité, nombre de tentatives, délai anti-renvoi, Sender ID et modèle de message viennent des\nparamètres OTP du compte (espace client > Vérification OTP), dans les bornes de la plateforme.\nL'issue de chaque vérification est aussi notifiée par les webhooks `otp.verified` et `otp.failed`.",
         "type": "text/markdown"
       },
       "event": [],
@@ -1828,7 +2476,9 @@
               "script": {
                 "exec": [
                   "// Numéro RDC aléatoire : les limites OTP par numéro ne se croisent pas entre deux exécutions.",
-                  "pm.collectionVariables.set('otpPhone', '0899' + String(Math.floor(Math.random() * 1e6)).padStart(6, '0'));"
+                  "pm.collectionVariables.set('otpPhone', '0899' + String(Math.floor(Math.random() * 1e6)).padStart(6, '0'));",
+                  "// Nouvelle clé d'idempotence à chaque exécution, rejouée par la requête suivante.",
+                  "pm.collectionVariables.set('otpIdempotencyKey', pm.variables.replaceIn('{{$guid}}'));"
                 ],
                 "id": "700e30fd-b7e2-4144-afc0-2d7ed792c379",
                 "type": "text/javascript"
@@ -1844,8 +2494,17 @@
                   "pm.test('JSON body with data', function () {",
                   "  pm.expect(pm.response.json()).to.have.property('data');",
                   "});",
+                  "pm.test('X-Request-Id and X-Api-Version headers', function () {",
+                  "  pm.response.to.have.header('X-Request-Id');",
+                  "  pm.expect(pm.response.headers.get('X-Api-Version')).to.eql('1');",
+                  "});",
                   "const otp = pm.response.json().data || {};",
                   "pm.test('otp_id returned', function () { pm.expect(otp.otp_id).to.be.a('string'); });",
+                  "pm.test('Code shape returned', function () {",
+                  "  pm.expect(otp.code_length).to.be.a('number');",
+                  "  pm.expect(otp.code_type).to.be.oneOf(['numeric', 'alphanumeric']);",
+                  "  pm.expect(otp.resend_after_seconds).to.be.a('number');",
+                  "});",
                   "pm.collectionVariables.set('otpId', otp.otp_id || '');",
                   "// test_code n'existe qu'avec une clé lsk_test_ (aucun SMS envoyé).",
                   "pm.collectionVariables.set('otpTestCode', otp.test_code || '');"
@@ -1871,10 +2530,22 @@
               "raw": "{\n  \"phone\": \"{{otpPhone}}\",\n  \"locale\": \"fr\"\n}"
             },
             "description": {
-              "content": "Génère un code, l'envoie par SMS (même pipeline, même coût en crédits qu'un SMS normal)\net renvoie `otp_id`. Un nouvel envoi au même numéro **invalide le code précédent**.\n\nAvec une clé `lsk_test_…`, aucun SMS n'est envoyé et la réponse contient le code\n(`test_code`) pour tester `/otp/verify` de bout en bout. Jamais avec une clé live.\n\nLimites :\n- 10 requêtes / minute par clé API (`429 TOO_MANY_REQUESTS`) ;\n- délai minimal entre deux envois au même numéro (`429 OTP_RESEND_TOO_SOON`, `details.retry_after_seconds`) ;\n- plafond horaire par numéro et par compte (`429 OTP_RATE_LIMITED`, `details.scope`, `details.limit`).\n\nNe jamais relancer automatiquement cet appel : chaque succès envoie un SMS facturé.\n",
+              "content": "Génère un code, l'envoie par SMS (même pipeline, même coût en crédits qu'un SMS normal)\net renvoie `otp_id`, ainsi que la forme du code (`code_length`, `code_type`) et le délai\navant un renvoi possible (`resend_after_seconds`). Un nouvel envoi au même numéro\n**invalide le code précédent** (sa vérification renvoie `expired`).\n\nAvec une clé `lsk_test_…`, aucun SMS n'est envoyé et la réponse contient le code\n(`test_code`) pour tester `/otp/verify` de bout en bout. Jamais avec une clé live.\n\n**Idempotence** (voir l'introduction) : avec `Idempotency-Key`, un rejeu dans les 24 h renvoie\nla même réponse `201` (même `otp_id`, même `test_code` en mode test), sans nouveau SMS ni débit,\navec `Idempotent-Replayed: true`. L'empreinte porte sur le numéro normalisé, `template`,\n`locale`, `web_otp_domain` et `strip_accents`. Espace de clés séparé de `POST /sms`.\n\nLimites :\n- 10 requêtes / minute par clé API (`429 TOO_MANY_REQUESTS`) ;\n- délai minimal entre deux envois au même numéro tant que le dernier code n'est pas vérifié\n  (`429 OTP_RESEND_TOO_SOON`) ; après une vérification réussie, un nouvel envoi est accepté\n  tout de suite ;\n- plafond sur une heure glissante, par numéro et par compte (`429 OTP_RATE_LIMITED`,\n  `details.scope`, `details.limit`).\n\nLes deux erreurs métier portent l'en-tête `Retry-After`, égal à `details.retry_after_seconds`.\n\nNe jamais relancer automatiquement cet appel sans `Idempotency-Key` : chaque succès envoie un SMS facturé.\n",
               "type": "text/plain"
             },
             "header": [
+              {
+                "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API et par\nopération. Plus de 255 caractères : `422 VALIDATION_ERROR`.\n",
+                "disabled": false,
+                "key": "Idempotency-Key",
+                "value": "{{otpIdempotencyKey}}"
+              },
+              {
+                "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                "disabled": true,
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
               {
                 "key": "Content-Type",
                 "value": "application/json"
@@ -1901,17 +2572,47 @@
           "response": [
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"data\": {\n    \"otp_id\": \"aa53ded9-95cc-c5ed-9af4-d90145ce2dcf\",\n    \"expires_at\": \"2004-02-27T17:31:46.250Z\",\n    \"max_attempts\": 7917,\n    \"test_code\": \"string\"\n  }\n}",
+              "body": "{\n  \"data\": {\n    \"otp_id\": \"9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10\",\n    \"expires_at\": \"2026-11-06T09:49:11+00:00\",\n    \"max_attempts\": 5,\n    \"code_length\": 6,\n    \"code_type\": \"numeric\",\n    \"resend_after_seconds\": 60\n  }\n}",
               "code": 201,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Nombre de requêtes autorisées par minute.",
+                  "disabled": false,
+                  "key": "X-RateLimit-Limit",
+                  "value": "8850"
+                },
+                {
+                  "description": "Requêtes restantes dans la minute en cours.",
+                  "disabled": false,
+                  "key": "X-RateLimit-Remaining",
+                  "value": "8850"
+                },
+                {
+                  "description": "`true` si la réponse est le rejeu d'une requête précédente (même `Idempotency-Key`).",
+                  "disabled": false,
+                  "key": "Idempotent-Replayed",
+                  "value": "true"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
                 }
               ],
               "id": "17a8aa7c-c34f-41eb-a02c-b89c10a6d26e",
-              "name": "Code généré et envoyé.",
+              "name": "Code généré et envoyé (ou rejeu d'une requête précédente avec la même `Idempotency-Key`).",
               "originalRequest": {
                 "body": {
                   "mode": "raw",
@@ -1923,6 +2624,18 @@
                   "raw": "{\n  \"phone\": \"243812345678\"\n}"
                 },
                 "header": [
+                  {
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API et par\nopération. Plus de 255 caractères : `422 VALIDATION_ERROR`.\n",
+                    "disabled": false,
+                    "key": "Idempotency-Key",
+                    "value": "string"
+                  },
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -1950,12 +2663,24 @@
               "cookie": [],
               "header": [
                 {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
                   "key": "Content-Type",
                   "value": "application/json"
                 }
               ],
               "id": "5e621818-9109-47b7-a59f-4fdb463c531d",
-              "name": "`UNAUTHENTICATED` : clé absente, invalide ou révoquée.",
+              "name": "`UNAUTHENTICATED` : clé absente (« Clé API manquante. »), invalide ou révoquée.",
               "originalRequest": {
                 "body": {
                   "mode": "raw",
@@ -1967,6 +2692,18 @@
                   "raw": "{\n  \"phone\": \"243812345678\"\n}"
                 },
                 "header": [
+                  {
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API et par\nopération. Plus de 255 caractères : `422 VALIDATION_ERROR`.\n",
+                    "disabled": false,
+                    "key": "Idempotency-Key",
+                    "value": "string"
+                  },
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -1994,6 +2731,18 @@
               "cookie": [],
               "header": [
                 {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
                   "key": "Content-Type",
                   "value": "application/json"
                 }
@@ -2011,6 +2760,18 @@
                   "raw": "{\n  \"phone\": \"243812345678\"\n}"
                 },
                 "header": [
+                  {
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API et par\nopération. Plus de 255 caractères : `422 VALIDATION_ERROR`.\n",
+                    "disabled": false,
+                    "key": "Idempotency-Key",
+                    "value": "string"
+                  },
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -2033,17 +2794,35 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {\n      \"available\": 5312,\n      \"required\": 6830\n    }\n  }\n}",
               "code": 409,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Avec `IDEMPOTENCY_REQUEST_IN_PROGRESS` uniquement : secondes à attendre (5) avant de relancer avec la même clé.",
+                  "disabled": false,
+                  "key": "Retry-After",
+                  "value": "4099"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
                 }
               ],
               "id": "cd3d3017-8b26-42ee-ac45-a76ee4c271be",
-              "name": "Crédits insuffisants (`INSUFFICIENT_CREDITS`).",
+              "name": "- `INSUFFICIENT_CREDITS` : crédits insuffisants (jamais avec une clé de test) ;\n- `IDEMPOTENCY_KEY_REUSED` : `Idempotency-Key` déjà utilisée pour une requête différente ;\n- `IDEMPOTENCY_REQUEST_IN_PROGRESS` : la requête d'origine avec cette clé est encore en cours\n  (en-tête `Retry-After`) ; relancer avec la même clé.\n",
               "originalRequest": {
                 "body": {
                   "mode": "raw",
@@ -2055,6 +2834,18 @@
                   "raw": "{\n  \"phone\": \"243812345678\"\n}"
                 },
                 "header": [
+                  {
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API et par\nopération. Plus de 255 caractères : `422 VALIDATION_ERROR`.\n",
+                    "disabled": false,
+                    "key": "Idempotency-Key",
+                    "value": "string"
+                  },
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -2077,17 +2868,29 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"message\": \"Les données envoyées sont invalides.\",\n    \"details\": {\n      \"web_otp_domain\": [\n        \"Le champ web_otp_domain doit être un nom d'hôte valide, sans schéma ni port (ex. exemple.com).\"\n      ]\n    }\n  }\n}",
               "code": 422,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
                 }
               ],
               "id": "c4e8b89e-b3f7-4700-add9-2dc4146a2d62",
-              "name": "- `VALIDATION_ERROR` ;\n- `INVALID_PHONE` : numéro inexploitable ;\n- `INVALID_OTP_TEMPLATE` : `template` sans le jeton `{code}` ;\n- `RECIPIENT_NOT_SENDABLE` : numéro en liste noire ou désinscrit ;\n- `SENDER_ID_NOT_APPROVED` : le Sender ID des paramètres OTP n'est plus approuvé.\n",
+              "name": "- `VALIDATION_ERROR` : champ invalide (`details` par champ, dont `web_otp_domain`), ou\n  `Idempotency-Key` de plus de 255 caractères ;\n- `INVALID_PHONE` : numéro inexploitable ;\n- `INVALID_OTP_TEMPLATE` : `template` sans le jeton `{code}` ;\n- `RECIPIENT_NOT_SENDABLE` : numéro en liste noire ou désinscrit ;\n- `SENDER_ID_NOT_APPROVED` : le Sender ID des paramètres OTP n'est plus approuvé.\n",
               "originalRequest": {
                 "body": {
                   "mode": "raw",
@@ -2099,6 +2902,18 @@
                   "raw": "{\n  \"phone\": \"243812345678\"\n}"
                 },
                 "header": [
+                  {
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API et par\nopération. Plus de 255 caractères : `422 VALIDATION_ERROR`.\n",
+                    "disabled": false,
+                    "key": "Idempotency-Key",
+                    "value": "string"
+                  },
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -2121,17 +2936,35 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"OTP_RESEND_TOO_SOON\",\n    \"message\": \"Un code vient d'être envoyé à ce numéro. Réessayez dans 42 s.\",\n    \"details\": {\n      \"retry_after_seconds\": 42\n    }\n  }\n}",
               "code": 429,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Secondes à attendre avant de réessayer (égal à `details.retry_after_seconds`).",
+                  "disabled": false,
+                  "key": "Retry-After",
+                  "value": "4099"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
                 }
               ],
               "id": "f6df49cc-2448-4c04-a805-620765334df4",
-              "name": "- `TOO_MANY_REQUESTS` : limite de requêtes (en-tête `Retry-After`) ;\n- `OTP_RESEND_TOO_SOON` : renvoi trop rapproché (`details.retry_after_seconds`) ;\n- `OTP_RATE_LIMITED` : plafond horaire atteint (`details.scope` = `phone` | `account`).\n",
+              "name": "- `TOO_MANY_REQUESTS` : limite de requêtes ;\n- `OTP_RESEND_TOO_SOON` : renvoi trop rapproché ;\n- `OTP_RATE_LIMITED` : plafond horaire atteint (`details.scope` = `phone` | `account`).\n\nToujours avec l'en-tête `Retry-After`, égal à `details.retry_after_seconds`.\n",
               "originalRequest": {
                 "body": {
                   "mode": "raw",
@@ -2143,6 +2976,18 @@
                   "raw": "{\n  \"phone\": \"243812345678\"\n}"
                 },
                 "header": [
+                  {
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API et par\nopération. Plus de 255 caractères : `422 VALIDATION_ERROR`.\n",
+                    "disabled": false,
+                    "key": "Idempotency-Key",
+                    "value": "string"
+                  },
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -2170,6 +3015,18 @@
               "cookie": [],
               "header": [
                 {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
                   "key": "Content-Type",
                   "value": "application/json"
                 }
@@ -2187,6 +3044,18 @@
                   "raw": "{\n  \"phone\": \"243812345678\"\n}"
                 },
                 "header": [
+                  {
+                    "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API et par\nopération. Plus de 255 caractères : `422 VALIDATION_ERROR`.\n",
+                    "disabled": false,
+                    "key": "Idempotency-Key",
+                    "value": "string"
+                  },
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -2215,14 +3084,105 @@
               "listen": "test",
               "script": {
                 "exec": [
+                  "pm.test('HTTP 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test('JSON body with data', function () {",
+                  "  pm.expect(pm.response.json()).to.have.property('data');",
+                  "});",
+                  "pm.test('X-Request-Id and X-Api-Version headers', function () {",
+                  "  pm.response.to.have.header('X-Request-Id');",
+                  "  pm.expect(pm.response.headers.get('X-Api-Version')).to.eql('1');",
+                  "});",
+                  "pm.test('Same otp_id, replayed', function () {",
+                  "  pm.expect(pm.response.json().data.otp_id).to.eql(pm.collectionVariables.get('otpId'));",
+                  "  pm.expect(pm.response.headers.get('Idempotent-Replayed')).to.eql('true');",
+                  "});"
+                ],
+                "id": "dfa45e8c-a2f1-4a52-a1e9-01382cb9d3e3",
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "id": "08292241-718b-4500-aa7e-6142542d19d9",
+          "name": "POST /otp/send — Replay with the same Idempotency-Key (same otp_id, no new SMS)",
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"phone\": \"{{otpPhone}}\",\n  \"locale\": \"fr\"\n}"
+            },
+            "description": {
+              "content": "Génère un code, l'envoie par SMS (même pipeline, même coût en crédits qu'un SMS normal)\net renvoie `otp_id`, ainsi que la forme du code (`code_length`, `code_type`) et le délai\navant un renvoi possible (`resend_after_seconds`). Un nouvel envoi au même numéro\n**invalide le code précédent** (sa vérification renvoie `expired`).\n\nAvec une clé `lsk_test_…`, aucun SMS n'est envoyé et la réponse contient le code\n(`test_code`) pour tester `/otp/verify` de bout en bout. Jamais avec une clé live.\n\n**Idempotence** (voir l'introduction) : avec `Idempotency-Key`, un rejeu dans les 24 h renvoie\nla même réponse `201` (même `otp_id`, même `test_code` en mode test), sans nouveau SMS ni débit,\navec `Idempotent-Replayed: true`. L'empreinte porte sur le numéro normalisé, `template`,\n`locale`, `web_otp_domain` et `strip_accents`. Espace de clés séparé de `POST /sms`.\n\nLimites :\n- 10 requêtes / minute par clé API (`429 TOO_MANY_REQUESTS`) ;\n- délai minimal entre deux envois au même numéro tant que le dernier code n'est pas vérifié\n  (`429 OTP_RESEND_TOO_SOON`) ; après une vérification réussie, un nouvel envoi est accepté\n  tout de suite ;\n- plafond sur une heure glissante, par numéro et par compte (`429 OTP_RATE_LIMITED`,\n  `details.scope`, `details.limit`).\n\nLes deux erreurs métier portent l'en-tête `Retry-After`, égal à `details.retry_after_seconds`.\n\nNe jamais relancer automatiquement cet appel sans `Idempotency-Key` : chaque succès envoie un SMS facturé.\n",
+              "type": "text/plain"
+            },
+            "header": [
+              {
+                "description": "Identifiant unique de la requête (UUID recommandé). Conservé 24 h, par clé API et par\nopération. Plus de 255 caractères : `422 VALIDATION_ERROR`.\n",
+                "disabled": false,
+                "key": "Idempotency-Key",
+                "value": "{{otpIdempotencyKey}}"
+              },
+              {
+                "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                "disabled": true,
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "name": "Envoyer un code de vérification par SMS",
+            "url": {
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "otp",
+                "send"
+              ],
+              "query": [],
+              "variable": []
+            }
+          },
+          "response": []
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
                   "pm.test('HTTP 200', function () {",
                   "  pm.response.to.have.status(200);",
                   "});",
                   "pm.test('JSON body with data', function () {",
                   "  pm.expect(pm.response.json()).to.have.property('data');",
                   "});",
+                  "pm.test('X-Request-Id and X-Api-Version headers', function () {",
+                  "  pm.response.to.have.header('X-Request-Id');",
+                  "  pm.expect(pm.response.headers.get('X-Api-Version')).to.eql('1');",
+                  "});",
                   "if (pm.collectionVariables.get('otpTestCode')) {",
-                  "  pm.test('Code verified (test mode)', function () { pm.expect(pm.response.json().data.verified).to.eql(true); });",
+                  "  pm.test('Code verified (test mode)', function () {",
+                  "    const result = pm.response.json().data;",
+                  "    pm.expect(result.verified).to.eql(true);",
+                  "    pm.expect(result.attempts_remaining).to.eql(null);",
+                  "  });",
                   "}"
                 ],
                 "id": "77e68b71-26bd-427b-a68f-6232f343b0d6",
@@ -2246,10 +3206,16 @@
               "raw": "{\n  \"otp_id\": \"{{otpId}}\",\n  \"code\": \"{{otpTestCode}}\"\n}"
             },
             "description": {
-              "content": "Un code incorrect n'est **pas** une erreur HTTP : la réponse est `200` avec\n`verified: false` et un motif. Chaque essai incorrect consomme une tentative ;\nau-delà du maximum, le code est définitivement bloqué (`max_attempts_reached`).\nLe code saisi est normalisé (espaces retirés, insensible à la casse).\n\nGratuit. Un `otp_id` d'un autre compte renvoie 404.\n",
+              "content": "Un code incorrect n'est **pas** une erreur HTTP : la réponse est `200` avec\n`verified: false` et un motif. Chaque essai incorrect consomme une tentative\n(`attempts_remaining`) ; au-delà du maximum, le code est définitivement bloqué\n(`max_attempts_reached`). Le code saisi est normalisé (espaces retirés, insensible à la casse).\n\nUne fois conclue (code correct, tentatives épuisées, expiration constatée), la vérification est\nfigée : les appels suivants renvoient le même motif sans rien compter, et un webhook\n`otp.verified` ou `otp.failed` est émis une seule fois.\n\nGratuit. Un `otp_id` d'un autre compte renvoie 404.\n",
               "type": "text/plain"
             },
             "header": [
+              {
+                "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                "disabled": true,
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
               {
                 "key": "Content-Type",
                 "value": "application/json"
@@ -2276,10 +3242,34 @@
           "response": [
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"data\": {\n    \"verified\": true,\n    \"reason\": null\n  }\n}",
+              "body": "{\n  \"data\": {\n    \"verified\": true,\n    \"reason\": null,\n    \"attempts_remaining\": null\n  }\n}",
               "code": 200,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Nombre de requêtes autorisées par minute.",
+                  "disabled": false,
+                  "key": "X-RateLimit-Limit",
+                  "value": "8850"
+                },
+                {
+                  "description": "Requêtes restantes dans la minute en cours.",
+                  "disabled": false,
+                  "key": "X-RateLimit-Remaining",
+                  "value": "8850"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
@@ -2298,6 +3288,12 @@
                   "raw": "{\n  \"otp_id\": \"9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10\",\n  \"code\": \"482913\"\n}"
                 },
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -2325,12 +3321,24 @@
               "cookie": [],
               "header": [
                 {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
                   "key": "Content-Type",
                   "value": "application/json"
                 }
               ],
               "id": "bdd4fb9b-3efc-455b-a878-f7e49a67846d",
-              "name": "`UNAUTHENTICATED` : clé absente, invalide ou révoquée.",
+              "name": "`UNAUTHENTICATED` : clé absente (« Clé API manquante. »), invalide ou révoquée.",
               "originalRequest": {
                 "body": {
                   "mode": "raw",
@@ -2342,6 +3350,12 @@
                   "raw": "{\n  \"otp_id\": \"9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10\",\n  \"code\": \"482913\"\n}"
                 },
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -2364,10 +3378,22 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"FORBIDDEN\",\n    \"message\": \"Adresse IP non autorisée pour cette clé API.\",\n    \"details\": {}\n  }\n}",
               "code": 403,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
@@ -2386,6 +3412,12 @@
                   "raw": "{\n  \"otp_id\": \"9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10\",\n  \"code\": \"482913\"\n}"
                 },
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -2408,10 +3440,22 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"error\": {\n    \"code\": \"UNAUTHENTICATED\",\n    \"message\": \"string\",\n    \"details\": {}\n  }\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"NOT_FOUND\",\n    \"message\": \"Message introuvable.\",\n    \"details\": {}\n  }\n}",
               "code": 404,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
@@ -2430,6 +3474,12 @@
                   "raw": "{\n  \"otp_id\": \"9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10\",\n  \"code\": \"482913\"\n}"
                 },
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -2452,10 +3502,22 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"message\": \"Les données envoyées sont invalides.\",\n    \"details\": {\n      \"per_page\": [\n        \"Le champ per_page ne doit pas être supérieur à 100.\"\n      ]\n    }\n  }\n}",
               "code": 422,
               "cookie": [],
               "header": [
+                {
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
                 {
                   "key": "Content-Type",
                   "value": "application/json"
@@ -2474,6 +3536,12 @@
                   "raw": "{\n  \"otp_id\": \"9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10\",\n  \"code\": \"482913\"\n}"
                 },
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -2496,15 +3564,27 @@
             },
             {
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"value\": \"<Error: Could not resolve allOf schema\"\n}",
+              "body": "{\n  \"error\": {\n    \"code\": \"TOO_MANY_REQUESTS\",\n    \"message\": \"Trop de requêtes, réessayez plus tard.\",\n    \"details\": {\n      \"retry_after_seconds\": 37\n    }\n  }\n}",
               "code": 429,
               "cookie": [],
               "header": [
                 {
-                  "description": "Secondes à attendre avant de réessayer.",
+                  "description": "Identifiant de la requête (celui de l'appelant s'il est valide, sinon un UUID). Présent sur\ntoutes les réponses ; à communiquer au support.\n",
+                  "disabled": false,
+                  "key": "X-Request-Id",
+                  "value": "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81"
+                },
+                {
+                  "description": "Version majeure de l'API qui a servi la réponse.",
+                  "disabled": false,
+                  "key": "X-Api-Version",
+                  "value": "string"
+                },
+                {
+                  "description": "Secondes à attendre avant de réessayer (égal à `details.retry_after_seconds`).",
                   "disabled": false,
                   "key": "Retry-After",
-                  "value": "8169"
+                  "value": "4099"
                 },
                 {
                   "key": "Content-Type",
@@ -2524,6 +3604,12 @@
                   "raw": "{\n  \"otp_id\": \"9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10\",\n  \"code\": \"482913\"\n}"
                 },
                 "header": [
+                  {
+                    "description": "Identifiant de requête de l'appelant, renvoyé tel quel dans l'en-tête de réponse `X-Request-Id`\ns'il est valide (sinon remplacé par un UUID).\n",
+                    "disabled": false,
+                    "key": "X-Request-Id",
+                    "value": "QtSk00ECyO-VGijaucs6QD:y0G4vyXv1H6_nKG4fz63:HrJoFHwd_HauQG.VSr2ERva4OK1qhSEf2ae6LP03m2rBd8WBUi8upwWPAzpfo"
+                  },
                   {
                     "key": "Accept",
                     "value": "application/json"
@@ -2578,6 +3664,12 @@
     {
       "description": "Set by \"POST /otp/send\", used by \"POST /otp/verify\".",
       "key": "otpId",
+      "type": "string",
+      "value": ""
+    },
+    {
+      "description": "Idempotency-Key generated before \"POST /otp/send\", replayed by the next request.",
+      "key": "otpIdempotencyKey",
       "type": "string",
       "value": ""
     },
