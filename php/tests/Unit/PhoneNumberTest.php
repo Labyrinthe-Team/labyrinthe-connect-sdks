@@ -28,6 +28,16 @@ final class PhoneNumberTest extends TestCase
         yield 'other country with plus' => ['+33 6 12 34 56 78', '33612345678'];
         yield 'other country with 00' => ['0033612345678', '33612345678'];
         yield 'us number' => ['+1 415 555 2671', '14155552671'];
+        // API 1.2.0: without "+", 11 digits or more not starting with 0 = already international.
+        yield 'other country without plus' => ['33612345678', '33612345678'];
+        yield 'other country without plus, spaces' => ['33 6 12 34 56 78', '33612345678'];
+        yield 'us number without plus' => ['14155552671', '14155552671'];
+        yield 'congo brazzaville without plus' => ['242061234567', '242061234567'];
+        yield 'long number starting with 0 stays local' => ['08123456789', '2438123456789'];
+        yield 'ten digits without plus stay local' => ['3361234567', '2433361234567'];
+        yield 'local nine digits' => ['991234567', '243991234567'];
+        yield 'fifteen digits without plus' => ['123456789012345', '123456789012345'];
+        yield 'sixteen digits without plus' => ['1234567890123456', null];
         yield 'empty' => ['', null];
         yield 'blank' => ['   ', null];
         yield 'letters' => ['abc', null];
@@ -42,6 +52,18 @@ final class PhoneNumberTest extends TestCase
         self::assertSame($expected !== null, PhoneNumber::isValid($input));
     }
 
+    #[DataProvider('numbers')]
+    public function test_normalize_is_idempotent(string $input, ?string $expected): void
+    {
+        if ($expected === null) {
+            $this->expectNotToPerformAssertions();
+
+            return;
+        }
+
+        self::assertSame($expected, PhoneNumber::normalize($expected), 'A normalised number must stay unchanged.');
+    }
+
     public function test_the_default_country_code_is_configurable(): void
     {
         self::assertSame('24261234567', PhoneNumber::normalize('061234567', '242'));
@@ -54,6 +76,18 @@ final class PhoneNumberTest extends TestCase
 
         $this->expectException(InvalidArgumentException::class);
         PhoneNumber::normalizeOrFail('nope');
+    }
+
+    public function test_to_e164_adds_the_plus_sent_to_the_api(): void
+    {
+        self::assertSame('+2481234567', PhoneNumber::toE164('+2481234567'), 'A short foreign number keeps its country code.');
+        self::assertSame('+243812345678', PhoneNumber::toE164('0812345678'));
+        self::assertSame('+33612345678', PhoneNumber::toE164('33612345678'));
+        self::assertNull(PhoneNumber::toE164('nope'));
+        self::assertSame('+243812345678', PhoneNumber::toE164OrFail('243812345678'));
+
+        $this->expectException(InvalidArgumentException::class);
+        PhoneNumber::toE164OrFail('nope');
     }
 
     public function test_invalid_country_codes_are_refused(): void

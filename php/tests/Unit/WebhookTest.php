@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Labyrinthe\Connect\Tests\Unit;
 
 use Labyrinthe\Connect\Enum\MessageStatus;
+use Labyrinthe\Connect\Enum\OtpFailureReason;
+use Labyrinthe\Connect\Enum\OtpWebhookStatus;
 use Labyrinthe\Connect\Enum\WebhookEvent;
 use Labyrinthe\Connect\Exception\InvalidArgumentException;
 use Labyrinthe\Connect\Exception\InvalidWebhookPayloadException;
@@ -12,9 +14,12 @@ use Labyrinthe\Connect\Exception\SignatureVerificationException;
 use Labyrinthe\Connect\Webhook\Event\BalanceLow;
 use Labyrinthe\Connect\Webhook\Event\CampaignCompleted;
 use Labyrinthe\Connect\Webhook\Event\MessageStatusChanged;
+use Labyrinthe\Connect\Webhook\Event\OtpFailed;
+use Labyrinthe\Connect\Webhook\Event\OtpVerified;
 use Labyrinthe\Connect\Webhook\Event\TestPing;
 use Labyrinthe\Connect\Webhook\Event\UnknownEvent;
 use Labyrinthe\Connect\Webhook\Webhook;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class WebhookTest extends TestCase
@@ -107,14 +112,87 @@ final class WebhookTest extends TestCase
 
     public function test_unknown_events_are_returned_verified_not_rejected(): void
     {
-        $body = self::body('otp.verified', ['otp_id' => 'x']);
+        $body = self::body('contact.opted_out', ['phone' => 'x']);
 
         $event = Webhook::constructEvent($body, self::signature($body), self::SECRET, now: self::NOW);
 
         self::assertInstanceOf(UnknownEvent::class, $event);
         self::assertNull($event->eventType());
-        self::assertSame('otp.verified', $event->type());
-        self::assertSame(['otp_id' => 'x'], $event->data());
+        self::assertSame('contact.opted_out', $event->type());
+        self::assertSame(['phone' => 'x'], $event->data());
+    }
+
+    public function test_otp_verified(): void
+    {
+        $body = self::body('otp.verified', [
+            'otp_id' => '9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10',
+            'phone' => '243812345678',
+            'status' => 'verified',
+            'reason' => null,
+            'verified_at' => '2026-11-06T09:41:02+00:00',
+        ]);
+
+        $event = Webhook::constructEvent($body, self::signature($body), self::SECRET, now: self::NOW);
+
+        self::assertInstanceOf(OtpVerified::class, $event);
+        self::assertSame(WebhookEvent::OtpVerified, $event->eventType());
+        self::assertSame('9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10', $event->otpId);
+        self::assertSame('243812345678', $event->phone);
+        self::assertSame(OtpWebhookStatus::Verified, $event->status);
+        self::assertNull($event->reason);
+        self::assertSame('2026-11-06T09:41:02+00:00', $event->verifiedAt?->format(\DATE_ATOM));
+    }
+
+    /**
+     * @return iterable<string, array{string, string, OtpWebhookStatus, OtpFailureReason}>
+     */
+    public static function otpFailures(): iterable
+    {
+        yield 'attempts exhausted' => ['failed', 'max_attempts_reached', OtpWebhookStatus::Failed, OtpFailureReason::MaxAttemptsReached];
+        yield 'expired' => ['expired', 'expired', OtpWebhookStatus::Expired, OtpFailureReason::Expired];
+        yield 'future values' => ['blocked', 'fraud', OtpWebhookStatus::Unknown, OtpFailureReason::Unknown];
+    }
+
+    #[DataProvider('otpFailures')]
+    public function test_otp_failed(string $status, string $reason, OtpWebhookStatus $expectedStatus, OtpFailureReason $expectedReason): void
+    {
+        $body = self::body('otp.failed', [
+            'otp_id' => '9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10',
+            'phone' => '243812345678',
+            'status' => $status,
+            'reason' => $reason,
+            'verified_at' => null,
+        ]);
+
+        $event = Webhook::constructEvent($body, self::signature($body), self::SECRET, now: self::NOW);
+
+        self::assertInstanceOf(OtpFailed::class, $event);
+        self::assertSame(WebhookEvent::OtpFailed, $event->eventType());
+        self::assertSame($expectedStatus, $event->status);
+        self::assertSame($expectedReason, $event->reason);
+        self::assertNull($event->verifiedAt);
+    }
+
+    public function test_message_status_changed_with_reference_and_error(): void
+    {
+        $body = self::body('message.status_changed', [
+            'message_id' => '9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10',
+            'recipient' => '243812345678',
+            'status' => 'failed',
+            'provider_message_id' => null,
+            'campaign_id' => null,
+            'reference' => 'CMD-1042',
+            'error_code' => 'IP_NOT_WHITELISTED',
+            'error_message' => 'IP not Whitelisted',
+        ]);
+
+        $event = Webhook::constructEvent($body, self::signature($body), self::SECRET, now: self::NOW);
+
+        self::assertInstanceOf(MessageStatusChanged::class, $event);
+        self::assertSame(MessageStatus::Failed, $event->status);
+        self::assertSame('CMD-1042', $event->reference);
+        self::assertSame('IP_NOT_WHITELISTED', $event->errorCode);
+        self::assertSame('IP not Whitelisted', $event->errorMessage);
     }
 
     public function test_a_wrong_secret_is_rejected(): void
@@ -156,7 +234,7 @@ final class WebhookTest extends TestCase
         yield 'truncated' => ['sha256=abc'];
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('malformedHeaders')]
+    #[DataProvider('malformedHeaders')]
     public function test_malformed_signature_headers_are_rejected(string $header): void
     {
         $body = self::body('test.ping', []);

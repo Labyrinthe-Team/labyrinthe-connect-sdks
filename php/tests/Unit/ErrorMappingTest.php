@@ -7,9 +7,12 @@ namespace Labyrinthe\Connect\Tests\Unit;
 use GuzzleHttp\Psr7\Response;
 use Labyrinthe\Connect\Enum\OtpRateLimitScope;
 use Labyrinthe\Connect\Enum\RejectionReason;
+use Labyrinthe\Connect\Exception\AccountSuspendedException;
 use Labyrinthe\Connect\Exception\ApiException;
 use Labyrinthe\Connect\Exception\AuthenticationException;
 use Labyrinthe\Connect\Exception\IdempotencyKeyReusedException;
+use Labyrinthe\Connect\Exception\IdempotencyKeyUnresolvedException;
+use Labyrinthe\Connect\Exception\IdempotencyRequestInProgressException;
 use Labyrinthe\Connect\Exception\InsufficientCreditsException;
 use Labyrinthe\Connect\Exception\InvalidPhoneException;
 use Labyrinthe\Connect\Exception\NotFoundException;
@@ -35,6 +38,7 @@ final class ErrorMappingTest extends TestCase
         yield 'unauthenticated' => [401, 'UNAUTHENTICATED', AuthenticationException::class];
         yield 'forbidden' => [403, 'FORBIDDEN', PermissionException::class];
         yield 'otp disabled for account' => [403, 'OTP_DISABLED_FOR_ACCOUNT', PermissionException::class];
+        yield 'account suspended' => [403, 'ACCOUNT_SUSPENDED', AccountSuspendedException::class];
         yield 'not found' => [404, 'NOT_FOUND', NotFoundException::class];
         yield 'validation' => [422, 'VALIDATION_ERROR', ValidationException::class];
         yield 'recipient not sendable' => [422, 'RECIPIENT_NOT_SENDABLE', RecipientNotSendableException::class];
@@ -43,6 +47,8 @@ final class ErrorMappingTest extends TestCase
         yield 'invalid otp template' => [422, 'INVALID_OTP_TEMPLATE', ApiException::class];
         yield 'insufficient credits' => [409, 'INSUFFICIENT_CREDITS', InsufficientCreditsException::class];
         yield 'idempotency key reused' => [409, 'IDEMPOTENCY_KEY_REUSED', IdempotencyKeyReusedException::class];
+        yield 'idempotency key unresolved' => [409, 'IDEMPOTENCY_KEY_UNRESOLVED', IdempotencyKeyUnresolvedException::class];
+        yield 'idempotency request in progress' => [409, 'IDEMPOTENCY_REQUEST_IN_PROGRESS', IdempotencyRequestInProgressException::class];
         yield 'too many requests' => [429, 'TOO_MANY_REQUESTS', RateLimitException::class];
         yield 'otp resend too soon' => [429, 'OTP_RESEND_TOO_SOON', OtpResendTooSoonException::class];
         yield 'otp rate limited' => [429, 'OTP_RATE_LIMITED', OtpRateLimitedException::class];
@@ -191,6 +197,69 @@ final class ErrorMappingTest extends TestCase
         } catch (NotFoundException $e) {
             self::assertSame('req_123', $e->getRequestId());
         }
+    }
+
+    public function test_request_id_and_api_version_are_exposed_on_every_exception(): void
+    {
+        $headers = ['X-Request-Id' => '5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81', 'X-Api-Version' => '1'];
+        $client = $this->client([
+            self::error(422, 'VALIDATION_ERROR', ['body' => ['x']], $headers),
+            self::error(403, 'ACCOUNT_SUSPENDED', [], $headers),
+            self::error(418, 'BRAND_NEW_CODE', [], $headers),
+        ], maxRetries: 0);
+
+        foreach ([
+            static fn () => $client->sms->estimate('x', '0812345678'),
+            static fn () => $client->balance->get(),
+            static fn () => $client->senderIds->list(),
+        ] as $call) {
+            try {
+                $call();
+                self::fail('ApiException expected.');
+            } catch (ApiException $e) {
+                self::assertSame('5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81', $e->getRequestId());
+                self::assertSame('1', $e->getApiVersion());
+            }
+        }
+    }
+
+    public function test_account_suspended_is_still_a_permission_exception(): void
+    {
+        $client = $this->client([self::error(403, 'ACCOUNT_SUSPENDED')], maxRetries: 2);
+
+        try {
+            $client->balance->get();
+            self::fail('PermissionException expected.');
+        } catch (PermissionException $e) {
+            self::assertInstanceOf(AccountSuspendedException::class, $e);
+            self::assertCount(1, $this->history, 'Never retried.');
+        }
+    }
+
+    public function test_otp_rate_limited_reads_retry_after_from_the_header_or_the_details(): void
+    {
+        $client = $this->client([
+            self::error(429, 'OTP_RATE_LIMITED', ['retry_after_seconds' => 1800, 'scope' => 'phone', 'limit' => 5], ['Retry-After' => '1800']),
+            self::error(429, 'OTP_RATE_LIMITED', ['retry_after_seconds' => 900, 'scope' => 'account', 'limit' => 100]),
+            self::error(429, 'OTP_RESEND_TOO_SOON', ['retry_after_seconds' => 42], ['Retry-After' => '42']),
+        ]);
+
+        foreach ([1800, 900] as $expected) {
+            try {
+                $client->otp->send('0812345678');
+                self::fail('OtpRateLimitedException expected.');
+            } catch (OtpRateLimitedException $e) {
+                self::assertSame($expected, $e->getRetryAfter());
+            }
+        }
+
+        try {
+            $client->otp->send('0812345678');
+            self::fail('OtpResendTooSoonException expected.');
+        } catch (OtpResendTooSoonException $e) {
+            self::assertSame(42, $e->getRetryAfter());
+        }
+        self::assertSame([], $this->sleeper->sleeps, 'OTP business limits are never retried.');
     }
 
     public function test_an_unreadable_success_body_is_reported(): void

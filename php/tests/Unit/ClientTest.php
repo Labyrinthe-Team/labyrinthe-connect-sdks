@@ -77,6 +77,40 @@ final class ClientTest extends TestCase
         self::assertSame('https://api.test/api/public/v1/balance', (string) $request->getUri());
     }
 
+    public function test_last_response_exposes_status_and_headers_of_successes_and_errors(): void
+    {
+        $client = $this->client([
+            self::json(202, ['data' => [self::message()]], [
+                'X-Request-Id' => 'req-ok', 'X-Api-Version' => '1', 'Idempotent-Replayed' => 'true',
+                'X-RateLimit-Limit' => '120', 'X-RateLimit-Remaining' => '119',
+            ]),
+            self::error(404, 'NOT_FOUND', [], ['X-Request-Id' => 'req-404', 'X-Api-Version' => '1']),
+        ], maxRetries: 0);
+        self::assertNull($client->lastResponse());
+
+        $client->sms->send('0812345678', 'Hello');
+        $info = $client->lastResponse();
+        self::assertNotNull($info);
+        self::assertSame(202, $info->status);
+        self::assertSame('req-ok', $info->requestId());
+        self::assertSame('1', $info->apiVersion());
+        self::assertTrue($info->isReplayed());
+        self::assertSame(120, $info->rateLimitLimit());
+        self::assertSame(119, $info->rateLimitRemaining());
+        self::assertSame('req-ok', $info->header('x-request-id'));
+
+        try {
+            $client->sms->get('missing');
+        } catch (\Labyrinthe\Connect\Exception\NotFoundException) {
+        }
+        $error = $client->lastResponse();
+        self::assertNotNull($error);
+        self::assertSame(404, $error->status);
+        self::assertSame('req-404', $error->requestId());
+        self::assertFalse($error->isReplayed());
+        self::assertNull($error->rateLimitLimit());
+    }
+
     public function test_it_appends_the_user_agent_suffix(): void
     {
         $client = new Client('lsk_test_x', userAgentSuffix: 'labyrinthe-laravel/1.0.0');

@@ -53,7 +53,7 @@ final class SecurityTest extends TestCase
 
     public function test_the_test_code_is_hidden_from_dumps_and_json(): void
     {
-        $client = $this->client([self::json(201, ['data' => ['otp_id' => 'otp-1', 'expires_at' => '2026-11-05T10:05:00Z', 'max_attempts' => 3, 'test_code' => '482913']])]);
+        $client = $this->client([self::json(201, ['data' => self::otpSendData()])]);
 
         $otp = $client->otp->send('0812345678');
 
@@ -110,7 +110,7 @@ final class SecurityTest extends TestCase
         $client = $this->client([
             self::json(202, ['data' => [self::message()]]),
             self::json(200, ['data' => [], 'links' => [], 'meta' => ['current_page' => 1, 'last_page' => 1, 'per_page' => 15, 'total' => 0]]),
-            self::json(201, ['data' => ['otp_id' => 'otp-1', 'expires_at' => '2026-11-05T10:05:00Z', 'max_attempts' => 3, 'test_code' => '482913']]),
+            self::json(201, ['data' => self::otpSendData()]),
             self::error(503, 'HTTP_ERROR'),
         ], maxRetries: 0, logger: $logger);
 

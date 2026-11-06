@@ -24,7 +24,7 @@ final class RetryTest extends TestCase
 
     private static function otpSent(): \GuzzleHttp\Psr7\Response
     {
-        return self::json(201, ['data' => ['otp_id' => 'otp-1', 'expires_at' => '2026-11-05T10:05:00+00:00', 'max_attempts' => 3]]);
+        return self::json(201, ['data' => self::otpSendData()]);
     }
 
     public function test_get_is_retried_on_5xx_then_succeeds(): void
@@ -174,22 +174,28 @@ final class RetryTest extends TestCase
         self::assertSame([], $this->sleeper->sleeps);
     }
 
-    public function test_otp_send_is_never_retried_on_5xx(): void
+    public function test_otp_send_is_retried_on_5xx_and_network_errors_with_the_same_idempotency_key(): void
     {
-        $client = $this->client([self::error(500, 'HTTP_ERROR'), self::otpSent()]);
+        $client = $this->client([
+            self::networkError('cURL error 28: Operation timed out'),
+            self::error(500, 'HTTP_ERROR'),
+            self::json(201, ['data' => self::otpSendData()], ['Idempotent-Replayed' => 'true']),
+        ]);
 
-        $this->expectException(ServiceUnavailableException::class);
+        $otp = $client->otp->send('0812345678');
 
-        try {
-            $client->otp->send('0812345678');
-        } finally {
-            self::assertCount(1, $this->history);
-        }
+        self::assertCount(3, $this->history);
+        $keys = array_map(static fn (array $h): string => $h['request']->getHeaderLine('Idempotency-Key'), $this->history);
+        self::assertNotSame('', $keys[0]);
+        self::assertSame([$keys[0], $keys[0], $keys[0]], $keys, 'Every retry must reuse the same key.');
+        self::assertSame($this->requestJson(0), $this->requestJson(2));
+        self::assertTrue($otp->replayed);
+        self::assertSame($keys[0], $otp->idempotencyKey);
     }
 
-    public function test_otp_send_is_never_retried_on_network_errors(): void
+    public function test_otp_send_gives_up_after_max_retries_without_the_may_have_been_processed_warning(): void
     {
-        $client = $this->client([self::networkError('cURL error 28: Operation timed out'), self::otpSent()]);
+        $client = $this->client([self::networkError('cURL error 28: Operation timed out'), self::networkError('cURL error 28: Operation timed out')], maxRetries: 1);
 
         try {
             $client->otp->send('0812345678');
@@ -197,9 +203,102 @@ final class RetryTest extends TestCase
         } catch (ConnectionException $e) {
             self::assertTrue($e->isTimeout());
             self::assertSame('TIMEOUT', $e->getErrorCode());
-            self::assertStringContainsString('may have been processed', $e->getMessage());
-            self::assertCount(1, $this->history);
+            self::assertStringNotContainsString('may have been processed', $e->getMessage());
+            self::assertCount(2, $this->history);
         }
+    }
+
+    /**
+     * @return iterable<string, array{\Closure(\Labyrinthe\Connect\Client): mixed, \GuzzleHttp\Psr7\Response}>
+     */
+    public static function idempotentCalls(): iterable
+    {
+        yield 'sms send' => [static fn (\Labyrinthe\Connect\Client $c): mixed => $c->sms->send('0812345678', 'Hello'), self::json(202, ['data' => [self::message()]])];
+        yield 'otp send' => [static fn (\Labyrinthe\Connect\Client $c): mixed => $c->otp->send('0812345678'), self::json(201, ['data' => self::otpSendData()])];
+    }
+
+    /**
+     * @param \Closure(\Labyrinthe\Connect\Client): mixed $call
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('idempotentCalls')]
+    public function test_idempotency_request_in_progress_is_retried_after_retry_after_with_the_same_key(\Closure $call, \GuzzleHttp\Psr7\Response $success): void
+    {
+        $client = $this->client([
+            self::error(409, 'IDEMPOTENCY_REQUEST_IN_PROGRESS', ['retry_after_seconds' => 5], ['Retry-After' => '5']),
+            $success,
+        ]);
+
+        $call($client);
+
+        self::assertCount(2, $this->history);
+        self::assertSame([5.0], $this->sleeper->sleeps);
+        self::assertSame($this->request(0)->getHeaderLine('Idempotency-Key'), $this->request(1)->getHeaderLine('Idempotency-Key'));
+    }
+
+    /**
+     * @param \Closure(\Labyrinthe\Connect\Client): mixed $call
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('idempotentCalls')]
+    public function test_idempotency_key_unresolved_is_never_retried(\Closure $call, \GuzzleHttp\Psr7\Response $success): void
+    {
+        $client = $this->client([
+            self::error(409, 'IDEMPOTENCY_KEY_UNRESOLVED'),
+            $success,
+        ]);
+
+        try {
+            $call($client);
+            self::fail('IdempotencyKeyUnresolvedException expected.');
+        } catch (\Labyrinthe\Connect\Exception\IdempotencyKeyUnresolvedException $e) {
+            self::assertSame(409, $e->getStatusCode());
+            self::assertSame('IDEMPOTENCY_KEY_UNRESOLVED', $e->getErrorCode());
+            self::assertCount(1, $this->history);
+            self::assertSame([], $this->sleeper->sleeps);
+        }
+    }
+
+    public function test_idempotency_request_in_progress_uses_details_without_header_and_gives_up_when_too_long(): void
+    {
+        $client = $this->client([
+            self::error(409, 'IDEMPOTENCY_REQUEST_IN_PROGRESS', ['retry_after_seconds' => 3]),
+            self::json(202, ['data' => [self::message()]]),
+            self::error(409, 'IDEMPOTENCY_REQUEST_IN_PROGRESS', ['retry_after_seconds' => 30], ['Retry-After' => '30']),
+        ], maxRetryWait: 10.0);
+
+        $client->sms->send('0812345678', 'Hello');
+        self::assertSame([3.0], $this->sleeper->sleeps);
+
+        try {
+            $client->sms->send('0812345678', 'Hello');
+            self::fail('IdempotencyRequestInProgressException expected.');
+        } catch (\Labyrinthe\Connect\Exception\IdempotencyRequestInProgressException $e) {
+            self::assertSame(30, $e->getRetryAfter());
+            self::assertSame(409, $e->getStatusCode());
+            self::assertCount(3, $this->history);
+        }
+    }
+
+    public function test_idempotency_request_in_progress_stops_after_max_retries(): void
+    {
+        $client = $this->client(array_fill(0, 3, self::error(409, 'IDEMPOTENCY_REQUEST_IN_PROGRESS', ['retry_after_seconds' => 1], ['Retry-After' => '1'])), maxRetries: 2);
+
+        $this->expectException(\Labyrinthe\Connect\Exception\IdempotencyRequestInProgressException::class);
+
+        try {
+            $client->otp->send('0812345678');
+        } finally {
+            self::assertCount(3, $this->history);
+        }
+    }
+
+    public function test_the_caller_request_id_is_sent_on_every_attempt(): void
+    {
+        $client = $this->client([self::error(503, 'HTTP_ERROR'), self::json(200, ['data' => ['balance' => 1, 'held' => 0]])]);
+
+        $client->balance->get(requestId: 'order-1042:balance');
+
+        self::assertSame('order-1042:balance', $this->request(0)->getHeaderLine('X-Request-Id'));
+        self::assertSame('order-1042:balance', $this->request(1)->getHeaderLine('X-Request-Id'));
     }
 
     public function test_otp_send_is_retried_on_generic_429_only(): void
