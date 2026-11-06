@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any, Dict, Optional, Tuple, Type
 
 from .types import OtpRateLimitScope, RejectedRecipient, RejectionReason
@@ -24,6 +25,7 @@ __all__ = [
     "AccountSuspendedError",
     "ApiError",
     "AuthenticationError",
+    "FeatureDisabledError",
     "IdempotencyKeyReusedError",
     "IdempotencyRequestInProgressError",
     "InsufficientCreditsError",
@@ -290,7 +292,57 @@ class OtpRateLimitedError(RateLimitError):
 
 
 class ServiceUnavailableError(ApiError):
-    """5xx, including 503 ``OTP_SERVICE_DISABLED``."""
+    """5xx. Subclass :class:`FeatureDisabledError`: 503 ``FEATURE_DISABLED`` and ``OTP_SERVICE_DISABLED``."""
+
+
+class FeatureDisabledError(ServiceUnavailableError):
+    """503 ``FEATURE_DISABLED`` (or ``OTP_SERVICE_DISABLED``): the platform switched this function off (maintenance).
+
+    Nothing was done: no SMS sent, no credit used. ``blocked_by`` is ``"api"`` when the whole API is off (refused
+    before authentication and rate limits), ``"api.sms_send"``, ``"api.otp_send"`` or ``"api.otp_verify"`` for one
+    function, ``"otp"`` for the whole OTP service (``OTP_SERVICE_DISABLED``, ``otp.send``).
+
+    Never retried with a blind backoff. The SDK retries (even ``otp.verify``, refused before processing) only when
+    ``Retry-After`` is present and not longer than ``max_retry_wait``, after exactly that delay. Otherwise treat the
+    call as a temporary failure: queue it, or tell the user, and try again after ``until`` when it is known.
+    """
+
+    @property
+    def feature(self) -> Optional[str]:
+        """Function requested by the call, e.g. ``"api.sms_send"``; ``None`` when not provided."""
+        return self._detail_str("feature")
+
+    @property
+    def blocked_by(self) -> Optional[str]:
+        """Function actually switched off: ``feature`` itself or a parent (``"api"``); ``None`` when not provided."""
+        return self._detail_str("blocked_by")
+
+    @property
+    def admin_message(self) -> Optional[str]:
+        """Message written by the platform administrator (``details.message``), in French; ``None`` without one."""
+        return self._detail_str("message")
+
+    @property
+    def until(self) -> Optional[datetime]:
+        """Scheduled automatic re-enable (aware ``datetime``); ``None`` when unknown or unreadable."""
+        value = self.details.get("until")
+        if not isinstance(value, str):
+            return None
+        # Import local : _data importe ce module.
+        from ._data import parse_datetime
+
+        return parse_datetime(value)
+
+    @property
+    def retry_after(self) -> Optional[int]:
+        """Seconds until the scheduled re-enable (``Retry-After`` header); ``None`` when no date is scheduled."""
+        # Entier de secondes uniquement (spec : ``Retry-After-Feature``) ; toute autre valeur est ignorée.
+        header = self.headers.get("retry-after", "").strip()
+        return int(header) if header.isascii() and header.isdigit() else None
+
+    def _detail_str(self, key: str) -> Optional[str]:
+        value = self.details.get(key)
+        return value if isinstance(value, str) else None
 
 
 class APIConnectionError(LabyrintheError):
@@ -351,7 +403,8 @@ ERROR_CLASSES_BY_CODE: Mapping[str, Type[ApiError]] = {
     "TOO_MANY_REQUESTS": RateLimitError,
     "OTP_RESEND_TOO_SOON": OtpResendTooSoonError,
     "OTP_RATE_LIMITED": OtpRateLimitedError,
-    "OTP_SERVICE_DISABLED": ServiceUnavailableError,
+    "OTP_SERVICE_DISABLED": FeatureDisabledError,
+    "FEATURE_DISABLED": FeatureDisabledError,
 }
 
 
