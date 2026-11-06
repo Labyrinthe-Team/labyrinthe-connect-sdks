@@ -5,6 +5,18 @@ All notable changes to the Postman collection are documented here. The version f
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-06
+
+### Added
+- Collection regenerated from the OpenAPI spec 1.2.0.
+- `POST /otp/send` sends `Idempotency-Key: {{otpIdempotencyKey}}` (new UUID on each run, collection variable
+  `otpIdempotencyKey`), followed by a new request "Replay with the same Idempotency-Key" that checks the same
+  `otp_id` and the `Idempotent-Replayed: true` header.
+- Optional `X-Request-Id` request header (`{{$guid}}`, disabled) on every request; every test checks the
+  `X-Request-Id` and `X-Api-Version: 1` response headers.
+- Tests on `code_length`, `code_type`, `resend_after_seconds` (`POST /otp/send`) and `attempts_remaining`
+  (`POST /otp/verify`).
+
 ## [1.1.0] - 2026-11-05
 
 ### Added

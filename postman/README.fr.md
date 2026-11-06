@@ -21,15 +21,20 @@ générée depuis [`../openapi/openapi.yaml`](../openapi/openapi.yaml), la sourc
 | `apiKey` | vous (secret) | auth Bearer de la collection, héritée par chaque requête |
 | `messageId` | script de test de `POST /sms` | `GET /sms/:id` |
 | `otpPhone` | script de pré-requête de `POST /otp/send` (numéro RDC aléatoire) | `POST /otp/send` |
-| `otpId`, `otpTestCode` | script de test de `POST /otp/send` | `POST /otp/verify` |
+| `otpIdempotencyKey` | script de pré-requête de `POST /otp/send` (UUID) | `POST /otp/send` et son rejeu |
+| `otpId`, `otpTestCode` | script de test de `POST /otp/send` | rejeu de `POST /otp/send`, `POST /otp/verify` |
 
-`POST /sms` envoie `Idempotency-Key: {{$guid}}` (une nouvelle clé à chaque exécution).
+`POST /sms` envoie `Idempotency-Key: {{$guid}}` (une nouvelle clé à chaque exécution). `POST /otp/send` envoie
+`Idempotency-Key: {{otpIdempotencyKey}}`, puis la requête « Replay with the same Idempotency-Key » le rejoue : même
+`otp_id`, en-tête `Idempotent-Replayed: true`, aucun nouveau SMS. Chaque requête a un en-tête `X-Request-Id`
+(`{{$guid}}`) désactivé, à activer pour suivre une requête avec le support ; chaque test vérifie les en-têtes de
+réponse `X-Request-Id` et `X-Api-Version: 1`.
 
 ## Mode test
 
 Avec une clé `lsk_test_…`, rien n'est envoyé ni facturé. `POST /otp/send` renvoie alors `test_code`, enregistré
 dans `otpTestCode` : exécuter toute la collection dans l'ordre (Collection Runner) joue le parcours nominal
-envoi → détail, et OTP send → verify (`verified: true`). Avec une clé live, `test_code` n'est jamais renvoyé :
+envoi → détail, et OTP send → rejeu → verify (`verified: true`). Avec une clé live, `test_code` n'est jamais renvoyé :
 saisir le code reçu par SMS dans le corps de `POST /otp/verify`.
 
 ## Régénérer et vérifier

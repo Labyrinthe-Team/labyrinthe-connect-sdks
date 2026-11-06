@@ -20,15 +20,20 @@ generated from [`../openapi/openapi.yaml`](../openapi/openapi.yaml), the source 
 | `apiKey` | you (secret) | collection-level Bearer auth, inherited by every request |
 | `messageId` | test script of `POST /sms` | `GET /sms/:id` |
 | `otpPhone` | pre-request script of `POST /otp/send` (random DRC number) | `POST /otp/send` |
-| `otpId`, `otpTestCode` | test script of `POST /otp/send` | `POST /otp/verify` |
+| `otpIdempotencyKey` | pre-request script of `POST /otp/send` (UUID) | `POST /otp/send` and its replay |
+| `otpId`, `otpTestCode` | test script of `POST /otp/send` | replay of `POST /otp/send`, `POST /otp/verify` |
 
-`POST /sms` sends `Idempotency-Key: {{$guid}}` (a new key on each run).
+`POST /sms` sends `Idempotency-Key: {{$guid}}` (a new key on each run). `POST /otp/send` sends
+`Idempotency-Key: {{otpIdempotencyKey}}`, then the "Replay with the same Idempotency-Key" request replays it: same
+`otp_id`, `Idempotent-Replayed: true` header, no new SMS. Every request has a disabled `X-Request-Id` header
+(`{{$guid}}`), to enable when tracing a request with support; every test checks the `X-Request-Id` and
+`X-Api-Version: 1` response headers.
 
 ## Test mode
 
 With a `lsk_test_…` key nothing is sent and nothing is billed. `POST /otp/send` then returns `test_code`, saved
 in `otpTestCode`, so running the whole collection in order (Collection Runner) plays the nominal flow
-send → get, and OTP send → verify (`verified: true`). With a live key, `test_code` is never returned: type the
+send → get, and OTP send → replay → verify (`verified: true`). With a live key, `test_code` is never returned: type the
 code received by SMS into the body of `POST /otp/verify`.
 
 ## Regenerate and check
