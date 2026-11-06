@@ -69,8 +69,79 @@ class WebhooksTest {
     assertEquals(MessageStatus.DELIVERED, changed.data().status());
     assertEquals("DD-88231", changed.data().providerMessageId().orElseThrow());
     assertFalse(changed.data().campaignId().isPresent());
+    assertFalse(changed.data().reference().isPresent());
+    assertFalse(changed.data().errorCode().isPresent());
     assertFalse(changed.data().toString().contains("243812345678"));
     assertEquals("m1", ((Map<?, ?>) event.raw().get("data")).get("message_id"));
+  }
+
+  @Test
+  void parsesTheEnrichedMessageStatusChanged() {
+    MessageStatusChanged changed =
+        assertInstanceOf(
+            MessageStatusChanged.class,
+            construct(
+                envelope(
+                    "message.status_changed",
+                    "{\"message_id\":\"m1\",\"recipient\":\"243812345678\",\"status\":\"failed\","
+                        + "\"provider_message_id\":null,\"campaign_id\":null,"
+                        + "\"reference\":\"CMD-1042\",\"error_code\":\"DD-17\","
+                        + "\"error_message\":\"Numéro injoignable\"}",
+                    NOW)));
+    assertEquals(MessageStatus.FAILED, changed.data().status());
+    assertEquals("CMD-1042", changed.data().reference().orElseThrow());
+    assertEquals("DD-17", changed.data().errorCode().orElseThrow());
+    assertEquals("Numéro injoignable", changed.data().errorMessage().orElseThrow());
+  }
+
+  @Test
+  void parsesOtpVerifiedAndOtpFailed() {
+    OtpVerified verified =
+        assertInstanceOf(
+            OtpVerified.class,
+            construct(
+                envelope(
+                    "otp.verified",
+                    "{\"otp_id\":\"o1\",\"phone\":\"243812345678\",\"status\":\"verified\","
+                        + "\"reason\":null,\"verified_at\":\"2026-11-06T09:41:02+00:00\"}",
+                    NOW)));
+    assertEquals(WebhookEventType.OTP_VERIFIED, verified.eventType());
+    assertEquals("o1", verified.data().otpId());
+    assertEquals("243812345678", verified.data().phone());
+    assertEquals(OtpEventStatus.VERIFIED, verified.data().status());
+    assertFalse(verified.data().reason().isPresent());
+    assertEquals(Instant.parse("2026-11-06T09:41:02Z"), verified.data().verifiedAt().orElseThrow());
+    assertFalse(verified.data().toString().contains("243812345678"));
+
+    OtpFailed failed =
+        assertInstanceOf(
+            OtpFailed.class,
+            construct(
+                envelope(
+                    "otp.failed",
+                    "{\"otp_id\":\"o2\",\"phone\":\"33612345678\",\"status\":\"failed\","
+                        + "\"reason\":\"max_attempts_reached\",\"verified_at\":null}",
+                    NOW)));
+    assertEquals(WebhookEventType.OTP_FAILED, failed.eventType());
+    assertEquals(OtpEventStatus.FAILED, failed.data().status());
+    assertEquals(
+        cd.labyrinthe.connect.OtpFailureReason.MAX_ATTEMPTS_REACHED,
+        failed.data().reason().orElseThrow());
+    assertFalse(failed.data().verifiedAt().isPresent());
+
+    OtpFailed expired =
+        assertInstanceOf(
+            OtpFailed.class,
+            construct(
+                envelope(
+                    "otp.failed",
+                    "{\"otp_id\":\"o3\",\"phone\":\"243812345678\",\"status\":\"expired\","
+                        + "\"reason\":\"expired\",\"verified_at\":null}",
+                    NOW)));
+    assertEquals(OtpEventStatus.EXPIRED, expired.data().status());
+    assertEquals(
+        cd.labyrinthe.connect.OtpFailureReason.EXPIRED, expired.data().reason().orElseThrow());
+    assertEquals(OtpEventStatus.UNKNOWN, OtpEventStatus.fromValue("pending"));
   }
 
   @Test
@@ -107,10 +178,11 @@ class WebhooksTest {
   void unknownEventsAreVerifiedAndExposed() {
     UnknownEvent event =
         assertInstanceOf(
-            UnknownEvent.class, construct(envelope("otp.verified", "{\"otp_id\":\"o1\"}", NOW)));
-    assertEquals("otp.verified", event.type());
+            UnknownEvent.class,
+            construct(envelope("contact.created", "{\"contact_id\":\"o1\"}", NOW)));
+    assertEquals("contact.created", event.type());
     assertEquals(WebhookEventType.UNKNOWN, event.eventType());
-    assertEquals("o1", event.data().get("otp_id"));
+    assertEquals("o1", event.data().get("contact_id"));
   }
 
   @Test
