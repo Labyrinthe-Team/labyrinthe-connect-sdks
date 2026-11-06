@@ -35,9 +35,16 @@ $respond = static function (int $status, array $body): void {
 if ($path === '/otp/start') {
     try {
         // 1. Send the code and keep otp_id SERVER-SIDE (here: the PHP session).
+        // The SDK sends an Idempotency-Key: a network error or a 5xx is retried without a second SMS.
         $otp = $client->otp->send($input('phone'), locale: 'en');
         $_SESSION['otp_id'] = $otp->otpId;
-        $respond(200, ['sent' => true, 'expires_at' => $otp->expiresAt->format(\DATE_ATOM)]);
+        $respond(200, [
+            'sent' => true,
+            'expires_at' => $otp->expiresAt->format(\DATE_ATOM),
+            'code_length' => $otp->codeLength,             // size of the input
+            'code_type' => $otp->codeType->value,          // "numeric": numeric keypad
+            'resend_after' => $otp->resendAfterSeconds,    // countdown before "Resend the code"
+        ]);
     } catch (InvalidArgumentException) {
         $respond(422, ['error' => 'Invalid phone number.']);
     } catch (OtpResendTooSoonException $e) {
@@ -65,7 +72,12 @@ if ($path === '/otp/check') {
         $_SESSION['phone_verified'] = true;
         $respond(200, ['verified' => true]);
     } else {
-        $respond(422, ['verified' => false, 'reason' => $result->reason?->value, 'can_retry' => $result->reason?->canRetry() ?? false]);
+        $respond(422, [
+            'verified' => false,
+            'reason' => $result->reason?->value,
+            'can_retry' => $result->reason?->canRetry() ?? false,
+            'attempts_remaining' => $result->attemptsRemaining,
+        ]);
     }
 
     return;
