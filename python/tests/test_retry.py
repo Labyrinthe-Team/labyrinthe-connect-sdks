@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
+from typing import Any
 
 import pytest
 
 from labyrinthe_connect import (
     APIConnectionError,
     APITimeoutError,
+    FeatureDisabledError,
     IdempotencyKeyReusedError,
     IdempotencyKeyUnresolvedError,
     IdempotencyRequestInProgressError,
@@ -310,3 +312,97 @@ def test_network_error_message(harness: HarnessFactory) -> None:
     assert info.value.code == "CONNECTION_ERROR"
     assert "ConnectError: [Errno 111] Connection refused" in info.value.message
     assert info.value.status is None
+
+
+DISABLED = {"feature": "api", "blocked_by": "api", "message": None, "until": None}
+SCHEDULED = {
+    "feature": "api.sms_send",
+    "blocked_by": "api.sms_send",
+    "message": None,
+    "until": "2026-11-06T10:00:00+00:00",
+}
+
+
+def _call(operation: str) -> Any:
+    calls = {
+        "balance": lambda c: c.balance.get(),
+        "sms": lambda c: c.sms.send(to="0812345678", body="Hello"),
+        "otp.send": lambda c: c.otp.send(phone="0812345678"),
+        "otp.verify": lambda c: c.otp.verify(otp_id="otp-1", code="123456"),
+    }
+    return calls[operation]
+
+
+def _success(operation: str) -> Any:
+    return {
+        "balance": balance(),
+        "sms": json_response(202, {"data": [message()]}),
+        "otp.send": json_response(201, OTP_SENT),
+        "otp.verify": json_response(200, VERIFIED),
+    }[operation]
+
+
+@pytest.mark.parametrize("operation", ["balance", "sms", "otp.send", "otp.verify"])
+@pytest.mark.parametrize("code", ["FEATURE_DISABLED", "OTP_SERVICE_DISABLED"])
+def test_feature_disabled_without_retry_after_is_never_retried(
+    harness: HarnessFactory, operation: str, code: str
+) -> None:
+    h = harness([api_error(503, code, DISABLED)], max_retries=3)
+    with pytest.raises(FeatureDisabledError) as info:
+        h.call(_call(operation))
+    assert info.value.retry_after is None
+    assert len(h.requests) == 1
+    assert h.sleeps == []
+
+
+@pytest.mark.parametrize("operation", ["balance", "sms", "otp.send", "otp.verify"])
+@pytest.mark.parametrize("code", ["FEATURE_DISABLED", "OTP_SERVICE_DISABLED"])
+def test_feature_disabled_is_retried_after_retry_after_within_max_retry_wait(
+    harness: HarnessFactory, operation: str, code: str
+) -> None:
+    h = harness([api_error(503, code, SCHEDULED, {"Retry-After": "7"}), _success(operation)], max_retry_wait=10)
+    h.call(_call(operation))
+    assert len(h.requests) == 2
+    assert h.sleeps == [7.0]  # exactement Retry-After, sans backoff ni jitter
+    if operation in ("sms", "otp.send"):
+        assert len({r.headers["idempotency-key"] for r in h.requests}) == 1
+
+
+@pytest.mark.parametrize("operation", ["balance", "sms", "otp.send", "otp.verify"])
+def test_feature_disabled_is_not_retried_when_retry_after_exceeds_max_retry_wait(
+    harness: HarnessFactory, operation: str
+) -> None:
+    h = harness([api_error(503, "FEATURE_DISABLED", SCHEDULED, {"Retry-After": "3600"})], max_retry_wait=10)
+    with pytest.raises(FeatureDisabledError) as info:
+        h.call(_call(operation))
+    assert info.value.retry_after == 3600
+    assert len(h.requests) == 1
+    assert h.sleeps == []
+
+
+def test_feature_disabled_respects_max_retries(harness: HarnessFactory) -> None:
+    disabled = api_error(503, "FEATURE_DISABLED", SCHEDULED, {"Retry-After": "2"})
+    h = harness([disabled, disabled, disabled], max_retries=2)
+    with pytest.raises(FeatureDisabledError):
+        h.call(lambda c: c.balance.get())
+    assert len(h.requests) == 3
+    assert h.sleeps == [2.0, 2.0]
+
+    none = harness([disabled], max_retries=0)
+    with pytest.raises(FeatureDisabledError):
+        none.call(lambda c: c.balance.get())
+    assert none.sleeps == []
+
+
+def test_feature_disabled_ignores_a_non_integer_retry_after(harness: HarnessFactory) -> None:
+    h = harness([api_error(503, "FEATURE_DISABLED", {"retry_after_seconds": 1}, {"Retry-After": "soon"})])
+    with pytest.raises(FeatureDisabledError):
+        h.call(lambda c: c.balance.get())
+    assert len(h.requests) == 1
+    assert h.sleeps == []
+
+
+def test_other_5xx_are_still_retried_with_backoff(harness: HarnessFactory) -> None:
+    h = harness([api_error(503, "HTTP_ERROR", {}, {"Retry-After": "7"}), balance()])
+    h.call(lambda c: c.balance.get())
+    assert 0.25 <= h.sleeps[0] <= 0.5

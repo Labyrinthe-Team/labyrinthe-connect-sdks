@@ -92,8 +92,8 @@ def known(enum: Any) -> List[str]:
     return [m.value for m in enum.known()]
 
 
-def test_targets_spec_1_2_0(spec: Dict[str, Any]) -> None:
-    assert spec["info"]["version"] == "1.2.0"
+def test_targets_spec_1_3_0(spec: Dict[str, Any]) -> None:
+    assert spec["info"]["version"] == "1.3.0"
 
 
 def test_implements_every_operation_and_only_those(spec: Dict[str, Any]) -> None:
@@ -150,6 +150,11 @@ def test_handles_every_documented_error_code(spec: Dict[str, Any]) -> None:
     in_progress = errors.ERROR_CLASSES_BY_CODE["IDEMPOTENCY_REQUEST_IN_PROGRESS"]
     assert in_progress is errors.IdempotencyRequestInProgressError
     assert errors.ERROR_CLASSES_BY_CODE["IDEMPOTENCY_KEY_UNRESOLVED"] is errors.IdempotencyKeyUnresolvedError
+    # Les deux codes de FeatureDisabledError, et eux seuls.
+    feature_codes = at(spec, "components", "schemas", "FeatureDisabledError", "allOf", 1, "properties", "error")
+    for code in feature_codes["properties"]["code"]["enum"]:
+        assert errors.ERROR_CLASSES_BY_CODE[code] is errors.FeatureDisabledError
+    assert issubclass(errors.FeatureDisabledError, errors.ServiceUnavailableError)
 
 
 def test_sends_and_reads_the_headers_of_the_spec(spec: Dict[str, Any]) -> None:
@@ -158,6 +163,8 @@ def test_sends_and_reads_the_headers_of_the_spec(spec: Dict[str, Any]) -> None:
     assert parameters["RequestId"]["schema"]["pattern"] == transport.REQUEST_ID_PATTERN
     assert parameters["IdempotencyKey"]["name"] == "Idempotency-Key"
     assert set(spec["components"]["headers"]) >= {"X-Request-Id", "X-Api-Version", "Idempotent-Replayed", "Retry-After"}
+    # Retry-After d'une fonctionnalité coupée : entier de secondes (lu par FeatureDisabledError.retry_after).
+    assert spec["components"]["headers"]["Retry-After-Feature"]["schema"] == {"type": "integer", "minimum": 1}
     # Idempotency-Key accepté par les deux opérations d'envoi, et elles seules.
     with_key = sorted(
         f"{method} {path}"
@@ -305,6 +312,21 @@ def test_mocked_responses_are_valid_responses_of_the_spec(spec: Dict[str, Any]) 
         (
             ["components", "schemas", "OtpResendTooSoonError"],
             {"error": {"code": "OTP_RESEND_TOO_SOON", "message": "x", "details": {"retry_after_seconds": 30}}},
+        ),
+        (
+            ["components", "schemas", "FeatureDisabledError"],
+            {
+                "error": {
+                    "code": "FEATURE_DISABLED",
+                    "message": "x",
+                    "details": {
+                        "feature": "api.sms_send",
+                        "blocked_by": "api",
+                        "message": None,
+                        "until": "2026-11-06T10:00:00+00:00",
+                    },
+                }
+            },
         ),
         (
             ["components", "schemas", "ValidationError"],
@@ -470,3 +492,37 @@ def test_parses_every_webhook_example_and_reads_every_required_field(spec: Dict[
             required = at(spec, *ref[2:].split("/"))["required"]
             for field in required:
                 assert hasattr(event.data, field), f"{name}.{field}"
+
+
+def test_maps_the_feature_disabled_examples_of_the_spec(spec: Dict[str, Any]) -> None:
+    # Chaque opération documente le 503 ; toutes (sauf /otp/send, qui a ses exemples) via ServiceUnavailable.
+    for path, methods in spec["paths"].items():
+        for method, operation in methods.items():
+            assert "503" in operation["responses"], f"{method} {path}"
+            if path != "/otp/send":
+                expected = {"$ref": "#/components/responses/ServiceUnavailable"}
+                assert operation["responses"]["503"] == expected, f"{method} {path}"
+    examples = [
+        e["value"]
+        for e in at(
+            spec, "components", "responses", "ServiceUnavailable", "content", "application/json", "examples"
+        ).values()
+    ]
+    otp_examples = [
+        e["value"] for e in at(spec, *response_schema("/otp/send", "post", "503")[:-1], "examples").values()
+    ]
+    assert {e["error"]["code"] for e in otp_examples} == {"FEATURE_DISABLED", "OTP_SERVICE_DISABLED"}
+    for example in examples + otp_examples:
+        h = Harness("sync", [json_response(503, example, {"Retry-After": "3600"})], max_retries=0)
+        with pytest.raises(errors.FeatureDisabledError) as info:
+            h.call(lambda c: c.balance.get())
+        details = example["error"]["details"]
+        error = info.value
+        assert (error.code, error.status, error.message) == (example["error"]["code"], 503, example["error"]["message"])
+        assert (error.feature, error.blocked_by, error.admin_message) == (
+            details["feature"],
+            details["blocked_by"],
+            details["message"],
+        )
+        assert (error.until.isoformat() if error.until else None) == details["until"]
+        assert error.retry_after == 3600

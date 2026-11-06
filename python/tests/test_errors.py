@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pickle
+from datetime import datetime, timedelta, timezone
 from typing import Any, Type
 
 import pytest
@@ -9,6 +10,7 @@ from labyrinthe_connect import errors
 from labyrinthe_connect.errors import (
     ApiError,
     AuthenticationError,
+    FeatureDisabledError,
     IdempotencyKeyReusedError,
     InsufficientCreditsError,
     InvalidArgumentError,
@@ -45,7 +47,8 @@ from .helpers import HarnessFactory, api_error, json_response, raw_response
         (409, "IDEMPOTENCY_KEY_REUSED", IdempotencyKeyReusedError),
         (429, "OTP_RESEND_TOO_SOON", OtpResendTooSoonError),
         (429, "OTP_RATE_LIMITED", OtpRateLimitedError),
-        (503, "OTP_SERVICE_DISABLED", ServiceUnavailableError),
+        (503, "OTP_SERVICE_DISABLED", FeatureDisabledError),
+        (503, "FEATURE_DISABLED", FeatureDisabledError),
         (418, "SOMETHING_NEW", ApiError),
         (401, "SOMETHING_NEW", AuthenticationError),
         (404, "SOMETHING_NEW", NotFoundError),
@@ -134,6 +137,76 @@ def test_rate_limit_errors(harness: HarnessFactory) -> None:
     assert len(h.requests) == 4
 
 
+def test_feature_disabled_error(harness: HarnessFactory) -> None:
+    details = {
+        "feature": "api.sms_send",
+        "blocked_by": "api",
+        "message": "Maintenance jusqu'à 10 h.",
+        "until": "2026-11-06T10:00:00+00:00",
+    }
+    h = harness(
+        [api_error(503, "FEATURE_DISABLED", details, {"Retry-After": "3600", "X-Request-Id": "r-9"})], max_retries=0
+    )
+    with pytest.raises(FeatureDisabledError) as info:
+        h.call(lambda c: c.sms.send(to="0812345678", body="Hello"))
+    error = info.value
+    assert isinstance(error, ServiceUnavailableError)
+    assert (error.status, error.code, error.request_id) == (503, "FEATURE_DISABLED", "r-9")
+    assert (error.feature, error.blocked_by) == ("api.sms_send", "api")
+    assert error.admin_message == "Maintenance jusqu'à 10 h."
+    assert error.until == datetime(2026, 11, 6, 10, tzinfo=timezone.utc)
+    assert error.until is not None
+    assert error.until.tzinfo is not None
+    assert error.retry_after == 3600
+    assert error.details == details
+
+
+def test_otp_service_disabled_carries_the_same_details(harness: HarnessFactory) -> None:
+    details = {"feature": "otp", "blocked_by": "otp", "message": None, "until": "2026-11-06T14:00:00+01:00"}
+    h = harness([api_error(503, "OTP_SERVICE_DISABLED", details)], max_retries=0)
+    with pytest.raises(FeatureDisabledError) as info:
+        h.call(lambda c: c.otp.send(phone="0812345678"))
+    error = info.value
+    assert (error.code, error.feature, error.blocked_by, error.admin_message) == (
+        "OTP_SERVICE_DISABLED",
+        "otp",
+        "otp",
+        None,
+    )
+    assert error.until == datetime(2026, 11, 6, 14, tzinfo=timezone(timedelta(hours=1)))
+    assert error.retry_after is None
+
+
+@pytest.mark.parametrize(
+    "details",
+    [
+        None,
+        [],
+        {"feature": 1, "blocked_by": None, "message": ["x"], "until": "demain"},
+        {"until": 1730887200},
+        {"until": ""},
+    ],
+)
+def test_feature_disabled_tolerates_missing_or_malformed_details(harness: HarnessFactory, details: Any) -> None:
+    h = harness([api_error(503, "FEATURE_DISABLED", details, {"Retry-After": "soon"})], max_retries=0)
+    with pytest.raises(FeatureDisabledError) as info:
+        h.call(lambda c: c.balance.get())
+    error = info.value
+    assert (error.feature, error.blocked_by, error.admin_message, error.until, error.retry_after) == (
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+
+
+@pytest.mark.parametrize(("header", "expected"), [("120", 120), (" 7 ", 7), ("-5", None), ("1.5", None), ("", None)])
+def test_feature_disabled_retry_after_is_an_integer_header(header: str, expected: Any) -> None:
+    error = FeatureDisabledError("x", code="FEATURE_DISABLED", status=503, headers={"Retry-After": header})
+    assert error.retry_after == expected
+
+
 def test_error_without_json_body(harness: HarnessFactory) -> None:
     h = harness([raw_response(502, b"<html>Bad gateway</html>"), raw_response(429, b"")], max_retries=0)
     with pytest.raises(ServiceUnavailableError) as info:
@@ -185,6 +258,7 @@ def test_missing_fields_raise_unexpected_response(harness: HarnessFactory) -> No
         InsufficientCreditsError("x", code="INSUFFICIENT_CREDITS", status=409, details={"available": 1}, headers={}),
         InvalidArgumentError("bad"),
         errors.APITimeoutError("slow"),
+        FeatureDisabledError("x", code="FEATURE_DISABLED", status=503, details={"feature": "api"}, headers={}),
     ],
 )
 def test_errors_are_picklable(error: LabyrintheError) -> None:
