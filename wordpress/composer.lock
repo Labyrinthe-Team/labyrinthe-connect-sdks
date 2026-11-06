@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "bba3820948bded8845191a4978fe0727",
+    "content-hash": "49cd76366de6105d836be403684a4661",
     "packages": [
         {
             "name": "guzzlehttp/guzzle",
@@ -339,11 +339,11 @@
         },
         {
             "name": "labyrinthe/connect-php",
-            "version": "1.0.0",
+            "version": "1.1.1",
             "dist": {
                 "type": "path",
                 "url": "../php",
-                "reference": "0897afefdbfab8e715d261649f12ea7275307fa6"
+                "reference": "26970ede93c91448bf89f002f66294d2ea6a9db7"
             },
             "require": {
                 "ext-json": "*",
