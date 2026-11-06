@@ -1,16 +1,16 @@
 import { InvalidArgumentError, UnexpectedResponseError } from '../errors.js';
 import { apiReader, characterCount, toEstimate, toMessage, type Json } from '../internal/data.js';
-import { getCrypto } from '../internal/runtime.js';
+import { MAX_IDEMPOTENCY_KEY_LENGTH, assertStripAccents, resolveIdempotencyKey } from '../internal/idempotency.js';
 import type { Transport } from '../internal/transport.js';
 import { Page, PagePromise } from '../pagination.js';
-import { PhoneNumber } from '../phone.js';
+import { PhoneNumber, toApiNumber } from '../phone.js';
 import type { Estimate, Message, MessageBatch, MessageStatus, RequestOptions } from '../types.js';
 
 export const MAX_BODY_LENGTH = 1600;
 export const MAX_RECIPIENTS = 1000;
 export const MAX_SENDER_LENGTH = 11;
 export const MAX_REFERENCE_LENGTH = 64;
-export const MAX_IDEMPOTENCY_KEY_LENGTH = 255;
+export { MAX_IDEMPOTENCY_KEY_LENGTH };
 export const MAX_PER_PAGE = 100;
 
 interface SendCommon {
@@ -20,6 +20,13 @@ interface SendCommon {
   sender?: string;
   /** Your own reference (order number…), max 64 characters, filterable with `sms.list({ reference })`. */
   reference?: string;
+  /**
+   * Replace accents and typographic characters (curly quotes, long dashes…) with
+   * their ASCII equivalent before sending: the message switches to GSM-7, often
+   * half the cost. The transliteration depends on the server: do not rely on it
+   * for an exact text. Default false.
+   */
+  stripAccents?: boolean;
   /**
    * Max 255 characters. Generated (UUID v4) when absent, and reused by the
    * SDK's retries. Pass your own (e.g. "order-1042-ready") to also protect
@@ -40,8 +47,10 @@ export interface SendManySmsParams extends SendCommon {
 
 export interface EstimateSmsParams {
   body: string;
-  /** Invalid numbers are not counted (no error). */
+  /** Normalised and deduplicated like a send; invalid numbers are not counted (no error). */
   recipients: string | readonly string[];
+  /** Estimate the text after `stripAccents` (see `sms.send()`). Default false. */
+  stripAccents?: boolean;
 }
 
 export interface ListSmsParams {
@@ -81,7 +90,7 @@ export class Sms {
    * the SMS is never sent twice.
    */
   async send(params: SendSmsParams, options: RequestOptions = {}): Promise<Message> {
-    const recipient = PhoneNumber.normalizeOrThrow(params.to, this.#defaultCountryCode, 'to');
+    const recipient = toApiNumber(PhoneNumber.normalizeOrThrow(params.to, this.#defaultCountryCode, 'to'));
     const batch = await this.#dispatch({ recipient }, params, options);
     const message = batch.messages[0];
     if (message === undefined) {
@@ -112,7 +121,7 @@ export class Sms {
       if (number === null) {
         invalid.push(index);
       } else {
-        normalized.push(number);
+        normalized.push(toApiNumber(number));
       }
     });
     if (invalid.length > 0) {
@@ -130,12 +139,13 @@ export class Sms {
     if (list.length === 0) {
       throw new InvalidArgumentError('At least one recipient is required.');
     }
-    const recipients = list.map((r) => PhoneNumber.normalize(r, this.#defaultCountryCode) ?? r);
+    const recipients = list.map((r) => toApiNumberOrRaw(r, this.#defaultCountryCode));
+    const stripAccents: unknown = params.stripAccents;
+    assertStripAccents(stripAccents);
+    const body: Json = { body: params.body, recipients };
+    if (stripAccents !== undefined) body['strip_accents'] = stripAccents;
 
-    const response = await this.#transport.request('POST', '/sms/estimate', 'safe', {
-      body: { body: params.body, recipients },
-      ...options,
-    });
+    const response = await this.#transport.request('POST', '/sms/estimate', 'safe', { body, ...options });
     return toEstimate(apiReader.object(response.body, 'data'));
   }
 
@@ -169,7 +179,7 @@ export class Sms {
       recipient:
         params.recipient === undefined
           ? undefined
-          : (PhoneNumber.normalize(params.recipient, this.#defaultCountryCode) ?? params.recipient),
+          : toApiNumberOrRaw(params.recipient, this.#defaultCountryCode),
       reference: params.reference,
       from: formatDate(params.from),
       to: formatDate(params.to),
@@ -213,32 +223,29 @@ export class Sms {
     if (reference !== undefined && (typeof reference !== 'string' || characterCount(reference) > MAX_REFERENCE_LENGTH)) {
       throw new InvalidArgumentError(`reference must be at most ${String(MAX_REFERENCE_LENGTH)} characters.`);
     }
-    let idempotencyKey = params.idempotencyKey;
-    if (
-      idempotencyKey !== undefined &&
-      (typeof idempotencyKey !== 'string' || idempotencyKey === '' || idempotencyKey.length > MAX_IDEMPOTENCY_KEY_LENGTH)
-    ) {
-      throw new InvalidArgumentError(`idempotencyKey must be 1 to ${String(MAX_IDEMPOTENCY_KEY_LENGTH)} characters.`);
-    }
-
+    const stripAccents: unknown = params.stripAccents;
+    assertStripAccents(stripAccents);
     // Générée une fois et réutilisée par chaque relance de cet appel.
-    idempotencyKey ??= (await getCrypto()).randomUUID();
+    const idempotencyKey = await resolveIdempotencyKey(params.idempotencyKey);
 
     const body: Json = { ...target, body: params.body };
     if (sender !== undefined) body['sender'] = sender;
     if (reference !== undefined && reference !== '') body['reference'] = reference;
+    if (stripAccents !== undefined) body['strip_accents'] = stripAccents;
 
     const response = await this.#transport.request('POST', '/sms', 'safe', {
       body,
-      headers: { 'Idempotency-Key': idempotencyKey },
       ...options,
+      headers: { 'Idempotency-Key': idempotencyKey },
     });
 
     return {
       messages: apiReader.objects(response.body, 'data').map(toMessage),
       idempotencyKey,
       replayed: response.headers['idempotent-replayed'] === 'true',
+      requestId: response.headers['x-request-id'] ?? null,
     };
+
   }
 
   toJSON(): Record<string, unknown> {
@@ -267,4 +274,10 @@ function formatDate(date: Date | string | undefined): string | undefined {
     return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
   }
   return date;
+}
+
+/** Numéro normalisé au format envoyé à l'API (« + » compris), ou la saisie telle quelle si elle est invalide. */
+function toApiNumberOrRaw(raw: string, defaultCountryCode: string): string {
+  const number = PhoneNumber.normalize(raw, defaultCountryCode);
+  return number === null ? raw : toApiNumber(number);
 }
