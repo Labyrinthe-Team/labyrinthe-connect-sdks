@@ -165,6 +165,6 @@ def test_real_connection_refused(closed_port: str) -> None:
 async def test_real_connection_refused_async(closed_port: str) -> None:
     async with AsyncLabyrinthe(api_key=TEST_KEY, base_url=closed_port, max_retries=0) as client:
         with pytest.raises(APIConnectionError) as info:
-            await client.otp.send(phone=LOCAL_NUMBER)
+            await client.otp.verify(otp_id="otp-1", code="123456")
     assert "may have been processed" in info.value.message
     assert_clean(full_traceback(info.value))

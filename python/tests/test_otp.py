@@ -24,19 +24,28 @@ SENT_TEST = {"data": {**SENT["data"], "test_code": "482913"}}
 def test_send(harness: HarnessFactory) -> None:
     h = harness([json_response(201, SENT)])
     result: OtpSendResult = h.call(lambda c: c.otp.send(phone="0812345678"))
-    assert h.json() == {"phone": "243812345678"}
+    assert h.json() == {"phone": "+243812345678"}
     assert h.requests[0].url.path.endswith("/otp/send")
-    assert "idempotency-key" not in h.requests[0].headers
+    assert len(h.requests[0].headers["idempotency-key"]) == 36  # UUID4 généré par le SDK
+    assert result.idempotency_key == h.requests[0].headers["idempotency-key"]
+    assert result.replayed is False
     assert result.otp_id == "otp-1"
     assert result.expires_at == datetime(2026, 11, 5, 10, 5, tzinfo=timezone.utc)
     assert result.max_attempts == 3
     assert result.test_code is None
 
 
+def test_send_keeps_a_short_foreign_number_in_e164(harness: HarnessFactory) -> None:
+    """BACKEND-TODO n° 32 : « +2481234567 » (Seychelles) ne doit pas partir sans « + »."""
+    h = harness([json_response(201, SENT)])
+    h.call(lambda c: c.otp.send(phone="+248 123 4567"))
+    assert h.json() == {"phone": "+2481234567"}
+
+
 def test_send_with_template_and_locale(harness: HarnessFactory) -> None:
     h = harness([json_response(201, SENT), json_response(201, SENT)])
     h.call(lambda c: c.otp.send(phone="+33612345678", template="Your MyShop code: {code}", locale="en"))
-    assert h.json() == {"phone": "33612345678", "template": "Your MyShop code: {code}", "locale": "en"}
+    assert h.json() == {"phone": "+33612345678", "template": "Your MyShop code: {code}", "locale": "en"}
     h.call(lambda c: c.otp.send(phone="0812345678", locale=OtpLocale.FR))
     assert h.json()["locale"] == "fr"
 

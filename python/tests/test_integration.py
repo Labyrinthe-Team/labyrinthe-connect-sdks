@@ -24,6 +24,7 @@ from labyrinthe_connect import (
     Labyrinthe,
     MessageStatus,
     NotFoundError,
+    OtpCodeType,
     OtpFailureReason,
     OtpVerifyResult,
     SenderIdNotApprovedError,
@@ -58,9 +59,10 @@ class Runner:
         self.kind = kind
         self.loop = asyncio.new_event_loop() if kind == "async" else None
         self.client: AnyClient = (
-            Labyrinthe(api_key=KEY, base_url=BASE_URL)
+            # Attente longue acceptée : 10 OTP / minute par clé, partagée avec d'autres exécutions.
+            Labyrinthe(api_key=KEY, base_url=BASE_URL, max_retries=3, max_retry_wait=65)
             if kind == "sync"
-            else AsyncLabyrinthe(api_key=KEY, base_url=BASE_URL)
+            else AsyncLabyrinthe(api_key=KEY, base_url=BASE_URL, max_retries=3, max_retry_wait=65)
         )
 
     def __call__(self, fn: Callable[[Any], Any]) -> Any:
@@ -173,14 +175,78 @@ def test_otp_send_then_wrong_code_then_verify_then_already_used(run: Runner) -> 
     assert code, "a test key returns test_code"
     assert code not in repr(otp)
 
-    wrong = "111111" if code == "000000" else "000000"
+    # Forme du code (API 1.2.0).
+    assert otp.code_length == len(code)
+    assert otp.code_type in (OtpCodeType.NUMERIC, OtpCodeType.ALPHANUMERIC)
+    if otp.code_type is OtpCodeType.NUMERIC:
+        assert code.isdigit()
+    assert otp.resend_after_seconds is not None
+    assert otp.resend_after_seconds >= 0
+    assert otp.request_id
+
+    wrong = "1" * len(code) if code != "1" * len(code) else "2" * len(code)
     assert run(lambda c: c.otp.verify(otp_id=otp.otp_id, code=wrong)) == OtpVerifyResult(
-        False, OtpFailureReason.INVALID_CODE
+        False, OtpFailureReason.INVALID_CODE, otp.max_attempts - 1
     )
-    assert run(lambda c: c.otp.verify(otp_id=otp.otp_id, code=code)) == OtpVerifyResult(True, None)
+    assert run(lambda c: c.otp.verify(otp_id=otp.otp_id, code=code)) == OtpVerifyResult(True, None, None)
     assert run(lambda c: c.otp.verify(otp_id=otp.otp_id, code=code)) == OtpVerifyResult(
-        False, OtpFailureReason.ALREADY_USED
+        False, OtpFailureReason.ALREADY_USED, None
     )
+
+
+def test_otp_send_is_replayed_with_the_same_idempotency_key(run: Runner) -> None:
+    key = f"sdk-python-it-otp-{secrets.token_hex(8)}"
+    phone = random_phone()
+    first = run(lambda c: c.otp.send(phone=phone, idempotency_key=key))
+    # Même numéro sous une autre forme : même empreinte normalisée, donc rejeu.
+    again = run(lambda c: c.otp.send(phone="243" + phone[1:], idempotency_key=key))
+    assert first.replayed is False
+    assert again.replayed is True
+    assert again.otp_id == first.otp_id
+    assert again.test_code == first.test_code
+    assert again.idempotency_key == key
+    with pytest.raises(IdempotencyKeyReusedError):
+        run(lambda c: c.otp.send(phone=phone, locale="en", idempotency_key=key))
+
+
+def test_estimate_strip_accents_gives_gsm7(run: Runner) -> None:
+    body = "Votre réservation à l'hôtel est confirmée."
+    assert run(lambda c: c.sms.estimate(body=body, recipients="0812345678")).encoding.value == "ucs2"
+    stripped = run(lambda c: c.sms.estimate(body=body, recipients="0812345678", strip_accents=True))
+    assert stripped.encoding.value == "gsm7"
+    # Doublons fusionnés comme à l'envoi.
+    deduplicated = run(
+        lambda c: c.sms.estimate(body="Hello", recipients=["0812345678", "243812345678", "+243812345678"])
+    )
+    assert deduplicated.recipients_count == 1
+
+
+def test_a_foreign_number_without_plus_is_kept(run: Runner) -> None:
+    message = run(lambda c: c.sms.send(to="33612345678", body="Integration test", reference=reference()))
+    assert message.recipient == "33612345678"
+
+
+def test_a_short_foreign_number_keeps_its_country_code(run: Runner) -> None:
+    """BACKEND-TODO n° 32 et 34 : « +2481234567 » (Seychelles) n'est pas lu comme un numéro local RDC."""
+    estimate = run(lambda c: c.sms.estimate(body="Hello", recipients=["+2481234567", "2481234567"]))
+    assert estimate.recipients_count == 2  # sans « + », le second est un autre numéro (2432481234567)
+    message = run(lambda c: c.sms.send(to="+2481234567", body="Integration test", reference=reference()))
+    assert message.recipient == "2481234567"
+    page = run(lambda c: c.sms.list(recipient="+2481234567", per_page=1))
+    assert page.data
+    assert page.data[0].recipient == "2481234567"
+
+
+def test_errors_and_responses_carry_the_request_id(run: Runner) -> None:
+    with pytest.raises(NotFoundError) as info:
+        run(lambda c: c.sms.get("00000000-0000-4000-8000-000000000000", request_id="sdk-python-it.42"))
+    assert info.value.request_id == "sdk-python-it.42"
+    assert info.value.api_version == "1"
+    with pytest.raises(NotFoundError) as generated:
+        run(lambda c: c.sms.get("00000000-0000-4000-8000-000000000000"))
+    assert generated.value.request_id
+    assert generated.value.request_id != "sdk-python-it.42"
+    assert run(lambda c: c.balance.get(request_id="sdk-python-it.43")).request_id == "sdk-python-it.43"
 
 
 def test_unknown_message_and_otp_id_give_not_found(run: Runner) -> None:

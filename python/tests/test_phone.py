@@ -22,6 +22,15 @@ from labyrinthe_connect import InvalidArgumentError, phone
         ("0033612345678", "33612345678"),
         ("+1 415 555 2671", "14155552671"),
         ("  0899999999  ", "243899999999"),
+        # Sans « + » : 11 chiffres ou plus ne commençant pas par 0 = déjà international (API 1.2.0).
+        ("33612345678", "33612345678"),
+        ("14155552671", "14155552671"),
+        ("4915123456789", "4915123456789"),
+        ("44 7911 123456", "447911123456"),
+        # Formats RDC inchangés.
+        ("081234567890", "24381234567890"),  # commence par 0 : local, même long
+        ("8123456789", "2438123456789"),  # 10 chiffres : local
+        ("243 81 234 5678", "243812345678"),
         ("", None),
         ("   ", None),
         ("abc", None),
@@ -33,6 +42,15 @@ from labyrinthe_connect import InvalidArgumentError, phone
 def test_normalize(raw: str, expected: Optional[str]) -> None:
     assert phone.normalize(raw) == expected
     assert phone.is_valid(raw) is (expected is not None)
+
+
+@pytest.mark.parametrize(
+    "raw", ["243812345678", "33612345678", "+33612345678", "0812345678", "812345678", "00447911123456", "14155552671"]
+)
+def test_normalize_is_idempotent(raw: str) -> None:
+    once = phone.normalize(raw)
+    assert once is not None
+    assert phone.normalize(once) == once
 
 
 def test_normalize_with_another_default_country_code() -> None:

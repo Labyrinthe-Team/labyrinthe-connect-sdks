@@ -9,6 +9,8 @@ from labyrinthe_connect import (
     APIConnectionError,
     APITimeoutError,
     IdempotencyKeyReusedError,
+    IdempotencyKeyUnresolvedError,
+    IdempotencyRequestInProgressError,
     OtpRateLimitedError,
     OtpResendTooSoonError,
     RateLimitError,
@@ -161,28 +163,101 @@ def test_never_retries_client_errors(harness: HarnessFactory) -> None:
     assert h.sleeps == []
 
 
-def test_otp_send_is_never_retried_after_a_network_error(harness: HarnessFactory) -> None:
-    h = harness([network_error(), json_response(201, OTP_SENT)])
-    with pytest.raises(APIConnectionError, match="may have been processed"):
-        h.call(lambda c: c.otp.send(phone="0812345678"))
-    assert len(h.requests) == 1
+def test_otp_send_is_retried_with_the_same_idempotency_key_and_body(harness: HarnessFactory) -> None:
+    h = harness(
+        [
+            network_error(),
+            timeout_error(),
+            json_response(201, OTP_SENT, {"Idempotent-Replayed": "true"}),
+        ],
+        max_retries=2,
+    )
+    result = h.call(lambda c: c.otp.send(phone="0812345678"))
+    assert result.otp_id == "otp-1"
+    assert result.replayed is True
+    assert len(h.requests) == 3
+    keys = {r.headers["idempotency-key"] for r in h.requests}
+    assert keys == {result.idempotency_key}
+    assert len({r.content for r in h.requests}) == 1
 
 
-def test_otp_send_is_never_retried_after_a_timeout(harness: HarnessFactory) -> None:
-    h = harness([timeout_error(), json_response(201, OTP_SENT)], timeout=2)
+def test_otp_send_is_retried_after_a_5xx_with_the_given_key(harness: HarnessFactory) -> None:
+    h = harness([api_error(500, "HTTP_ERROR"), api_error(503, "HTTP_ERROR"), json_response(201, OTP_SENT)])
+    result = h.call(lambda c: c.otp.send(phone="0812345678", idempotency_key="login-42"))
+    assert result.idempotency_key == "login-42"
+    assert [r.headers["idempotency-key"] for r in h.requests] == ["login-42"] * 3
+
+
+def test_otp_send_network_error_after_the_last_retry_says_a_retry_is_safe(harness: HarnessFactory) -> None:
+    h = harness([timeout_error()], timeout=2, max_retries=0)
     with pytest.raises(APITimeoutError, match="within 2 s") as info:
         h.call(lambda c: c.otp.send(phone="0812345678"))
     assert info.value.code == "TIMEOUT"
+    assert "same idempotency_key is safe" in info.value.message
     assert len(h.requests) == 1
 
 
-def test_otp_is_never_retried_after_a_5xx(harness: HarnessFactory) -> None:
-    h = harness([api_error(500, "HTTP_ERROR"), api_error(503, "HTTP_ERROR")])
-    with pytest.raises(ServiceUnavailableError):
-        h.call(lambda c: c.otp.send(phone="0812345678"))
+def test_otp_verify_is_never_retried_after_a_5xx_or_a_timeout(harness: HarnessFactory) -> None:
+    h = harness([api_error(500, "HTTP_ERROR"), timeout_error()], timeout=2)
     with pytest.raises(ServiceUnavailableError):
         h.call(lambda c: c.otp.verify(otp_id="otp-1", code="123456"))
+    with pytest.raises(APITimeoutError, match="may have been processed"):
+        h.call(lambda c: c.otp.verify(otp_id="otp-1", code="123456"))
     assert len(h.requests) == 2
+
+
+@pytest.mark.parametrize("operation", ["sms", "otp"])
+def test_retries_idempotency_request_in_progress_after_retry_after(harness: HarnessFactory, operation: str) -> None:
+    in_progress = api_error(409, "IDEMPOTENCY_REQUEST_IN_PROGRESS", {"retry_after_seconds": 5}, {"Retry-After": "5"})
+    success = json_response(201, OTP_SENT) if operation == "otp" else json_response(202, {"data": [message()]})
+    h = harness([in_progress, success])
+    if operation == "otp":
+        h.call(lambda c: c.otp.send(phone="0812345678"))
+    else:
+        h.call(lambda c: c.sms.send(to="0812345678", body="Hello"))
+    assert h.sleeps == [5.0]
+    assert len({r.headers["idempotency-key"] for r in h.requests}) == 1
+
+
+@pytest.mark.parametrize("operation", ["sms", "otp"])
+def test_idempotency_key_unresolved_is_never_retried(harness: HarnessFactory, operation: str) -> None:
+    unresolved = api_error(409, "IDEMPOTENCY_KEY_UNRESOLVED", {}, {"X-Request-Id": "r-2"})
+    h = harness([unresolved])
+    send = (
+        (lambda c: c.otp.send(phone="0812345678", idempotency_key="key-1"))
+        if operation == "otp"
+        else (lambda c: c.sms.send(to="0812345678", body="Hello", idempotency_key="key-1"))
+    )
+    with pytest.raises(IdempotencyKeyUnresolvedError) as info:
+        h.call(send)
+    assert info.value.status == 409
+    assert info.value.code == "IDEMPOTENCY_KEY_UNRESOLVED"
+    assert info.value.request_id == "r-2"
+    assert len(h.requests) == 1
+    assert h.sleeps == []
+
+
+def test_idempotency_request_in_progress_is_raised_when_retries_run_out(harness: HarnessFactory) -> None:
+    in_progress = api_error(
+        409, "IDEMPOTENCY_REQUEST_IN_PROGRESS", {"retry_after_seconds": 5}, {"Retry-After": "5", "X-Request-Id": "r-1"}
+    )
+    h = harness([in_progress, in_progress], max_retries=1)
+    with pytest.raises(IdempotencyRequestInProgressError) as info:
+        h.call(lambda c: c.sms.send(to="0812345678", body="Hello"))
+    assert info.value.retry_after == 5
+    assert info.value.status == 409
+    assert info.value.request_id == "r-1"
+    assert len(h.requests) == 2
+
+    too_long = harness([in_progress], max_retry_wait=2)
+    with pytest.raises(IdempotencyRequestInProgressError):
+        too_long.call(lambda c: c.otp.send(phone="0812345678"))
+    assert too_long.sleeps == []
+
+    disabled = harness([in_progress], max_retries=0)
+    with pytest.raises(IdempotencyRequestInProgressError):
+        disabled.call(lambda c: c.otp.send(phone="0812345678"))
+    assert len(disabled.requests) == 1
 
 
 def test_otp_is_retried_on_too_many_requests(harness: HarnessFactory) -> None:

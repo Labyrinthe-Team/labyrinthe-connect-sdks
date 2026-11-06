@@ -11,6 +11,9 @@ from labyrinthe_connect import (
     BalanceLow,
     InvalidArgumentError,
     MessageStatusChanged,
+    OtpFailed,
+    OtpVerificationStatus,
+    OtpVerified,
     UnknownEvent,
     WebhookEvent,
     webhooks,
@@ -94,7 +97,7 @@ def test_django_view(django_setup: None) -> None:
         assert client.get("/hook/").status_code == 405
         assert len(received) == 1
 
-        unknown = signed("otp.verified", {"x": 1})
+        unknown = signed("something.new", {"x": 1})
         response = client.post(
             "/hook/", unknown["body"], content_type="application/json", HTTP_X_SIGNATURE=unknown["signature"]
         )
@@ -297,3 +300,85 @@ def test_flask_without_secret() -> None:
     app.config["PROPAGATE_EXCEPTIONS"] = True
     with pytest.raises(InvalidArgumentError):
         app.test_client().post("/webhooks/labyrinthe", data=b"{}")
+
+
+# --- Événements OTP (API 1.2.0) ------------------------------------------------------------------
+
+OTP_DATA = {
+    "otp_id": "9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10",
+    "phone": "243812345678",
+    "status": "verified",
+    "reason": None,
+    "verified_at": "2026-11-06T09:41:02+00:00",
+}
+OTP_FAILED_DATA = {**OTP_DATA, "status": "failed", "reason": "max_attempts_reached", "verified_at": None}
+
+
+def test_django_otp_signals(django_setup: None) -> None:
+    from django.test import Client
+
+    from labyrinthe_connect.contrib import django as contrib
+
+    _django_routes()
+    verified: List[WebhookEvent] = []
+    failed: List[WebhookEvent] = []
+
+    def on_verified(sender: Any, event: WebhookEvent, **kwargs: Any) -> None:
+        verified.append(event)
+
+    def on_failed(sender: Any, event: WebhookEvent, **kwargs: Any) -> None:
+        failed.append(event)
+
+    contrib.otp_verified.connect(on_verified, weak=False)
+    contrib.otp_failed.connect(on_failed, weak=False)
+    try:
+        client = Client()
+        for name, data in (("otp.verified", OTP_DATA), ("otp.failed", OTP_FAILED_DATA)):
+            hook = signed(name, data)
+            response = client.post(
+                "/hook/", hook["body"], content_type="application/json", HTTP_X_SIGNATURE=hook["signature"]
+            )
+            assert response.status_code == 200
+        assert len(verified) == 1
+        assert isinstance(verified[0], OtpVerified)
+        assert len(failed) == 1
+        assert isinstance(failed[0], OtpFailed)
+        assert failed[0].data.status is OtpVerificationStatus.FAILED
+    finally:
+        contrib.otp_verified.disconnect(on_verified)
+        contrib.otp_failed.disconnect(on_failed)
+
+
+def test_fastapi_receives_otp_events() -> None:
+    pytest.importorskip("fastapi")
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from labyrinthe_connect.contrib.fastapi import create_webhook_router
+
+    seen: List[WebhookEvent] = []
+    app = FastAPI()
+    app.include_router(create_webhook_router(seen.append, secret=SECRET))
+    client = TestClient(app)
+    for name, data in (("otp.verified", OTP_DATA), ("otp.failed", OTP_FAILED_DATA)):
+        hook = signed(name, data)
+        response = client.post("/webhooks/labyrinthe", content=hook["body"], headers={"X-Signature": hook["signature"]})
+        assert response.status_code == 200
+    assert [type(e) for e in seen] == [OtpVerified, OtpFailed]
+
+
+def test_flask_receives_otp_events() -> None:
+    pytest.importorskip("flask")
+    from flask import Flask
+
+    from labyrinthe_connect.contrib.flask import create_webhook_blueprint
+
+    seen: List[WebhookEvent] = []
+    app = Flask(__name__)
+    app.register_blueprint(create_webhook_blueprint(seen.append, secret=SECRET))
+    client = app.test_client()
+    for name, data in (("otp.verified", OTP_DATA), ("otp.failed", OTP_FAILED_DATA)):
+        hook = signed(name, data)
+        response = client.post("/webhooks/labyrinthe", data=hook["body"], headers={"X-Signature": hook["signature"]})
+        assert response.status_code == 200
+    assert [type(e) for e in seen] == [OtpVerified, OtpFailed]

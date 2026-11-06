@@ -35,7 +35,7 @@ def test_send_normalizes_the_number_and_returns_the_message(harness: HarnessFact
         lambda c: c.sms.send(to="+243 81 234 5678", body="Hello", sender="MYSHOP", reference="order-1042")
     )
 
-    assert h.json() == {"recipient": "243812345678", "body": "Hello", "sender": "MYSHOP", "reference": "order-1042"}
+    assert h.json() == {"recipient": "+243812345678", "body": "Hello", "sender": "MYSHOP", "reference": "order-1042"}
     request = h.requests[0]
     assert request.method == "POST"
     assert request.url.path == "/api/public/v1/sms"
@@ -77,7 +77,7 @@ def test_send_many_returns_a_batch_with_replayed(harness: HarnessFactory) -> Non
     h = harness([json_response(202, {"data": [message(), second]}, {"Idempotent-Replayed": "true"})])
     batch = h.call(lambda c: c.sms.send_many(recipients=["0812345678", "+33 6 12 34 56 78"], body="Hello"))
 
-    assert h.json() == {"recipients": ["243812345678", "33612345678"], "body": "Hello"}
+    assert h.json() == {"recipients": ["+243812345678", "+33612345678"], "body": "Hello"}
     assert batch.replayed is True
     assert len(batch) == 2
     assert [m.recipient for m in batch.messages] == ["243812345678", "33612345678"]
@@ -141,15 +141,35 @@ def test_send_without_message_in_the_response(harness: HarnessFactory) -> None:
 def test_estimate(harness: HarnessFactory) -> None:
     h = harness([json_response(200, ESTIMATE), json_response(200, ESTIMATE)])
     estimate = h.call(lambda c: c.sms.estimate(body="Réunion demain à 9h", recipients=["0812345678", "not-a-number"]))
-    assert h.json() == {"body": "Réunion demain à 9h", "recipients": ["243812345678", "not-a-number"]}
+    assert h.json() == {"body": "Réunion demain à 9h", "recipients": ["+243812345678", "not-a-number"]}
     assert estimate.encoding is Encoding.UCS2
     assert estimate.total_credits == 2
     assert estimate.balance_after == 8
     assert estimate.is_affordable
 
     h.call(lambda c: c.sms.estimate(body="Hi", recipients="0899999999"))
-    assert h.json()["recipients"] == ["243899999999"]
+    assert h.json()["recipients"] == ["+243899999999"]
     assert "idempotency-key" not in h.requests[1].headers
+
+
+def test_numbers_are_sent_in_e164_with_the_plus(harness: HarnessFactory) -> None:
+    """BACKEND-TODO n° 32 : sans « + », l'API lit un numéro étranger court comme un numéro local RDC."""
+    h = harness(
+        [
+            json_response(202, {"data": [message()]}),
+            json_response(202, {"data": [message()]}),
+            json_response(200, ESTIMATE),
+            page([message()], total=1),
+        ]
+    )
+    h.call(lambda c: c.sms.send(to="+2481234567", body="Hi"))
+    assert h.json()["recipient"] == "+2481234567"
+    h.call(lambda c: c.sms.send_many(recipients=["+2481234567", "0812345678"], body="Hi"))
+    assert h.json()["recipients"] == ["+2481234567", "+243812345678"]
+    h.call(lambda c: c.sms.estimate(body="Hi", recipients=["+2481234567", "0812345678"]))
+    assert h.json()["recipients"] == ["+2481234567", "+243812345678"]
+    h.call(lambda c: c.sms.list(recipient="+2481234567"))
+    assert h.requests[3].url.params["recipient"] == "+2481234567"
 
 
 def test_estimate_affordability() -> None:
@@ -205,7 +225,7 @@ def test_list_sends_the_filters(harness: HarnessFactory) -> None:
     params = dict(h.requests[0].url.params)
     assert params == {
         "status": "failed",
-        "recipient": "243812345678",
+        "recipient": "+243812345678",
         "reference": "order-1042",
         "from": "2026-11-01T08:30:00Z",
         "to": "2026-11-30",

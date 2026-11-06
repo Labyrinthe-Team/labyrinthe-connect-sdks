@@ -94,10 +94,10 @@ def test_balance_low_and_test_ping_and_unknown() -> None:
     assert isinstance(ping, TestPing)
     assert ping.data == {}
 
-    body = envelope("otp.verified", {"otp_id": "x"})
+    body = envelope("something.new", {"otp_id": "x"})
     unknown = construct_event(body, signature(body), SECRET, now=NOW)
     assert isinstance(unknown, UnknownEvent)
-    assert unknown.type == "otp.verified"
+    assert unknown.type == "something.new"
     assert unknown.event is WebhookEventType.UNKNOWN
     assert unknown.data == {"otp_id": "x"}
 

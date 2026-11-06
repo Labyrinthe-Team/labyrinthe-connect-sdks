@@ -18,9 +18,12 @@ from labyrinthe_connect import (
     DEFAULT_BASE_URL,
     Encoding,
     MessageStatus,
+    OtpCodeType,
     OtpFailureReason,
     OtpLocale,
     OtpRateLimitScope,
+    OtpSendResult,
+    OtpVerificationStatus,
     OtpVerifyResult,
     RejectionReason,
     SenderIdStatus,
@@ -28,6 +31,7 @@ from labyrinthe_connect import (
     errors,
     webhooks,
 )
+from labyrinthe_connect import _transport as transport
 from labyrinthe_connect.resources import otp as otp_limits
 from labyrinthe_connect.resources import sms as sms_limits
 
@@ -88,8 +92,8 @@ def known(enum: Any) -> List[str]:
     return [m.value for m in enum.known()]
 
 
-def test_targets_spec_1_1_0(spec: Dict[str, Any]) -> None:
-    assert spec["info"]["version"] == "1.1.0"
+def test_targets_spec_1_2_0(spec: Dict[str, Any]) -> None:
+    assert spec["info"]["version"] == "1.2.0"
 
 
 def test_implements_every_operation_and_only_those(spec: Dict[str, Any]) -> None:
@@ -122,9 +126,14 @@ def test_has_the_enums_of_the_spec(spec: Dict[str, Any]) -> None:
     assert known(MessageStatus) == schemas["MessageStatus"]["enum"]
     assert known(SenderIdStatus) == schemas["SenderIdStatus"]["enum"]
     assert known(RejectionReason) == schemas["RejectionReason"]["enum"]
-    assert known(Encoding) == schemas["Message"]["properties"]["encoding"]["enum"]
-    assert known(Encoding) == schemas["Estimate"]["properties"]["encoding"]["enum"]
+    assert known(Encoding) == schemas["Encoding"]["enum"]
+    assert schemas["Message"]["properties"]["encoding"]["$ref"] == "#/components/schemas/Encoding"
+    assert schemas["Estimate"]["properties"]["encoding"]["$ref"] == "#/components/schemas/Encoding"
     assert known(OtpFailureReason) == schemas["OtpVerifyResult"]["properties"]["reason"]["oneOf"][1]["enum"]
+    assert known(OtpCodeType) == schemas["OtpSendResult"]["properties"]["code_type"]["enum"]
+    assert known(OtpVerificationStatus) == schemas["OtpWebhookData"]["properties"]["status"]["enum"]
+    # Les motifs d'un webhook OTP sont un sous-ensemble de ceux de /otp/verify (même énumération côté SDK).
+    assert set(schemas["OtpWebhookData"]["properties"]["reason"]["oneOf"][1]["enum"]) <= set(known(OtpFailureReason))
     scope = at(schemas, "OtpRateLimitedError", "allOf", 1, "properties", "error", "properties", "details")
     assert known(OtpRateLimitScope) == scope["properties"]["scope"]["enum"]
     assert known(WebhookEventType) == schemas["WebhookEnvelope"]["properties"]["event"]["enum"]
@@ -136,6 +145,32 @@ def test_handles_every_documented_error_code(spec: Dict[str, Any]) -> None:
     generic = {"HTTP_ERROR", "INVALID_OTP_TEMPLATE"}  # remontés volontairement en ApiError générique
     for code in spec["components"]["schemas"]["ErrorCode"]["examples"]:
         assert code in errors.ERROR_CLASSES_BY_CODE or code in generic, f"{code} is not handled"
+    assert errors.ERROR_CLASSES_BY_CODE["ACCOUNT_SUSPENDED"] is errors.AccountSuspendedError
+    assert issubclass(errors.AccountSuspendedError, errors.PermissionError)
+    in_progress = errors.ERROR_CLASSES_BY_CODE["IDEMPOTENCY_REQUEST_IN_PROGRESS"]
+    assert in_progress is errors.IdempotencyRequestInProgressError
+    assert errors.ERROR_CLASSES_BY_CODE["IDEMPOTENCY_KEY_UNRESOLVED"] is errors.IdempotencyKeyUnresolvedError
+
+
+def test_sends_and_reads_the_headers_of_the_spec(spec: Dict[str, Any]) -> None:
+    parameters = spec["components"]["parameters"]
+    assert parameters["RequestId"]["name"] == "X-Request-Id"
+    assert parameters["RequestId"]["schema"]["pattern"] == transport.REQUEST_ID_PATTERN
+    assert parameters["IdempotencyKey"]["name"] == "Idempotency-Key"
+    assert set(spec["components"]["headers"]) >= {"X-Request-Id", "X-Api-Version", "Idempotent-Replayed", "Retry-After"}
+    # Idempotency-Key accepté par les deux opérations d'envoi, et elles seules.
+    with_key = sorted(
+        f"{method} {path}"
+        for path, methods in spec["paths"].items()
+        for method, operation in methods.items()
+        if any(p.get("$ref") == "#/components/parameters/IdempotencyKey" for p in operation.get("parameters", []))
+    )
+    assert with_key == ["post /otp/send", "post /sms"]
+    # X-Request-Id accepté par chaque opération.
+    for path, methods in spec["paths"].items():
+        for method, operation in methods.items():
+            refs = [p.get("$ref") for p in operation.get("parameters", [])]
+            assert "#/components/parameters/RequestId" in refs, f"{method} {path}"
 
 
 def test_enforces_the_limits_of_the_spec(spec: Dict[str, Any]) -> None:
@@ -154,6 +189,12 @@ def test_enforces_the_limits_of_the_spec(spec: Dict[str, Any]) -> None:
     otp = spec["components"]["schemas"]
     assert otp["SendOtpRequest"]["properties"]["template"]["maxLength"] == otp_limits.MAX_TEMPLATE_LENGTH
     assert otp["VerifyOtpRequest"]["properties"]["code"]["maxLength"] == otp_limits.MAX_CODE_LENGTH
+    domain = otp["SendOtpRequest"]["properties"]["web_otp_domain"]
+    assert domain["pattern"] == otp_limits.WEB_OTP_DOMAIN_PATTERN
+    assert domain["maxLength"] == otp_limits.MAX_WEB_OTP_DOMAIN_LENGTH
+    assert "strip_accents" in otp["SendSmsRequest"]["properties"]
+    assert "strip_accents" in otp["EstimateSmsRequest"]["properties"]
+    assert "strip_accents" in otp["SendOtpRequest"]["properties"]
     assert spec["components"]["parameters"]["WebhookSignature"]["name"] == webhooks.SIGNATURE_HEADER
 
 
@@ -208,13 +249,16 @@ def test_mocked_responses_are_valid_responses_of_the_spec(spec: Dict[str, Any]) 
                     "otp_id": "9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10",
                     "expires_at": "2026-11-05T10:05:00+00:00",
                     "max_attempts": 3,
+                    "code_length": 6,
+                    "code_type": "numeric",
+                    "resend_after_seconds": 60,
                     "test_code": "482913",
                 }
             },
         ),
         (
             response_schema("/otp/verify", "post", "200"),
-            {"data": {"verified": False, "reason": "max_attempts_reached"}},
+            {"data": {"verified": False, "reason": "max_attempts_reached", "attempts_remaining": 0}},
         ),
         (response_schema("/sms", "get", "200"), _decoded(page([message()]))),
         (
@@ -236,7 +280,27 @@ def test_mocked_responses_are_valid_responses_of_the_spec(spec: Dict[str, Any]) 
         ),
         (
             ["components", "schemas", "OtpRateLimitedError"],
-            {"error": {"code": "OTP_RATE_LIMITED", "message": "x", "details": {"scope": "phone", "limit": 5}}},
+            {
+                "error": {
+                    "code": "OTP_RATE_LIMITED",
+                    "message": "x",
+                    "details": {"retry_after_seconds": 1800, "scope": "phone", "limit": 5},
+                }
+            },
+        ),
+        (
+            ["components", "schemas", "IdempotencyInProgressError"],
+            {
+                "error": {
+                    "code": "IDEMPOTENCY_REQUEST_IN_PROGRESS",
+                    "message": "x",
+                    "details": {"retry_after_seconds": 5},
+                }
+            },
+        ),
+        (
+            ["components", "schemas", "Error"],
+            {"error": {"code": "ACCOUNT_SUSPENDED", "message": "x", "details": {}}},
         ),
         (
             ["components", "schemas", "OtpResendTooSoonError"],
@@ -262,12 +326,19 @@ def test_the_validator_rejects_invalid_values(spec: Dict[str, Any]) -> None:
     assert not check.is_valid({"data": {"balance": "x", "held": 0}})
     assert not check.is_valid({"data": {"balance": 1}})
     assert not validator(spec, request_schema("/sms")).is_valid({"recipient": "1"})
+    assert not validator(spec, ["components", "schemas", "Error"]).is_valid(
+        {"error": {"code": "X", "message": "x", "details": []}}
+    )
+    assert not validator(spec, response_schema("/otp/send", "post", "201")).is_valid(
+        {"data": {"otp_id": "9d5c0a3e-6f0b-4c2e-9a51-3b7f2d8e4c10", "expires_at": "2026-11-05T10:05:00+00:00"}}
+    )
 
 
 def test_every_request_sent_by_the_sdk_is_valid_for_the_spec(spec: Dict[str, Any]) -> None:
     otp_sent = json_response(
         201, {"data": {"otp_id": "otp-1", "expires_at": "2026-11-05T10:05:00+00:00", "max_attempts": 3}}
     )
+    verified = json_response(200, {"data": {"verified": True, "reason": None, "attempts_remaining": None}})
     estimate = json_response(
         200,
         {
@@ -288,7 +359,10 @@ def test_every_request_sent_by_the_sdk_is_valid_for_the_spec(spec: Dict[str, Any
             json_response(202, {"data": [message()]}),
             estimate,
             otp_sent,
-            json_response(200, {"data": {"verified": True, "reason": None}}),
+            verified,
+            json_response(202, {"data": [message()]}),
+            estimate,
+            otp_sent,
         ],
     )
     h.call(lambda c: c.sms.send(to="0812345678", body="Hello", sender="MYSHOP", reference="order-1042"))
@@ -296,12 +370,21 @@ def test_every_request_sent_by_the_sdk_is_valid_for_the_spec(spec: Dict[str, Any
     h.call(lambda c: c.sms.estimate(body="Hello", recipients=["0812345678"]))
     h.call(lambda c: c.otp.send(phone="0812345678", template="Code: {code}", locale="fr"))
     h.call(lambda c: c.otp.verify(otp_id="otp-1", code="482913"))
+    h.call(lambda c: c.sms.send(to="33612345678", body="Réservation confirmée", strip_accents=True, request_id="r.1"))
+    h.call(lambda c: c.sms.estimate(body="Réunion", recipients=["0812345678"], strip_accents=True))
+    h.call(lambda c: c.otp.send(phone="+33612345678", web_otp_domain="app.example.com", strip_accents=True))
+    assert json.loads(h.requests[5].content)["recipient"] == "+33612345678"
+    assert json.loads(h.requests[5].content)["strip_accents"] is True
 
+    request_id = spec["components"]["parameters"]["RequestId"]["schema"]["pattern"]
+    assert re.fullmatch(request_id, h.requests[5].headers["x-request-id"])
     for request in h.requests:
         path = request.url.path.replace("/api/public/v1", "")
         assert_valid(spec, request_schema(path), json.loads(request.content))
     key = h.requests[0].headers["idempotency-key"]
     assert len(key) <= sms_limits.MAX_IDEMPOTENCY_KEY_LENGTH
+    assert "idempotency-key" in h.requests[3].headers  # POST /otp/send
+    assert "idempotency-key" not in h.requests[4].headers  # POST /otp/verify
     pattern = spec["components"]["parameters"]["WebhookSignature"]["schema"]["pattern"]
     assert re.fullmatch(pattern, webhooks.sign(b"{}", "secret"))
 
@@ -309,10 +392,52 @@ def test_every_request_sent_by_the_sdk_is_valid_for_the_spec(spec: Dict[str, Any
 def test_reads_the_otp_verify_examples_of_the_spec(spec: Dict[str, Any]) -> None:
     examples = at(spec, "paths", "/otp/verify", "post", "responses", "200", "content", "application/json", "examples")
     h = Harness("sync", [json_response(200, e["value"]) for e in examples.values()])
-    assert h.call(lambda c: c.otp.verify(otp_id="otp-1", code="1")) == OtpVerifyResult(True, None)
-    assert h.call(lambda c: c.otp.verify(otp_id="otp-1", code="1")) == OtpVerifyResult(
-        False, OtpFailureReason.INVALID_CODE
+    results = [h.call(lambda c: c.otp.verify(otp_id="otp-1", code="1")) for _ in examples]
+    assert results == [
+        OtpVerifyResult(True, None, None),
+        OtpVerifyResult(False, OtpFailureReason.INVALID_CODE, 4),
+        OtpVerifyResult(False, OtpFailureReason.MAX_ATTEMPTS_REACHED, 0),
+        OtpVerifyResult(False, OtpFailureReason.EXPIRED, None),
+    ]
+
+
+def test_reads_the_otp_send_examples_of_the_spec(spec: Dict[str, Any]) -> None:
+    examples = at(spec, "paths", "/otp/send", "post", "responses", "201", "content", "application/json", "examples")
+    h = Harness("sync", [json_response(201, e["value"]) for e in examples.values()])
+    live: OtpSendResult = h.call(lambda c: c.otp.send(phone="0812345678"))
+    test: OtpSendResult = h.call(lambda c: c.otp.send(phone="0812345678"))
+    assert (live.code_length, live.code_type, live.resend_after_seconds) == (6, OtpCodeType.NUMERIC, 60)
+    assert live.test_code is None
+    assert test.test_code == "482913"
+    assert live == test  # test_code ne compte pas dans l'égalité
+
+
+def test_maps_the_common_and_error_examples_of_the_spec(spec: Dict[str, Any]) -> None:
+    common = spec["x-common-responses"]
+    not_found = common["404"]["content"]["application/json"]["example"]
+    not_allowed = common["405"]["content"]["application/json"]["example"]
+    in_progress = at(
+        spec, "paths", "/sms", "post", "responses", "409", "content", "application/json", "examples", "enCours", "value"
     )
+    h = Harness(
+        "sync",
+        [
+            json_response(404, not_found, {"X-Request-Id": "r-404", "X-Api-Version": "1"}),
+            json_response(405, not_allowed, {"Allow": "GET, HEAD"}),
+            json_response(409, in_progress, {"Retry-After": "5"}),
+        ],
+        max_retries=0,
+    )
+    with pytest.raises(errors.NotFoundError) as missing:
+        h.call(lambda c: c.balance.get())
+    assert (missing.value.request_id, missing.value.api_version, missing.value.details) == ("r-404", "1", {})
+    with pytest.raises(errors.ApiError) as method:
+        h.call(lambda c: c.balance.get())
+    assert method.value.code == "HTTP_ERROR"
+    assert method.value.details == {"allowed_methods": ["GET", "HEAD"]}
+    with pytest.raises(errors.IdempotencyRequestInProgressError) as busy:
+        h.call(lambda c: c.sms.send(to="0812345678", body="Hello"))
+    assert busy.value.retry_after == 5
 
 
 def test_maps_the_error_example_of_the_spec(spec: Dict[str, Any]) -> None:
