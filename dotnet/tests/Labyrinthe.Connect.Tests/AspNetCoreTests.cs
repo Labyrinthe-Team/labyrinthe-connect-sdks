@@ -127,10 +127,16 @@ public class AspNetCoreTests
             return Task.CompletedTask;
         }));
         using var http = app.GetTestClient();
-        var body = WebhookTests.Envelope("otp.verified", """{"otp_id":"o1"}""");
+        var body = WebhookTests.Envelope("sms.received", """{"sms_id":"s1"}""");
         using var response = await PostAsync(http, "/wh", body, Webhook.Sign(body, Secret));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.IsType<UnknownEvent>(Assert.Single(events));
+
+        // Événements OTP de l'API 1.2.0 : typés, sans changement côté intégration.
+        var otp = WebhookTests.Envelope("otp.failed", """{"otp_id":"o1","phone":"243812345678","status":"expired","reason":"expired","verified_at":null}""");
+        using var otpResponse = await PostAsync(http, "/wh", otp, Webhook.Sign(otp, Secret));
+        Assert.Equal(HttpStatusCode.OK, otpResponse.StatusCode);
+        Assert.Equal(OtpWebhookStatus.Expired, Assert.IsType<OtpFailed>(events[1]).Data.Status);
     }
 
     [Fact]

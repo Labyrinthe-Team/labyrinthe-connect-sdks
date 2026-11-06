@@ -11,6 +11,8 @@ public class ErrorTests
     [Theory]
     [InlineData(401, "UNAUTHENTICATED", typeof(AuthenticationException))]
     [InlineData(403, "FORBIDDEN", typeof(PermissionException))]
+    [InlineData(403, "ACCOUNT_SUSPENDED", typeof(AccountSuspendedException))]
+    [InlineData(409, "IDEMPOTENCY_REQUEST_IN_PROGRESS", typeof(IdempotencyRequestInProgressException))]
     [InlineData(404, "NOT_FOUND", typeof(NotFoundException))]
     [InlineData(422, "VALIDATION_ERROR", typeof(ValidationException))]
     [InlineData(422, "RECIPIENT_NOT_SENDABLE", typeof(RecipientNotSendableException))]
@@ -18,6 +20,7 @@ public class ErrorTests
     [InlineData(422, "INVALID_PHONE", typeof(InvalidPhoneException))]
     [InlineData(409, "INSUFFICIENT_CREDITS", typeof(InsufficientCreditsException))]
     [InlineData(409, "IDEMPOTENCY_KEY_REUSED", typeof(IdempotencyKeyReusedException))]
+    [InlineData(409, "IDEMPOTENCY_KEY_UNRESOLVED", typeof(IdempotencyKeyUnresolvedException))]
     [InlineData(429, "TOO_MANY_REQUESTS", typeof(RateLimitException))]
     [InlineData(429, "OTP_RESEND_TOO_SOON", typeof(OtpResendTooSoonException))]
     [InlineData(429, "OTP_RATE_LIMITED", typeof(OtpRateLimitedException))]
@@ -41,6 +44,22 @@ public class ErrorTests
         Assert.Equal($"Erreur {code}.", error.Message);
         Assert.Equal("req-123", error.RequestId);
         Assert.IsAssignableFrom<LabyrintheException>(error);
+    }
+
+    [Fact]
+    public async Task Exposes_the_request_id_and_api_version_and_never_retries_a_suspension()
+    {
+        using var h = new Harness();
+        h.Http.Error(403, "ACCOUNT_SUSPENDED", headers: new[] { ("X-Request-Id", "req-s"), ("X-Api-Version", "1") }).Error(404, "NOT_FOUND");
+        var suspended = await Assert.ThrowsAsync<AccountSuspendedException>(() => h.Client.Sms.SendAsync("0812345678", "x"));
+        Assert.Equal(("req-s", "1"), (suspended.RequestId, suspended.ApiVersion));
+        Assert.Single(h.Requests);
+        Assert.Contains("[request req-s]", h.Logs.All, StringComparison.Ordinal);
+
+        // Sans en-têtes (ancien backend) : null.
+        var missing = await Assert.ThrowsAsync<NotFoundException>(() => h.Client.Sms.GetAsync("m1"));
+        Assert.Null(missing.RequestId);
+        Assert.Null(missing.ApiVersion);
     }
 
     [Fact]

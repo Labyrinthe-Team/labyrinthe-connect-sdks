@@ -21,7 +21,7 @@ public class SmsTests
         var request = Assert.Single(h.Requests);
         Assert.Equal(HttpMethod.Post, request.Method);
         Assert.Equal("/api/public/v1/sms", request.Path);
-        Assert.Equal("""{"recipient":"243812345678","body":"Hello"}""", request.Body);
+        Assert.Equal("""{"recipient":"+243812345678","body":"Hello"}""", request.Body);
         Assert.StartsWith("application/json", request.Header("Content-Type"), StringComparison.Ordinal);
         Assert.True(Guid.TryParse(request.Header("Idempotency-Key"), out _));
 
@@ -33,6 +33,28 @@ public class SmsTests
         Assert.Equal(1, message.CreditsCharged);
         Assert.Equal(new DateTimeOffset(2026, 11, 5, 9, 39, 11, TimeSpan.Zero), message.CreatedAt);
         Assert.Null(message.DeliveredAt);
+    }
+
+    // BACKEND-TODO n° 32 : sans "+", l'API lit un numéro de moins de 11 chiffres comme local RDC
+    // ("2481234567" partirait en 2432481234567). Le SDK envoie donc toujours le format E.164 avec "+".
+    [Fact]
+    public async Task Sends_numbers_in_e164_with_plus_so_a_short_foreign_number_keeps_its_country_code()
+    {
+        using var h = new Harness();
+        h.Http.Json(202, Fixtures.Messages(Fixtures.Message(recipient: "2481234567")))
+            .Json(202, Fixtures.Messages(Fixtures.Message()))
+            .Json(202, Fixtures.Messages(Fixtures.Message(recipient: "2481234567"), Fixtures.Message(id: "m2")))
+            .Json(200, Fixtures.Estimate);
+
+        await h.Client.Sms.SendAsync("+2481234567", "Hello");
+        await h.Client.Sms.SendAsync("0812345678", "Hello");
+        await h.Client.Sms.SendManyAsync(new SendManySmsRequest { Recipients = new[] { "+2481234567", "0812345678" }, Body = "Hello" });
+        await h.Client.Sms.EstimateAsync(new EstimateSmsRequest { Body = "Hello", Recipients = new[] { "+2481234567", "0812345678" } });
+
+        Assert.Equal("+2481234567", h.Requests[0].Json.GetProperty("recipient").GetString());
+        Assert.Equal("+243812345678", h.Requests[1].Json.GetProperty("recipient").GetString());
+        Assert.Equal("""{"recipients":["+2481234567","+243812345678"],"body":"Hello"}""", h.Requests[2].Body);
+        Assert.Equal("""{"body":"Hello","recipients":["+2481234567","+243812345678"]}""", h.Requests[3].Body);
     }
 
     [Fact]
@@ -51,7 +73,7 @@ public class SmsTests
         });
 
         var body = h.Requests[0].Json;
-        Assert.Equal("243812345678", body.GetProperty("recipient").GetString());
+        Assert.Equal("+243812345678", body.GetProperty("recipient").GetString());
         Assert.Equal("Réunion à 9h", body.GetProperty("body").GetString());
         Assert.Equal("MABOUTIQUE", body.GetProperty("sender").GetString());
         Assert.Equal("order-1042", body.GetProperty("reference").GetString());
@@ -70,7 +92,7 @@ public class SmsTests
         h.Http.Json(202, Fixtures.Messages(Fixtures.Message(recipient: "33612345678")));
         await h.Client.Sms.SendAsync("0612345678", "Bonjour");
         var body = h.Requests[0].Json;
-        Assert.Equal("33612345678", body.GetProperty("recipient").GetString());
+        Assert.Equal("+33612345678", body.GetProperty("recipient").GetString());
         Assert.Equal("MYSHOP", body.GetProperty("sender").GetString());
     }
 
@@ -87,7 +109,7 @@ public class SmsTests
             IdempotencyKey = "k-1",
         });
 
-        Assert.Equal("""{"recipients":["243812345678","243899999999"],"body":"Meeting tomorrow"}""", h.Requests[0].Body);
+        Assert.Equal("""{"recipients":["+243812345678","+243899999999"],"body":"Meeting tomorrow"}""", h.Requests[0].Body);
         Assert.True(batch.Replayed);
         Assert.Equal("k-1", batch.IdempotencyKey);
         Assert.Equal(new[] { Fixtures.MessageId, "m2" }, batch.Messages.Select(m => m.Id));
@@ -148,7 +170,7 @@ public class SmsTests
 
         var estimate = await h.Client.Sms.EstimateAsync(new EstimateSmsRequest { Body = "Hello", Recipients = new[] { "0812345678", "oops" } });
 
-        Assert.Equal("""{"body":"Hello","recipients":["243812345678","oops"]}""", h.Requests[0].Body);
+        Assert.Equal("""{"body":"Hello","recipients":["+243812345678","oops"]}""", h.Requests[0].Body);
         Assert.Equal(SmsEncoding.Gsm7, estimate.Encoding);
         Assert.Equal(1, estimate.TotalCredits);
         Assert.Equal(9, estimate.BalanceAfter);

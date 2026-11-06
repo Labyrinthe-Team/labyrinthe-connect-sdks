@@ -133,7 +133,7 @@ public class RetryTests
     }
 
     [Fact]
-    public async Task Retries_otp_only_on_too_many_requests()
+    public async Task Retries_otp_verify_only_on_too_many_requests()
     {
         using var h = new Harness();
         h.Http.Error(429, "TOO_MANY_REQUESTS", headers: ("Retry-After", "1")).Json(201, Fixtures.OtpSent)
@@ -141,29 +141,82 @@ public class RetryTests
         await h.Client.Otp.SendAsync("0812345678");
         await h.Client.Otp.VerifyAsync("otp-1", "123456");
         Assert.Equal(4, h.Requests.Count);
+        Assert.Equal(h.Requests[0].Header("Idempotency-Key"), h.Requests[1].Header("Idempotency-Key"));
     }
 
-    [Theory]
-    [InlineData("send")]
-    [InlineData("verify")]
-    public async Task Never_retries_otp_after_a_network_error(string operation)
+    [Fact]
+    public async Task Retries_an_otp_send_with_the_same_idempotency_key_and_body()
+    {
+        using var h = new Harness(o => o.MaxRetries = 4);
+        h.Http
+            .NetworkError()
+            .Error(503, "HTTP_ERROR")
+            .Error(429, "TOO_MANY_REQUESTS", headers: ("Retry-After", "2"))
+            .Error(409, "IDEMPOTENCY_REQUEST_IN_PROGRESS", """{"retry_after_seconds":5}""", ("Retry-After", "5"))
+            .Json(201, Fixtures.OtpSentWithCode, ("Idempotent-Replayed", "true"));
+
+        var otp = await h.Client.Otp.SendAsync(new SendOtpRequest { Phone = "0812345678", WebOtpDomain = "app.exemple.com" });
+
+        Assert.Equal(5, h.Requests.Count);
+        var key = h.Requests[0].Header("Idempotency-Key");
+        Assert.All(h.Requests, r => Assert.Equal(key, r.Header("Idempotency-Key")));
+        Assert.All(h.Requests, r => Assert.Equal(h.Requests[0].Body, r.Body));
+        Assert.Equal(new[] { 0.5, 1.0, 2.0, 5.0 }, h.Sleeps.Select(s => s.TotalSeconds));
+        Assert.True(otp.Replayed);
+        Assert.Equal(key, otp.IdempotencyKey);
+    }
+
+    [Fact]
+    public async Task Retries_an_sms_send_still_in_progress_after_retry_after()
+    {
+        using var h = new Harness();
+        h.Http
+            .Error(409, "IDEMPOTENCY_REQUEST_IN_PROGRESS", """{"retry_after_seconds":5}""", ("Retry-After", "5"))
+            .Json(202, Fixtures.Messages(Fixtures.Message()), ("Idempotent-Replayed", "true"));
+        var batch = await h.Client.Sms.SendManyAsync(new SendManySmsRequest { Recipients = new[] { "0812345678" }, Body = "x", IdempotencyKey = "k-1" });
+        Assert.True(batch.Replayed);
+        Assert.Equal(TimeSpan.FromSeconds(5), Assert.Single(h.Sleeps));
+        Assert.All(h.Requests, r => Assert.Equal("k-1", r.Header("Idempotency-Key")));
+    }
+
+    [Fact]
+    public async Task Gives_up_on_a_request_in_progress_after_max_retries_or_a_long_retry_after()
+    {
+        using var h = new Harness(o => o.MaxRetries = 1);
+        h.Http.Repeat(2, m => m.Error(409, "IDEMPOTENCY_REQUEST_IN_PROGRESS", """{"retry_after_seconds":5}""", ("Retry-After", "5"), ("X-Request-Id", "req-busy")));
+        var error = await Assert.ThrowsAsync<IdempotencyRequestInProgressException>(() => h.Client.Sms.SendAsync("0812345678", "x"));
+        Assert.Equal(TimeSpan.FromSeconds(5), error.RetryAfter);
+        Assert.Equal("req-busy", error.RequestId);
+        Assert.Equal(409, error.StatusCode);
+        Assert.Equal(2, h.Requests.Count);
+
+        using var patient = new Harness(o => o.MaxRetryWait = TimeSpan.FromSeconds(3));
+        patient.Http.Error(409, "IDEMPOTENCY_REQUEST_IN_PROGRESS", """{"retry_after_seconds":5}""");
+        var tooLong = await Assert.ThrowsAsync<IdempotencyRequestInProgressException>(() => patient.Client.Otp.SendAsync("0812345678"));
+        Assert.Equal(TimeSpan.FromSeconds(5), tooLong.RetryAfter);
+        Assert.Single(patient.Requests);
+        Assert.Empty(patient.Sleeps);
+    }
+
+    [Fact]
+    public async Task Never_retries_otp_verify_after_a_network_error()
     {
         using var h = new Harness();
         h.Http.NetworkError();
-        var error = await Assert.ThrowsAsync<ApiConnectionException>(() => Otp(h, operation));
+        var error = await Assert.ThrowsAsync<ApiConnectionException>(() => Otp(h, "verify"));
         Assert.Equal("CONNECTION_ERROR", error.Code);
         Assert.Contains("may have been processed", error.Message, StringComparison.Ordinal);
         Assert.Single(h.Requests);
     }
 
     [Theory]
-    [InlineData("send")]
-    [InlineData("verify")]
-    public async Task Never_retries_otp_on_5xx(string operation)
+    [InlineData(500, "HTTP_ERROR")]
+    [InlineData(409, "IDEMPOTENCY_REQUEST_IN_PROGRESS")]
+    public async Task Never_retries_otp_verify_on_5xx_or_conflicts(int status, string code)
     {
         using var h = new Harness();
-        h.Http.Error(500, "HTTP_ERROR");
-        await Assert.ThrowsAsync<ServiceUnavailableException>(() => Otp(h, operation));
+        h.Http.Error(status, code, """{"retry_after_seconds":1}""", ("Retry-After", "1"));
+        await Assert.ThrowsAnyAsync<ApiException>(() => Otp(h, "verify"));
         Assert.Single(h.Requests);
     }
 
@@ -194,6 +247,27 @@ public class RetryTests
     }
 
     [Fact]
+    public async Task Never_retries_an_unresolved_idempotency_key_on_sms_or_otp_send()
+    {
+        // Résultat inconnu (un SMS a pu partir) : jamais relancé, même avec la même clé.
+        using var sms = new Harness(o => o.MaxRetries = 4);
+        sms.Http.Error(409, "IDEMPOTENCY_KEY_UNRESOLVED", headers: ("X-Request-Id", "req-unresolved"));
+        var smsError = await Assert.ThrowsAsync<IdempotencyKeyUnresolvedException>(
+            () => sms.Client.Sms.SendAsync(new SendSmsRequest { To = "0812345678", Body = "x", IdempotencyKey = "key-1" }));
+        Assert.Single(sms.Requests);
+        Assert.Empty(sms.Sleeps);
+        Assert.Equal(409, smsError.StatusCode);
+        Assert.Equal("IDEMPOTENCY_KEY_UNRESOLVED", smsError.Code);
+        Assert.Equal("req-unresolved", smsError.RequestId);
+
+        using var otp = new Harness(o => o.MaxRetries = 4);
+        otp.Http.Error(409, "IDEMPOTENCY_KEY_UNRESOLVED");
+        await Assert.ThrowsAsync<IdempotencyKeyUnresolvedException>(() => otp.Client.Otp.SendAsync("0812345678"));
+        Assert.Single(otp.Requests);
+        Assert.Empty(otp.Sleeps);
+    }
+
+    [Fact]
     public async Task Times_out_each_attempt_and_retries_safe_requests()
     {
         using var h = new Harness(o => o.Timeout = TimeSpan.FromMilliseconds(50));
@@ -219,12 +293,16 @@ public class RetryTests
     }
 
     [Fact]
-    public async Task An_otp_timeout_is_not_retried()
+    public async Task An_otp_verify_timeout_is_not_retried_but_an_otp_send_timeout_is()
     {
         using var h = new Harness(o => o.Timeout = TimeSpan.FromMilliseconds(50));
-        h.Http.Hang();
-        await Assert.ThrowsAsync<ApiTimeoutException>(() => h.Client.Otp.SendAsync("0812345678"));
+        h.Http.Hang().Hang().Json(201, Fixtures.OtpSent);
+        await Assert.ThrowsAsync<ApiTimeoutException>(() => h.Client.Otp.VerifyAsync("otp-1", "123456"));
         Assert.Single(h.Requests);
+
+        await h.Client.Otp.SendAsync("0812345678");
+        Assert.Equal(3, h.Requests.Count);
+        Assert.Equal(h.Requests[1].Header("Idempotency-Key"), h.Requests[2].Header("Idempotency-Key"));
     }
 
     [Fact]

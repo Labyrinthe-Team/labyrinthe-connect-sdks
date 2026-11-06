@@ -27,9 +27,54 @@ public class WebhookTests
         Assert.Equal(MessageStatus.Delivered, changed.Data.Status);
         Assert.Equal("DD-88231", changed.Data.ProviderMessageId);
         Assert.Null(changed.Data.CampaignId);
+        // Livraison 1.1.0 (sans reference / error_code / error_message) : tolérée.
+        Assert.Null(changed.Data.Reference);
+        Assert.Null(changed.Data.ErrorCode);
+        Assert.Null(changed.Data.ErrorMessage);
         Assert.Equal(JsonValueKind.Object, changed.Raw.ValueKind);
         Assert.Equal(TimeSpan.Zero, changed.Timestamp.Offset);
         Assert.DoesNotContain("243812345678", changed.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Reads_the_reference_and_the_error_of_a_status_change()
+    {
+        var body = Envelope("message.status_changed", """{"message_id":"m1","recipient":"243812345678","status":"failed","provider_message_id":null,"campaign_id":null,"reference":"CMD-1042","error_code":"IP_NOT_WHITELISTED","error_message":"IP not Whitelisted"}""");
+        var changed = Assert.IsType<MessageStatusChanged>(Webhook.ConstructEvent(body, Webhook.Sign(body, Secret), Secret));
+        Assert.Equal(MessageStatus.Failed, changed.Data.Status);
+        Assert.Equal("CMD-1042", changed.Data.Reference);
+        Assert.Equal("IP_NOT_WHITELISTED", changed.Data.ErrorCode);
+        Assert.Equal("IP not Whitelisted", changed.Data.ErrorMessage);
+        Assert.Contains("CMD-1042", changed.Data.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("243812345678", changed.Data.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Parses_the_otp_verified_and_failed_events()
+    {
+        var verifiedBody = Envelope("otp.verified", """{"otp_id":"o1","phone":"243812345678","status":"verified","reason":null,"verified_at":"2026-11-06T09:41:02+00:00"}""");
+        var verified = Assert.IsType<OtpVerified>(Webhook.ConstructEvent(verifiedBody, Webhook.Sign(verifiedBody, Secret), Secret));
+        Assert.Equal(WebhookEventType.OtpVerified, verified.EventType);
+        Assert.Equal(
+            new OtpWebhookData { OtpId = "o1", Phone = "243812345678", Status = OtpWebhookStatus.Verified, Reason = null, VerifiedAt = new DateTimeOffset(2026, 11, 6, 9, 41, 2, TimeSpan.Zero) },
+            verified.Data);
+        Assert.DoesNotContain("243812345678", verified.Data.ToString(), StringComparison.Ordinal);
+
+        var failedBody = Envelope("otp.failed", """{"otp_id":"o2","phone":"243812345678","status":"failed","reason":"max_attempts_reached","verified_at":null}""");
+        var failed = Assert.IsType<OtpFailed>(Webhook.ConstructEvent(failedBody, Webhook.Sign(failedBody, Secret), Secret));
+        Assert.Equal(WebhookEventType.OtpFailed, failed.EventType);
+        Assert.Equal(OtpWebhookStatus.Failed, failed.Data.Status);
+        Assert.Equal(OtpFailureReason.MaxAttemptsReached, failed.Data.Reason);
+        Assert.Null(failed.Data.VerifiedAt);
+
+        var expiredBody = Envelope("otp.failed", """{"otp_id":"o3","phone":"243812345678","status":"expired","reason":"expired","verified_at":null}""");
+        var expired = Assert.IsType<OtpFailed>(Webhook.ConstructEvent(expiredBody, Webhook.Sign(expiredBody, Secret), Secret));
+        Assert.Equal((OtpWebhookStatus.Expired, (OtpFailureReason?)OtpFailureReason.Expired), (expired.Data.Status, expired.Data.Reason));
+
+        // Valeurs futures : Unknown, jamais d'exception.
+        var futureBody = Envelope("otp.failed", """{"otp_id":"o4","phone":"243812345678","status":"cancelled","reason":"revoked","verified_at":null}""");
+        var future = Assert.IsType<OtpFailed>(Webhook.ConstructEvent(futureBody, Webhook.Sign(futureBody, Secret), Secret));
+        Assert.Equal((OtpWebhookStatus.Unknown, (OtpFailureReason?)OtpFailureReason.Unknown), (future.Data.Status, future.Data.Reason));
     }
 
     [Fact]
@@ -53,11 +98,11 @@ public class WebhookTests
     [Fact]
     public void Returns_an_unknown_event_for_a_future_type()
     {
-        var body = Envelope("otp.verified", """{"otp_id":"o1","phone":"243812345678"}""");
+        var body = Envelope("sms.received", """{"sms_id":"s1","from":"243812345678"}""");
         var unknown = Assert.IsType<UnknownEvent>(Webhook.ConstructEvent(body, Webhook.Sign(body, Secret), Secret));
-        Assert.Equal("otp.verified", unknown.Type);
+        Assert.Equal("sms.received", unknown.Type);
         Assert.Equal(WebhookEventType.Unknown, unknown.EventType);
-        Assert.Equal("o1", unknown.Data.GetProperty("otp_id").GetString());
+        Assert.Equal("s1", unknown.Data.GetProperty("sms_id").GetString());
         Assert.DoesNotContain("243812345678", unknown.ToString(), StringComparison.Ordinal);
     }
 

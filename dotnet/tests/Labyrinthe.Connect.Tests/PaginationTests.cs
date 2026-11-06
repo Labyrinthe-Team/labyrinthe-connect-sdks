@@ -28,7 +28,8 @@ public class PaginationTests
 
         var query = h.Requests[0].Query;
         Assert.Equal("failed", query["status"]);
-        Assert.Equal("243812345678", query["recipient"]);
+        Assert.Equal("+243812345678", query["recipient"]);
+        Assert.Contains("recipient=%2B243812345678", h.Requests[0].PathAndQuery, StringComparison.Ordinal);
         Assert.Equal("order 1042", query["reference"]);
         Assert.Equal("2026-11-01", query["from"]);
         Assert.Equal("2026-11-30T09:00:00Z", query["to"]);

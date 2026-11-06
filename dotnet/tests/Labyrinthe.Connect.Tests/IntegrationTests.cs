@@ -115,9 +115,99 @@ public sealed class IntegrationTests : IDisposable
         Assert.DoesNotContain(code!, otp.ToString(), StringComparison.Ordinal);
 
         var wrong = code == "000000" ? "111111" : "000000";
-        Assert.Equal(new OtpVerifyResult { Verified = false, Reason = OtpFailureReason.InvalidCode }, await client.Otp.VerifyAsync(otp.OtpId, wrong));
+        // 1.2.0 : tentatives restantes après un code faux.
+        var failed = await client.Otp.VerifyAsync(otp.OtpId, wrong);
+        Assert.Equal(new OtpVerifyResult { Verified = false, Reason = OtpFailureReason.InvalidCode, AttemptsRemaining = otp.MaxAttempts - 1 }, failed);
+        Assert.False(string.IsNullOrEmpty(failed.RequestId));
         Assert.Equal(new OtpVerifyResult { Verified = true }, await client.Otp.VerifyAsync(otp.OtpId, code!));
         Assert.Equal(new OtpVerifyResult { Verified = false, Reason = OtpFailureReason.AlreadyUsed }, await client.Otp.VerifyAsync(otp.OtpId, code!));
+    }
+
+    [IntegrationFact]
+    public async Task Otp_send_is_replayed_with_the_same_idempotency_key_and_describes_the_code()
+    {
+        var phone = RandomPhone();
+        var key = "sdk-dotnet-it-otp-" + Hex(8);
+        var first = await client.Otp.SendAsync(new SendOtpRequest { Phone = phone, IdempotencyKey = key });
+        Assert.False(first.Replayed);
+        Assert.Equal(key, first.IdempotencyKey);
+        Assert.InRange(first.CodeLength, 4, 8);
+        Assert.NotEqual(OtpCodeType.Unknown, first.CodeType);
+        Assert.Equal(first.CodeLength, first.TestCode!.Length);
+        if (first.CodeType == OtpCodeType.Numeric)
+        {
+            Assert.All(first.TestCode, c => Assert.InRange(c, '0', '9'));
+        }
+
+        Assert.True(first.ResendAfterSeconds >= 0);
+
+        // Rejeu : même otp_id, même code, aucun nouvel envoi (sinon OTP_RESEND_TOO_SOON).
+        var replay = await client.Otp.SendAsync(new SendOtpRequest { Phone = phone, IdempotencyKey = key });
+        Assert.True(replay.Replayed);
+        Assert.Equal(first.OtpId, replay.OtpId);
+        Assert.Equal(first.TestCode, replay.TestCode);
+
+        // Clé générée par le SDK, numéro au format local : envoi normal, puis renvoi trop rapproché (Retry-After).
+        var other = RandomPhone();
+        var generated = await client.Otp.SendAsync(other);
+        Assert.True(Guid.TryParse(generated.IdempotencyKey, out _));
+        if (generated.ResendAfterSeconds > 0)
+        {
+            var tooSoon = await Assert.ThrowsAsync<OtpResendTooSoonException>(() => client.Otp.SendAsync(other));
+            Assert.NotNull(tooSoon.RetryAfter);
+            // 1.2.0 : l'en-tête Retry-After est présent et égal à details.retry_after_seconds.
+            Assert.True(tooSoon.Headers.ContainsKey("Retry-After"), "Retry-After header on OTP_RESEND_TOO_SOON");
+            Assert.Equal(tooSoon.Headers["Retry-After"].Trim(), tooSoon.Details["retry_after_seconds"].GetRawText());
+            Assert.False(string.IsNullOrEmpty(tooSoon.RequestId));
+        }
+    }
+
+    [IntegrationFact]
+    public async Task Estimate_strips_accents_to_gsm7_and_deduplicates_recipients()
+    {
+        var accented = new EstimateSmsRequest { Body = "Réunion à l'hôtel demain", Recipients = new[] { "0812345678", "243812345678", "+243812345678" } };
+        var ucs2 = await client.Sms.EstimateAsync(accented);
+        Assert.Equal(SmsEncoding.Ucs2, ucs2.Encoding);
+        Assert.Equal(1, ucs2.RecipientsCount);
+
+        var gsm7 = await client.Sms.EstimateAsync(accented with { StripAccents = true });
+        Assert.Equal(SmsEncoding.Gsm7, gsm7.Encoding);
+        Assert.False(string.IsNullOrEmpty(gsm7.RequestId));
+    }
+
+    [IntegrationFact]
+    public async Task A_foreign_number_without_plus_is_kept_and_the_request_id_is_echoed()
+    {
+        var foreign = "336" + RandomNumberGenerator.GetInt32(10_000_000, 100_000_000).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(foreign, PhoneNumber.Normalize(foreign));
+        var requestId = "sdk-dotnet-it-" + Hex(6);
+        var batch = await client.WithRequestId(requestId).Sms.SendManyAsync(new SendManySmsRequest { Recipients = new[] { foreign }, Body = "Integration test", StripAccents = true });
+        Assert.Equal(foreign, Assert.Single(batch.Messages).Recipient);
+        Assert.Equal(SmsEncoding.Gsm7, batch.Messages[0].Encoding);
+        Assert.Equal(requestId, batch.RequestId);
+    }
+
+    // BACKEND-TODO n° 32 : un numéro étranger court (Seychelles, 10 chiffres) envoyé avec "+" garde son indicatif.
+    [IntegrationFact]
+    public async Task A_short_foreign_number_keeps_its_country_code()
+    {
+        var estimate = await client.Sms.EstimateAsync(new EstimateSmsRequest { Body = "Integration test", Recipients = new[] { "+2481234567", "0812345678" } });
+        Assert.Equal(2, estimate.RecipientsCount);
+
+        // BACKEND-TODO n° 34 (corrigé) : POST /sms ne renormalise plus le destinataire.
+        var message = await client.Sms.SendAsync(new SendSmsRequest { To = "+2481234567", Body = "Integration test" });
+        Assert.Equal("2481234567", message.Recipient);
+    }
+
+    [IntegrationFact]
+    public async Task Api_errors_carry_the_request_id_and_api_version()
+    {
+        var error = await Assert.ThrowsAsync<NotFoundException>(() => client.Sms.GetAsync("00000000-0000-4000-8000-000000000000"));
+        Assert.False(string.IsNullOrEmpty(error.RequestId));
+        Assert.Equal("1", error.ApiVersion);
+
+        var mine = await Assert.ThrowsAsync<NotFoundException>(() => client.WithRequestId("sdk-dotnet-it-err").Sms.GetAsync("00000000-0000-4000-8000-000000000000"));
+        Assert.Equal("sdk-dotnet-it-err", mine.RequestId);
     }
 
     [IntegrationFact]
