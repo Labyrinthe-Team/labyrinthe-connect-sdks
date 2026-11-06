@@ -317,7 +317,8 @@ public class OtpRateLimitedException : RateLimitException
     public int? Limit => DetailInt("limit");
 }
 
-/// <summary>5xx, including 503 <c>OTP_SERVICE_DISABLED</c>.</summary>
+/// <summary>5xx, including 503 <c>FEATURE_DISABLED</c> and <c>OTP_SERVICE_DISABLED</c> (see
+/// <see cref="FeatureDisabledException"/>).</summary>
 public class ServiceUnavailableException : ApiException
 {
     /// <inheritdoc cref="ApiException(string, string, int, IReadOnlyDictionary{string, JsonElement}?, IReadOnlyDictionary{string, string}?)"/>
@@ -325,6 +326,41 @@ public class ServiceUnavailableException : ApiException
         : base(message, code, statusCode, details, headers)
     {
     }
+}
+
+/// <summary>503 <c>FEATURE_DISABLED</c> (or the historical <c>OTP_SERVICE_DISABLED</c> of <c>POST /otp/send</c>): a
+/// platform administrator temporarily switched off the whole API or one function (maintenance). Nothing was done: no
+/// SMS sent, no credit used.</summary>
+/// <remarks>Never retried with a blind backoff. When the API announces an automatic re-enable (<c>Retry-After</c>) no
+/// longer than <see cref="LabyrintheClientOptions.MaxRetryWait"/>, the SDK already waited exactly that long and retried
+/// (within <see cref="LabyrintheClientOptions.MaxRetries"/>). Otherwise treat the call as a temporary failure (queue
+/// it, tell the user) and do not retry in a loop: retry after <see cref="RetryAfter"/> or <see cref="Until"/> when known.</remarks>
+public class FeatureDisabledException : ServiceUnavailableException
+{
+    /// <inheritdoc cref="ApiException(string, string, int, IReadOnlyDictionary{string, JsonElement}?, IReadOnlyDictionary{string, string}?)"/>
+    public FeatureDisabledException(string message, string code, int statusCode, IReadOnlyDictionary<string, JsonElement>? details = null, IReadOnlyDictionary<string, string>? headers = null)
+        : base(message, code, statusCode, details, headers)
+    {
+    }
+
+    /// <summary>Feature requested by the call (<c>details.feature</c>), e.g. <c>api</c>, <c>api.sms_send</c>,
+    /// <c>api.otp_send</c>, <c>api.otp_verify</c> or <c>otp</c> (open list); <see langword="null"/> when absent.</summary>
+    public string? Feature => DetailString("feature");
+
+    /// <summary>Feature actually switched off (<c>details.blocked_by</c>): <see cref="Feature"/> itself or a parent
+    /// (<c>api</c> when the whole API is off); <see langword="null"/> when absent.</summary>
+    public string? BlockedBy => DetailString("blocked_by");
+
+    /// <summary>Message written by the administrator (<c>details.message</c>), <see langword="null"/> when there is none
+    /// (<see cref="Exception.Message"/> then holds a generic French text).</summary>
+    public string? AdminMessage => DetailString("message");
+
+    /// <summary>Scheduled automatic re-enable (<c>details.until</c>), <see langword="null"/> when unknown or unreadable.</summary>
+    public DateTimeOffset? Until => Internal.Json.ParseDate(DetailString("until"));
+
+    /// <summary>How long until the scheduled re-enable (<c>Retry-After</c> header, seconds); <see langword="null"/> when
+    /// the API sends none (return date unknown).</summary>
+    public TimeSpan? RetryAfter => Internal.Transport.RetryAfterHeader(this);
 }
 
 /// <summary>The API could not be reached (DNS, TLS, connection refused…). Code <c>CONNECTION_ERROR</c>.</summary>

@@ -138,7 +138,8 @@ internal static class Mapping
         ["TOO_MANY_REQUESTS"] = typeof(RateLimitException),
         ["OTP_RESEND_TOO_SOON"] = typeof(OtpResendTooSoonException),
         ["OTP_RATE_LIMITED"] = typeof(OtpRateLimitedException),
-        ["OTP_SERVICE_DISABLED"] = typeof(ServiceUnavailableException),
+        ["OTP_SERVICE_DISABLED"] = typeof(FeatureDisabledException),
+        ["FEATURE_DISABLED"] = typeof(FeatureDisabledException),
     };
 
     private static ApiException Create(string code, string message, int status, IReadOnlyDictionary<string, JsonElement>? details, IReadOnlyDictionary<string, string> headers)
@@ -161,7 +162,9 @@ internal static class Mapping
             case "TOO_MANY_REQUESTS": return new RateLimitException(message, code, status, details, headers);
             case "OTP_RESEND_TOO_SOON": return new OtpResendTooSoonException(message, code, status, details, headers);
             case "OTP_RATE_LIMITED": return new OtpRateLimitedException(message, code, status, details, headers);
-            case "OTP_SERVICE_DISABLED": return new ServiceUnavailableException(message, code, status, details, headers);
+            // Fonctionnalité coupée par la plateforme (spec 1.3.0) : mêmes details pour les deux codes.
+            case "OTP_SERVICE_DISABLED":
+            case "FEATURE_DISABLED": return new FeatureDisabledException(message, code, status, details, headers);
         }
 
         return status switch
