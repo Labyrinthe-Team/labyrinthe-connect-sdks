@@ -14,6 +14,7 @@ use LabyrintheConnect\Message_Log;
 use LabyrintheConnect\Phone;
 use LabyrintheConnect\Settings;
 use LabyrintheConnect\Vendor\Labyrinthe\Connect\Exception\ApiException;
+use LabyrintheConnect\Vendor\Labyrinthe\Connect\Exception\FeatureDisabledException;
 use LabyrintheConnect\Vendor\Labyrinthe\Connect\Exception\IdempotencyKeyUnresolvedException;
 use LabyrintheConnect\Vendor\Labyrinthe\Connect\Exception\IdempotencyRequestInProgressException;
 use LabyrintheConnect\Vendor\Labyrinthe\Connect\Exception\LabyrintheException;
@@ -208,6 +209,12 @@ final class Otp_Service {
 			return self::failure( 'OTP_RATE_LIMITED', __( 'Too many codes were requested for this number. Please try again later.', 'labyrinthe-connect' ), $e->getRetryAfter() );
 		} catch ( RateLimitException | IdempotencyRequestInProgressException $e ) {
 			return self::failure( 'TOO_MANY_REQUESTS', __( 'The service is busy. Please try again in a moment.', 'labyrinthe-connect' ), $e->getRetryAfter() ?? 10 );
+		} catch ( FeatureDisabledException $e ) {
+			// Maintenance de la plateforme (FEATURE_DISABLED, OTP_SERVICE_DISABLED) : aucun code
+			// n'est parti. Le SDK n'a relancé que si le retour était imminent (Retry-After).
+			$this->log_send( $context, $masked, $e->getErrorCode(), $e->getMessage(), Account_Status::request_id( $e, $request_id ) );
+
+			return self::failure( 'FEATURE_DISABLED', Account_Status::maintenance_message( $e, __( 'Sending codes by SMS is temporarily unavailable (maintenance). Please try again later.', 'labyrinthe-connect' ) ), $e->getRetryAfter() );
 		} catch ( IdempotencyKeyUnresolvedException $e ) {
 			// Résultat inconnu : un code a pu partir. Jamais relancé ; la prochaine demande du
 			// visiteur (qui sait s'il a reçu le code) part avec une nouvelle clé d'idempotence.
@@ -306,6 +313,10 @@ final class Otp_Service {
 			$this->session->save( $data );
 
 			return self::reason_failure( 'expired' );
+		} catch ( FeatureDisabledException $e ) {
+			// Vérification coupée par la plateforme : le code n'a pas été examiné, aucune tentative
+			// consommée ; le visiteur pourra le saisir de nouveau plus tard.
+			return self::failure( 'FEATURE_DISABLED', Account_Status::maintenance_message( $e, __( 'Codes cannot be checked at the moment (maintenance). Please try again later.', 'labyrinthe-connect' ) ), $e->getRetryAfter() );
 		} catch ( LabyrintheException | Configuration_Exception $e ) {
 			Account_Status::record_error( $e );
 
