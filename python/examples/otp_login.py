@@ -28,7 +28,10 @@ def main() -> None:
             print(f"Too many codes for this {error.scope}: try again later.")
             return
         session["otp_id"] = otp.otp_id
-        print(f"Code sent, valid until {otp.expires_at:%H:%M:%S} UTC ({otp.max_attempts} attempts)")
+        print(
+            f"{otp.code_length}-character {otp.code_type} code sent, valid until {otp.expires_at:%H:%M:%S} UTC "
+            f"({otp.max_attempts} attempts, resend possible in {otp.resend_after_seconds} s)"
+        )
 
         # 2. The user types the code. In test mode the API returns it, so the flow can be tested end to end.
         typed = (otp.test_code or "") if client.is_test_mode else input("Code: ")
