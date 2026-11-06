@@ -205,6 +205,8 @@ class HttpError extends Error {
     readonly code: ServerErrorCode,
     message: string,
     readonly retryAfterSeconds?: number,
+    /** Maintenance (FEATURE_DISABLED / OTP_SERVICE_DISABLED) : message de l'administrateur et date de retour. */
+    readonly maintenance?: { adminMessage?: string; until?: string },
   ) {
     super(message);
   }
@@ -456,6 +458,8 @@ export function createOtpHandlers(options: OtpHandlersOptions): OtpHandlers {
           code: httpError.code,
           message: httpError.message,
           ...(httpError.retryAfterSeconds === undefined ? {} : { retry_after_seconds: httpError.retryAfterSeconds }),
+          ...(httpError.maintenance?.adminMessage === undefined ? {} : { admin_message: httpError.maintenance.adminMessage }),
+          ...(httpError.maintenance?.until === undefined ? {} : { until: httpError.maintenance.until }),
         },
       };
       if (httpError.retryAfterSeconds !== undefined) {
@@ -531,6 +535,18 @@ function upstreamError(error: unknown, action: 'send' | 'verify', onError: OtpHa
       // automatiquement (ni par le SDK, ni par le widget) ; l'utilisateur redemande un code s'il ne l'a pas reçu.
       onError?.(error, { action });
       return new HttpError(502, 'send_failed', 'The code may not have been sent.');
+    case 'FEATURE_DISABLED':
+    case 'OTP_SERVICE_DISABLED':
+      // Fonction coupée par la plateforme Labyrinthe (maintenance) : le message de l'administrateur, destiné aux
+      // utilisateurs, est le seul message de l'API relayé au navigateur ; Retry-After seulement si le retour est programmé.
+      onError?.(error, { action });
+      return new HttpError(
+        503,
+        'service_unavailable',
+        'The verification service is temporarily unavailable.',
+        featureRetryAfter(error),
+        maintenance(error),
+      );
     case 'ACCOUNT_SUSPENDED':
       // Compte Labyrinthe suspendu : rien à faire côté utilisateur ; code stable pour l'intégrateur.
       onError?.(error, { action });
@@ -563,6 +579,30 @@ function retryAfter(error: unknown): number | undefined {
   }
   const seconds = (error as { details?: { retry_after_seconds?: unknown } } | null)?.details?.retry_after_seconds;
   return typeof seconds === 'number' && seconds >= 0 ? Math.ceil(seconds) : undefined;
+}
+
+/**
+ * Délai de retour d'une fonction coupée : en-tête Retry-After de l'API uniquement (jamais de valeur par défaut).
+ * Lu sur l'erreur (`retryAfterMs` de FeatureDisabledError) ou sur ses en-têtes (SDK antérieur à 1.2.0).
+ */
+function featureRetryAfter(error: unknown): number | undefined {
+  const ms = (error as { retryAfterMs?: unknown } | null)?.retryAfterMs;
+  if (typeof ms === 'number' && ms >= 0) {
+    return Math.max(1, Math.ceil(ms / 1000));
+  }
+  const header = (error as { headers?: Record<string, unknown> } | null)?.headers?.['retry-after'];
+  return typeof header === 'string' && /^\d+$/.test(header.trim()) ? Math.max(1, Number(header.trim())) : undefined;
+}
+
+/** `details.message` (texte de l'administrateur, tronqué) et `details.until` (date ISO 8601 valide). */
+function maintenance(error: unknown): { adminMessage?: string; until?: string } {
+  const details = (error as { details?: Record<string, unknown> } | null)?.details ?? {};
+  const message = typeof details['message'] === 'string' ? details['message'].trim().slice(0, 500) : '';
+  const until = details['until'];
+  return {
+    ...(message === '' ? {} : { adminMessage: message }),
+    ...(typeof until === 'string' && !Number.isNaN(Date.parse(until)) ? { until } : {}),
+  };
 }
 
 // ----- Requêtes ---------------------------------------------------------------

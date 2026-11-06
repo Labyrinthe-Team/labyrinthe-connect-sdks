@@ -26,7 +26,11 @@ export type ServerErrorCode =
   | 'forbidden'
   /** Malformed request (missing field, wrong content type…). */
   | 'invalid_request'
-  /** OTP service unavailable (Labyrinthe unreachable, misconfiguration, no credits…). */
+  /**
+   * OTP service unavailable (Labyrinthe unreachable, misconfiguration, no credits…), or temporarily shut down by the
+   * Labyrinthe platform (FEATURE_DISABLED / OTP_SERVICE_DISABLED, maintenance): then `admin_message`, `until` and
+   * `retry_after_seconds` may be present.
+   */
   | 'service_unavailable'
   /** The integrator's Labyrinthe account is suspended (ACCOUNT_SUSPENDED): nothing the user can do. */
   | 'account_suspended'
@@ -78,6 +82,10 @@ export interface ErrorBody {
     code: ServerErrorCode;
     message: string;
     retry_after_seconds?: number;
+    /** Maintenance only: message written by the Labyrinthe platform administrator, meant for end users. */
+    admin_message?: string;
+    /** Maintenance only: scheduled end (ISO 8601). */
+    until?: string;
   };
 }
 
