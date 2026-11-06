@@ -3,6 +3,7 @@ package cd.labyrinthe.connect.internal;
 import cd.labyrinthe.connect.exception.AccountSuspendedException;
 import cd.labyrinthe.connect.exception.ApiException;
 import cd.labyrinthe.connect.exception.AuthenticationException;
+import cd.labyrinthe.connect.exception.FeatureDisabledException;
 import cd.labyrinthe.connect.exception.IdempotencyKeyReusedException;
 import cd.labyrinthe.connect.exception.IdempotencyKeyUnresolvedException;
 import cd.labyrinthe.connect.exception.IdempotencyRequestInProgressException;
@@ -137,8 +138,14 @@ public final class ErrorMapper {
         factories,
         classes,
         "OTP_SERVICE_DISABLED",
-        ServiceUnavailableException.class,
-        ServiceUnavailableException::new);
+        FeatureDisabledException.class,
+        FeatureDisabledException::new);
+    register(
+        factories,
+        classes,
+        "FEATURE_DISABLED",
+        FeatureDisabledException.class,
+        FeatureDisabledException::new);
     FACTORIES = Collections.unmodifiableMap(factories);
     CLASSES_BY_CODE = Collections.unmodifiableMap(classes);
   }

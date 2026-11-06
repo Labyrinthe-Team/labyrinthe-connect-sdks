@@ -2,7 +2,10 @@ package cd.labyrinthe.connect.exception;
 
 import java.util.Map;
 
-/** 5xx, including 503 {@code OTP_SERVICE_DISABLED}. */
+/**
+ * 5xx. A function shut down by the platform ({@code FEATURE_DISABLED}, {@code
+ * OTP_SERVICE_DISABLED}) is the subclass {@link FeatureDisabledException}.
+ */
 public class ServiceUnavailableException extends ApiException {
 
   private static final long serialVersionUID = 1L;
