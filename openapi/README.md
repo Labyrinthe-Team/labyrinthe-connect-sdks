@@ -4,11 +4,13 @@
 tous les SDK, à la documentation et aux tests de contrat. Elle décrit l'API **telle qu'elle est** ; les
 améliorations prévues sont dans `../BACKEND-TODO.md`.
 
-Version **1.2.0** (changements : section « Nouveautés 1.2.0 » de `info.description`). Contenu : 8 opérations (SMS,
+Version **1.3.0** (changements : sections « Nouveautés 1.3.0 » et « Nouveautés 1.2.0 » de `info.description`). Contenu : 8 opérations (SMS,
 estimation, solde, Sender IDs, OTP send/verify), 6 webhooks (`message.status_changed`, `campaign.completed`,
 `balance.low`, `otp.verified`, `otp.failed`, `test.ping`), le format d'erreur et chaque code d'erreur, les en-têtes
 communs (`X-Request-Id`, `X-Api-Version`), les limites de débit, l'idempotence et la signature des webhooks. Les
 réponses communes à toutes les routes (404 de route inconnue, 405) sont dans l'extension `x-common-responses`.
+Les coupures de maintenance (`503 FEATURE_DISABLED`, toutes les opérations) sont décrites dans la section
+« Maintenance » de l'introduction, le schéma `FeatureDisabledError` et la réponse `ServiceUnavailable`.
 
 ## Commandes
 
