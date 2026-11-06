@@ -9,7 +9,8 @@ use Labyrinthe\Connect\Internal\Data;
 
 /**
  * Result of an OTP verification. A wrong code is not an exception: check
- * isValid(), and `reason` to tell the user what to do next.
+ * isValid(), `reason` to tell the user what to do next and
+ * `attemptsRemaining` to show how many tries are left.
  */
 final class OtpVerifyResult
 {
@@ -17,6 +18,11 @@ final class OtpVerifyResult
         public readonly bool $verified,
         /** Null when verified. */
         public readonly ?OtpFailureReason $reason,
+        /**
+         * Attempts left: an integer after `invalid_code`, 0 with
+         * `max_attempts_reached`, null when verified, already used or expired.
+         */
+        public readonly ?int $attemptsRemaining = null,
     ) {
     }
 
@@ -33,6 +39,7 @@ final class OtpVerifyResult
         return new self(
             $verified,
             $verified ? null : OtpFailureReason::fromApi($reason ?? 'unknown'),
+            Data::nullableInt($data, 'attempts_remaining'),
         );
     }
 
