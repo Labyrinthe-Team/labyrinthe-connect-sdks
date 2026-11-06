@@ -1,14 +1,14 @@
 # Copyright (C) 2026 Labyrinthe Connect. This file is distributed under the GPL-2.0-or-later license.
 msgid ""
 msgstr ""
-"Project-Id-Version: Labyrinthe Connect 1.1.1\n"
+"Project-Id-Version: Labyrinthe Connect 1.2.0\n"
 "Report-Msgid-Bugs-To: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/issues\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-11-06T01:43:39+00:00\n"
+"POT-Creation-Date: 2026-11-06T14:30:02+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: labyrinthe-connect\n"
@@ -179,7 +179,7 @@ msgstr ""
 #. translators: %s: request ID (X-Request-Id), to give to the support.
 #: includes/admin/class-admin.php:406
 #: includes/admin/class-log-list-table.php:221
-#: includes/woocommerce/class-order-notifications.php:330
+#: includes/woocommerce/class-order-notifications.php:332
 #, php-format
 msgid "Request ID: %s"
 msgstr ""
@@ -190,7 +190,7 @@ msgid "Your session has expired. Please reload the page."
 msgstr ""
 
 #: includes/admin/class-admin.php:432
-#: includes/class-sms-sender.php:178
+#: includes/class-sms-sender.php:185
 msgid "Your Labyrinthe Connect account is suspended: no SMS can be sent until it is reactivated. Contact support."
 msgstr ""
 
@@ -203,7 +203,7 @@ msgid "Save an API key first."
 msgstr ""
 
 #: includes/admin/class-admin.php:443
-#: includes/class-sms-sender.php:187
+#: includes/class-sms-sender.php:194
 msgid "The Labyrinthe Connect API could not be reached."
 msgstr ""
 
@@ -643,6 +643,12 @@ msgstr ""
 msgid "None"
 msgstr ""
 
+#. translators: %s: date and time when the service should be available again.
+#: includes/class-account-status.php:99
+#, php-format
+msgid "Expected back: %s."
+msgstr ""
+
 #: includes/class-client-factory.php:47
 msgid "No Labyrinthe Connect API key is configured."
 msgstr ""
@@ -673,15 +679,19 @@ msgstr ""
 msgid "Invalid phone number(s) ignored: %s."
 msgstr ""
 
-#: includes/class-sms-sender.php:93
+#: includes/class-sms-sender.php:94
 msgid "The phone number is not valid."
 msgstr ""
 
-#: includes/class-sms-sender.php:95
+#: includes/class-sms-sender.php:96
 msgid "The message is empty."
 msgstr ""
 
-#: includes/class-sms-sender.php:180
+#: includes/class-sms-sender.php:176
+msgid "Sending SMS through Labyrinthe Connect is temporarily unavailable (platform maintenance). Nothing was sent."
+msgstr ""
+
+#: includes/class-sms-sender.php:187
 msgid "The outcome of this SMS is unknown: it may have been sent. It will not be sent again automatically; check the messages in your Labyrinthe Connect dashboard before sending it manually."
 msgstr ""
 
@@ -817,86 +827,94 @@ msgstr ""
 msgid "You are logged in."
 msgstr ""
 
-#: includes/otp/class-otp-service.php:151
+#: includes/otp/class-otp-service.php:152
 msgid "Too many codes were requested from this connection. Please try again later."
 msgstr ""
 
-#: includes/otp/class-otp-service.php:156
+#: includes/otp/class-otp-service.php:157
 msgid "Please enter a valid phone number, for example 0812345678 or +243812345678."
 msgstr ""
 
 #. translators: %d: number of seconds.
-#: includes/otp/class-otp-service.php:204
+#: includes/otp/class-otp-service.php:205
 #, php-format
 msgid "Please wait %d second before requesting a new code."
 msgid_plural "Please wait %d seconds before requesting a new code."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/otp/class-otp-service.php:208
+#: includes/otp/class-otp-service.php:209
 msgid "Too many codes were requested for this number. Please try again later."
 msgstr ""
 
-#: includes/otp/class-otp-service.php:210
+#: includes/otp/class-otp-service.php:211
 msgid "The service is busy. Please try again in a moment."
 msgstr ""
 
-#: includes/otp/class-otp-service.php:218
+#: includes/otp/class-otp-service.php:217
+msgid "Sending codes by SMS is temporarily unavailable (maintenance). Please try again later."
+msgstr ""
+
+#: includes/otp/class-otp-service.php:225
 msgid "We could not confirm that the code was sent. If you do not receive it, request a new code."
 msgstr ""
 
-#: includes/otp/class-otp-service.php:223
+#: includes/otp/class-otp-service.php:230
 msgid "This number cannot receive SMS. Please check it or use another number."
 msgstr ""
 
-#: includes/otp/class-otp-service.php:226
-#: includes/otp/class-otp-service.php:230
+#: includes/otp/class-otp-service.php:233
+#: includes/otp/class-otp-service.php:237
 msgid "The code could not be sent. Please try again later."
 msgstr ""
 
-#: includes/otp/class-otp-service.php:268
+#: includes/otp/class-otp-service.php:275
 msgid "Too many attempts from this connection. Please try again later."
 msgstr ""
 
-#: includes/otp/class-otp-service.php:277
-#: includes/otp/class-otp-service.php:487
+#: includes/otp/class-otp-service.php:284
+#: includes/otp/class-otp-service.php:498
 msgid "This code has expired. Please request a new one."
 msgstr ""
 
-#: includes/otp/class-otp-service.php:282
+#: includes/otp/class-otp-service.php:289
 #: includes/otp/class-widget.php:130
 msgid "Please enter the code received by SMS."
 msgstr ""
 
-#: includes/otp/class-otp-service.php:312
+#: includes/otp/class-otp-service.php:319
+msgid "Codes cannot be checked at the moment (maintenance). Please try again later."
+msgstr ""
+
+#: includes/otp/class-otp-service.php:323
 msgid "The code could not be checked. Please try again."
 msgstr ""
 
-#: includes/otp/class-otp-service.php:335
+#: includes/otp/class-otp-service.php:346
 #: includes/otp/class-widget.php:135
 msgid "Phone number verified."
 msgstr ""
 
 #. translators: %s: masked phone number.
-#: includes/otp/class-otp-service.php:464
+#: includes/otp/class-otp-service.php:475
 #, php-format
 msgid "A code was sent by SMS to %s."
 msgstr ""
 
-#: includes/otp/class-otp-service.php:489
+#: includes/otp/class-otp-service.php:500
 msgid "This code was already used. Please request a new one."
 msgstr ""
 
-#: includes/otp/class-otp-service.php:491
+#: includes/otp/class-otp-service.php:502
 msgid "Too many wrong codes. Please request a new one."
 msgstr ""
 
-#: includes/otp/class-otp-service.php:497
+#: includes/otp/class-otp-service.php:508
 msgid "Wrong code. Please check the SMS and try again."
 msgstr ""
 
 #. translators: %d: number of attempts left.
-#: includes/otp/class-otp-service.php:503
+#: includes/otp/class-otp-service.php:514
 #, php-format
 msgid "Wrong code. Please check the SMS and try again (%d attempt left)."
 msgid_plural "Wrong code. Please check the SMS and try again (%d attempts left)."
@@ -1045,13 +1063,13 @@ msgid "(test mode: nothing was actually sent)"
 msgstr ""
 
 #. translators: 1: SMS label, 2: masked phone number, 3: error code, 4: delay in minutes.
-#: includes/woocommerce/class-order-notifications.php:300
+#: includes/woocommerce/class-order-notifications.php:302
 #, php-format
 msgid "Labyrinthe Connect: SMS \"%1$s\" to %2$s not sent yet (%3$s). New attempt in %4$d minutes."
 msgstr ""
 
 #. translators: 1: SMS label, 2: masked phone number, 3: error code, 4: error message.
-#: includes/woocommerce/class-order-notifications.php:314
+#: includes/woocommerce/class-order-notifications.php:316
 #, php-format
 msgid "Labyrinthe Connect: SMS \"%1$s\" to %2$s failed (%3$s): %4$s"
 msgstr ""
