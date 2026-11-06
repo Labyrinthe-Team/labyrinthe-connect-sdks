@@ -1,6 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: Labyrinthe Connect 1.0.0\n"
+"Project-Id-Version: Labyrinthe Connect 1.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/issues\n"
 "Last-Translator: Labyrinthe Connect <connect@labyrinthe-rdc.com>\n"
 "Language-Team: Labyrinthe Connect <connect@labyrinthe-rdc.com>\n"
@@ -8,7 +8,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "POT-Creation-Date: 2026-11-05T22:04:12+00:00\n"
-"PO-Revision-Date: 2026-11-05T22:37:56+00:00\n"
+"PO-Revision-Date: 2026-11-06T01:43:40+00:00\n"
 "Language: fr_FR\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: labyrinthe-connect\n"
@@ -18,9 +18,9 @@ msgstr ""
 #. Author of the plugin
 #: labyrinthe-connect.php:3
 #: labyrinthe-connect.php:9
-#: includes/admin/class-admin.php:127
-#: includes/admin/class-admin.php:139
-#: includes/admin/class-admin.php:140
+#: includes/admin/class-admin.php:129
+#: includes/admin/class-admin.php:141
+#: includes/admin/class-admin.php:142
 #: includes/admin/class-settings-page.php:80
 #: includes/admin/class-user-profile.php:59
 msgid "Labyrinthe Connect"
@@ -41,142 +41,179 @@ msgstr "SMS et OTP pour WordPress et WooCommerce : notifications de commande par
 msgid "https://labyrinthe-rdc.com"
 msgstr "https://labyrinthe-rdc.com"
 
-#: includes/admin/class-admin.php:129
+#: includes/admin/class-admin.php:131
 msgid "When you place an order, create an account or log in with a code received by SMS, your phone number and the text of the SMS are sent to Labyrinthe Connect (labyrinthe-rdc.com), which delivers the SMS. This site keeps a log of the SMS sent, with masked phone numbers and without the texts, for a limited time."
 msgstr "Quand vous passez une commande, créez un compte ou vous connectez avec un code reçu par SMS, votre numéro de téléphone et le texte du SMS sont transmis à Labyrinthe Connect (labyrinthe-rdc.com), qui achemine le SMS. Ce site conserve pour une durée limitée un journal des SMS envoyés, avec des numéros masqués et sans les textes."
 
-#: includes/admin/class-admin.php:147
+#: includes/admin/class-admin.php:149
 msgid "Labyrinthe Connect settings"
 msgstr "Réglages de Labyrinthe Connect"
 
-#: includes/admin/class-admin.php:147
-#: includes/admin/class-admin.php:193
-#: includes/admin/class-admin.php:214
+#: includes/admin/class-admin.php:149
+#: includes/admin/class-admin.php:199
+#: includes/admin/class-admin.php:234
 #: blocks/otp-login/index.js:23
 msgid "Settings"
 msgstr "Réglages"
 
-#: includes/admin/class-admin.php:148
+#: includes/admin/class-admin.php:150
 #: includes/admin/class-log-page.php:29
 msgid "SMS log"
 msgstr "Journal des SMS"
 
-#: includes/admin/class-admin.php:171
+#: includes/admin/class-admin.php:174
 msgid "Please wait…"
 msgstr "Veuillez patienter…"
 
-#: includes/admin/class-admin.php:172
+#: includes/admin/class-admin.php:175
 #: includes/admin/class-log-list-table.php:93
 msgid "Error"
 msgstr "Erreur"
 
-#: includes/admin/class-admin.php:173
+#: includes/admin/class-admin.php:176
 msgid "Copied"
 msgstr "Copié"
 
 #. translators: 1: number of characters, 2: number of segments.
-#: includes/admin/class-admin.php:175
+#: includes/admin/class-admin.php:178
 #, php-format
 msgid "%1$d characters, GSM-7, %2$d SMS segment(s)."
 msgstr "%1$d caractères, GSM-7, %2$d segment(s) SMS."
 
 #. translators: 1: number of characters, 2: number of segments, 3: list of characters.
-#: includes/admin/class-admin.php:177
+#: includes/admin/class-admin.php:180
 #, php-format
 msgid "%1$d characters, Unicode (UCS-2), %2$d SMS segment(s): these characters make each SMS hold 70 characters instead of 160, often doubling the cost: %3$s"
 msgstr "%1$d caractères, Unicode (UCS-2), %2$d segment(s) SMS : ces caractères limitent chaque SMS à 70 caractères au lieu de 160, ce qui double souvent le coût : %3$s"
 
-#: includes/admin/class-admin.php:178
+#: includes/admin/class-admin.php:181
 msgid "With \"Remove accents\" enabled, the SMS will be sent without accents."
 msgstr "L’option « Retirer les accents » étant active, le SMS partira sans accents."
 
-#: includes/admin/class-admin.php:179
+#: includes/admin/class-admin.php:182
 msgid "Estimate with sample values; the API makes the final count."
 msgstr "Estimation avec des valeurs d’exemple ; le décompte définitif est fait par l’API."
 
-#: includes/admin/class-admin.php:212
+#. translators: 1: number of characters, 2: number of segments.
+#: includes/admin/class-admin.php:184
+#, php-format
+msgid "%1$d characters, Unicode (UCS-2), %2$d SMS segment(s), even without accents: emoji or non-Latin characters make each SMS hold 70 characters instead of 160."
+msgstr "%1$d caractères, Unicode (UCS-2), %2$d segment(s) SMS, même sans accents : des emoji ou des caractères non latins limitent chaque SMS à 70 caractères au lieu de 160."
+
+#: includes/admin/class-admin.php:185
+msgid "Counted by Labyrinthe Connect with sample values."
+msgstr "Compté par Labyrinthe Connect avec des valeurs d’exemple."
+
+#: includes/admin/class-admin.php:219
+msgid "Labyrinthe Connect: your account is suspended."
+msgstr "Labyrinthe Connect : votre compte est suspendu."
+
+#. translators: %s: request ID (X-Request-Id), to give to the support.
+#: includes/admin/class-admin.php:223
+#, php-format
+msgid "The platform has closed the API for this account: no SMS and no OTP code can be sent until it is reactivated. Contact the Labyrinthe Connect support (connect@labyrinthe-rdc.com) and give the request ID %s."
+msgstr "La plateforme a fermé l’API pour ce compte : aucun SMS ni code OTP ne peut être envoyé jusqu’à sa réactivation. Contactez le support de Labyrinthe Connect (connect@labyrinthe-rdc.com) en indiquant l’identifiant de requête %s."
+
+#: includes/admin/class-admin.php:224
+msgid "The platform has closed the API for this account: no SMS and no OTP code can be sent until it is reactivated. Contact the Labyrinthe Connect support (connect@labyrinthe-rdc.com)."
+msgstr "La plateforme a fermé l’API pour ce compte : aucun SMS ni code OTP ne peut être envoyé jusqu’à sa réactivation. Contactez le support de Labyrinthe Connect (connect@labyrinthe-rdc.com)."
+
+#: includes/admin/class-admin.php:232
 msgid "Labyrinthe Connect: the saved API key can no longer be read (the security keys of wp-config.php have changed). Please enter it again."
 msgstr "Labyrinthe Connect : la clé API enregistrée ne peut plus être lue (les clés de sécurité de wp-config.php ont changé). Saisissez-la à nouveau."
 
-#: includes/admin/class-admin.php:219
+#: includes/admin/class-admin.php:239
 msgid "Labyrinthe Connect is installed: add your API key (client area > Developers > API keys) to start sending SMS."
 msgstr "Labyrinthe Connect est installé : ajoutez votre clé API (espace client > Développeurs > Clés API) pour commencer à envoyer des SMS."
 
-#: includes/admin/class-admin.php:221
+#: includes/admin/class-admin.php:241
 msgid "Add the API key"
 msgstr "Ajouter la clé API"
 
 #. translators: 1: credit balance, 2: low balance threshold.
-#: includes/admin/class-admin.php:232
+#: includes/admin/class-admin.php:252
 #, php-format
 msgid "Labyrinthe Connect: your SMS credit balance is low (%1$s credits, threshold %2$s). Buy credits in your client area so that SMS keep being sent."
 msgstr "Labyrinthe Connect : votre solde de crédits SMS est bas (%1$s crédits, seuil %2$s). Achetez des crédits dans votre espace client pour que les SMS continuent de partir."
 
-#: includes/admin/class-admin.php:238
+#: includes/admin/class-admin.php:258
 msgid "Dismiss"
 msgstr "Masquer"
 
-#: includes/admin/class-admin.php:248
-#: includes/admin/class-admin.php:345
+#: includes/admin/class-admin.php:268
+#: includes/admin/class-admin.php:414
 #: includes/admin/class-log-page.php:22
 #: includes/admin/class-settings-page.php:69
 msgid "You are not allowed to do this."
 msgstr "Vous n’avez pas l’autorisation de faire cela."
 
 #. translators: 1: mode (test or live), 2: credit balance, 3: held credits.
-#: includes/admin/class-admin.php:275
+#: includes/admin/class-admin.php:296
 #, php-format
 msgid "Connection OK (%1$s). Balance: %2$s credits (%3$s held by campaigns in progress)."
 msgstr "Connexion réussie (%1$s). Solde : %2$s crédits (%3$s bloqués par des campagnes en cours)."
 
-#: includes/admin/class-admin.php:276
+#: includes/admin/class-admin.php:297
 msgid "test mode: nothing is sent, nothing is billed"
 msgstr "mode test : rien n’est envoyé, rien n’est facturé"
 
-#: includes/admin/class-admin.php:276
+#: includes/admin/class-admin.php:297
 msgid "live mode"
 msgstr "mode production"
 
 #. translators: 1: error code, 2: error message.
-#: includes/admin/class-admin.php:305
+#: includes/admin/class-admin.php:326
 #, php-format
 msgid "Not sent (%1$s): %2$s"
 msgstr "Non envoyé (%1$s) : %2$s"
 
 #. translators: 1: masked phone number, 2: message status, 3: number of segments, 4: message id.
-#: includes/admin/class-admin.php:315
+#: includes/admin/class-admin.php:336
 #, php-format
 msgid "SMS accepted for %1$s (status: %2$s, %3$d segment(s)). Message ID: %4$s"
 msgstr "SMS accepté pour %1$s (statut : %2$s, %3$d segment(s)). Identifiant du message : %4$s"
 
-#: includes/admin/class-admin.php:320
+#: includes/admin/class-admin.php:341
 msgid "Test mode: nothing was actually sent."
 msgstr "Mode test : rien n’a réellement été envoyé."
 
-#: includes/admin/class-admin.php:348
+#. translators: %s: request ID (X-Request-Id), to give to the support.
+#: includes/admin/class-admin.php:406
+#: includes/admin/class-log-list-table.php:221
+#: includes/woocommerce/class-order-notifications.php:330
+#, php-format
+msgid "Request ID: %s"
+msgstr "Identifiant de requête : %s"
+
+#: includes/admin/class-admin.php:417
 #: includes/otp/class-ajax.php:93
 msgid "Your session has expired. Please reload the page."
 msgstr "Votre session a expiré. Rechargez la page."
 
-#: includes/admin/class-admin.php:361
+#: includes/admin/class-admin.php:432
+#: includes/class-sms-sender.php:178
+msgid "Your Labyrinthe Connect account is suspended: no SMS can be sent until it is reactivated. Contact support."
+msgstr "Votre compte Labyrinthe Connect est suspendu : aucun SMS ne peut être envoyé jusqu’à sa réactivation. Contactez le support."
+
+#: includes/admin/class-admin.php:436
 msgid "The API key was refused (invalid or revoked)."
 msgstr "La clé API a été refusée (invalide ou révoquée)."
 
-#: includes/admin/class-admin.php:364
+#: includes/admin/class-admin.php:440
 msgid "Save an API key first."
 msgstr "Enregistrez d’abord une clé API."
 
-#: includes/admin/class-admin.php:367
-#: includes/class-sms-sender.php:164
+#: includes/admin/class-admin.php:443
+#: includes/class-sms-sender.php:187
 msgid "The Labyrinthe Connect API could not be reached."
 msgstr "L’API Labyrinthe Connect est injoignable."
 
-#: includes/admin/class-admin.php:370
+#: includes/admin/class-admin.php:446
 msgid "Unexpected error."
 msgstr "Erreur inattendue."
 
 #. translators: 1: error code, 2: error message.
-#: includes/admin/class-admin.php:377
+#: includes/admin/class-admin.php:453
 #, php-format
 msgid "Failed (%1$s): %2$s"
 msgstr "Échec (%1$s) : %2$s"
@@ -298,8 +335,8 @@ msgid "SMS sent by this site. Delivery statuses are updated by the webhook (see 
 msgstr "SMS envoyés par ce site. Les statuts de remise sont mis à jour par le webhook (voir Réglages). Les numéros sont masqués ; le texte des messages n’est jamais enregistré."
 
 #: includes/admin/class-log-page.php:34
-msgid "Search (order, message ID, error code)"
-msgstr "Rechercher (commande, identifiant, code d’erreur)"
+msgid "Search (order, message ID, error code, request ID)"
+msgstr "Rechercher (commande, identifiant du message, code d’erreur, identifiant de requête)"
 
 #: includes/admin/class-settings-page.php:55
 msgid "General"
@@ -378,6 +415,10 @@ msgstr "Retirer les accents et les guillemets typographiques avant l’envoi (é
 #: includes/admin/class-settings-page.php:170
 msgid "A single accent switches the SMS to Unicode: 70 characters per SMS instead of 160, so the cost is often doubled. Without accents, the SMS stays in GSM-7."
 msgstr "Un seul accent fait passer le SMS en Unicode : 70 caractères par SMS au lieu de 160, le coût est donc souvent doublé. Sans accents, le SMS reste en GSM-7."
+
+#: includes/admin/class-settings-page.php:170
+msgid "The accents are removed by Labyrinthe Connect when sending, for order SMS, test SMS and OTP codes alike."
+msgstr "Les accents sont retirés par Labyrinthe Connect à l’envoi, pour les SMS de commande comme pour les SMS de test et les codes OTP."
 
 #: includes/admin/class-settings-page.php:174
 msgid "Webhook URL"
@@ -564,14 +605,30 @@ msgid "Optional: must contain {code}; {app_name} and {minutes} are also availabl
 msgstr "Facultatif : doit contenir {code} ; {app_name} et {minutes} sont aussi disponibles. Vide : le message des paramètres OTP de votre compte."
 
 #: includes/admin/class-settings-page.php:417
+msgid "Automatic code filling"
+msgstr "Remplissage automatique du code"
+
+#: includes/admin/class-settings-page.php:419
+msgid "Let the browser fill in the code from the SMS (Web OTP, Chrome on Android)"
+msgstr "Laisser le navigateur remplir le code reçu par SMS (Web OTP, Chrome sur Android)"
+
+#: includes/admin/class-settings-page.php:421
+msgid "Domain"
+msgstr "Domaine"
+
+#: includes/admin/class-settings-page.php:424
+msgid "Adds a last line \"@domain #code\" to the SMS. Empty: the domain of this site. It must be the domain of the page where the code is typed; a local address (localhost, IP address) turns it off."
+msgstr "Ajoute au SMS une dernière ligne « @domaine #code ». Vide : le domaine de ce site. Ce doit être le domaine de la page où le code est saisi ; une adresse locale (localhost, adresse IP) désactive l’option."
+
+#: includes/admin/class-settings-page.php:428
 msgid "Limit per visitor"
 msgstr "Limite par visiteur"
 
-#: includes/admin/class-settings-page.php:420
+#: includes/admin/class-settings-page.php:431
 msgid "codes per hour and per IP address"
 msgstr "codes par heure et par adresse IP"
 
-#: includes/admin/class-settings-page.php:421
+#: includes/admin/class-settings-page.php:432
 msgid "Protects your credits against robots, in addition to the limits of Labyrinthe Connect (per number and per account)."
 msgstr "Protège vos crédits contre les robots, en plus des limites de Labyrinthe Connect (par numéro et par compte)."
 
@@ -591,133 +648,141 @@ msgstr "Aucun"
 msgid "No Labyrinthe Connect API key is configured."
 msgstr "Aucune clé API Labyrinthe Connect n’est configurée."
 
-#: includes/class-settings.php:280
+#: includes/class-settings.php:317
 msgid "The default country code must be 1 to 3 digits, for example 243 for the DR Congo."
 msgstr "L’indicatif par défaut doit comporter 1 à 3 chiffres, par exemple 243 pour la RDC."
 
-#: includes/class-settings.php:313
+#: includes/class-settings.php:336
+msgid "The Web OTP domain must be a host name such as shop.example.com (no https://, port or path). The previous domain was kept."
+msgstr "Le domaine Web OTP doit être un nom d’hôte comme boutique.exemple.cd (sans https://, port ni chemin). Le domaine précédent a été conservé."
+
+#: includes/class-settings.php:359
 msgid "The OTP message must contain {code}. The previous message was kept."
 msgstr "Le message OTP doit contenir {code}. Le message précédent a été conservé."
 
-#: includes/class-settings.php:365
+#: includes/class-settings.php:411
 msgid "This API key is not valid: it must start with lsk_live_ or lsk_test_. The previous key was kept."
 msgstr "Cette clé API n’est pas valide : elle doit commencer par lsk_live_ ou lsk_test_. La clé précédente a été conservée."
 
-#: includes/class-settings.php:370
+#: includes/class-settings.php:416
 msgid "The webhook secret must be 16 to 255 characters without spaces. The previous secret was kept."
 msgstr "Le secret du webhook doit comporter 16 à 255 caractères, sans espaces. Le secret précédent a été conservé."
 
 #. translators: %s: list of invalid phone numbers.
-#: includes/class-settings.php:450
+#: includes/class-settings.php:496
 #, php-format
 msgid "Invalid phone number(s) ignored: %s."
 msgstr "Numéro(s) invalide(s) ignoré(s) : %s."
 
-#: includes/class-sms-sender.php:94
+#: includes/class-sms-sender.php:93
 msgid "The phone number is not valid."
 msgstr "Le numéro de téléphone n’est pas valide."
 
-#: includes/class-sms-sender.php:96
+#: includes/class-sms-sender.php:95
 msgid "The message is empty."
 msgstr "Le message est vide."
 
-#: includes/class-templates.php:26
+#: includes/class-sms-sender.php:180
+msgid "The outcome of this SMS is unknown: it may have been sent. It will not be sent again automatically; check the messages in your Labyrinthe Connect dashboard before sending it manually."
+msgstr "Le résultat de cet envoi est inconnu : le SMS a pu partir. Il ne sera pas renvoyé automatiquement ; vérifiez les messages dans votre espace Labyrinthe Connect avant de le renvoyer manuellement."
+
+#: includes/class-templates.php:29
 msgid "Order number"
 msgstr "Numéro de commande"
 
-#: includes/class-templates.php:27
+#: includes/class-templates.php:30
 msgid "Order ID"
 msgstr "Identifiant de la commande"
 
-#: includes/class-templates.php:28
+#: includes/class-templates.php:31
 msgid "Order status (translated)"
 msgstr "Statut de la commande (traduit)"
 
-#: includes/class-templates.php:29
+#: includes/class-templates.php:32
 msgid "Order total with currency, e.g. 25.00 USD"
 msgstr "Montant de la commande avec la devise, par exemple 25.00 USD"
 
-#: includes/class-templates.php:30
+#: includes/class-templates.php:33
 msgid "Order date"
 msgstr "Date de la commande"
 
-#: includes/class-templates.php:31
+#: includes/class-templates.php:34
 msgid "Order page in the customer account"
 msgstr "Page de la commande dans le compte client"
 
-#: includes/class-templates.php:32
+#: includes/class-templates.php:35
 msgid "Payment method"
 msgstr "Moyen de paiement"
 
-#: includes/class-templates.php:33
+#: includes/class-templates.php:36
 msgid "Customer full name"
 msgstr "Nom complet du client"
 
-#: includes/class-templates.php:34
+#: includes/class-templates.php:37
 msgid "Customer first name"
 msgstr "Prénom du client"
 
-#: includes/class-templates.php:35
+#: includes/class-templates.php:38
 msgid "Customer phone number"
 msgstr "Téléphone du client"
 
-#: includes/class-templates.php:36
+#: includes/class-templates.php:39
 msgid "Shop name"
 msgstr "Nom de la boutique"
 
-#: includes/class-templates.php:37
+#: includes/class-templates.php:40
 msgid "Shop address"
 msgstr "Adresse de la boutique"
 
-#: includes/class-templates.php:38
+#: includes/class-templates.php:41
 msgid "Tracking number (shipment tracking plugins)"
 msgstr "Numéro de suivi (extensions de suivi de colis)"
 
-#: includes/class-templates.php:39
+#: includes/class-templates.php:42
 msgid "Tracking link (shipment tracking plugins)"
 msgstr "Lien de suivi (extensions de suivi de colis)"
 
-#: includes/class-templates.php:52
+#: includes/class-templates.php:55
 msgid "Processing"
 msgstr "En cours"
 
-#: includes/class-templates.php:75
+#: includes/class-templates.php:78
 msgid "Hello {customer_name}, your order {order_number} at {shop_name} is awaiting payment ({order_total})."
 msgstr "Bonjour {customer_name}, votre commande {order_number} chez {shop_name} attend votre paiement ({order_total})."
 
-#: includes/class-templates.php:77
+#: includes/class-templates.php:80
 msgid "Hello {customer_name}, your order {order_number} at {shop_name} is on hold. We will contact you shortly."
 msgstr "Bonjour {customer_name}, votre commande {order_number} chez {shop_name} est en attente. Nous vous contactons rapidement."
 
-#: includes/class-templates.php:79
+#: includes/class-templates.php:82
 msgid "Hello {customer_name}, we received your order {order_number} ({order_total}). {shop_name} is preparing it."
 msgstr "Bonjour {customer_name}, nous avons bien recu votre commande {order_number} ({order_total}). {shop_name} la prepare."
 
-#: includes/class-templates.php:81
+#: includes/class-templates.php:84
 msgid "Hello {customer_name}, your order {order_number} is complete. Thank you for shopping at {shop_name}! {tracking_url}"
 msgstr "Bonjour {customer_name}, votre commande {order_number} est terminee. Merci pour votre achat chez {shop_name} ! {tracking_url}"
 
-#: includes/class-templates.php:83
+#: includes/class-templates.php:86
 msgid "Hello {customer_name}, your order {order_number} at {shop_name} has been cancelled."
 msgstr "Bonjour {customer_name}, votre commande {order_number} chez {shop_name} a ete annulee."
 
-#: includes/class-templates.php:85
+#: includes/class-templates.php:88
 msgid "Hello {customer_name}, your order {order_number} at {shop_name} has been refunded ({order_total})."
 msgstr "Bonjour {customer_name}, votre commande {order_number} chez {shop_name} a ete remboursee ({order_total})."
 
-#: includes/class-templates.php:87
+#: includes/class-templates.php:90
 msgid "Hello {customer_name}, the payment of your order {order_number} at {shop_name} failed. Please try again."
 msgstr "Bonjour {customer_name}, le paiement de votre commande {order_number} chez {shop_name} a echoue. Merci de reessayer."
 
-#: includes/class-templates.php:89
+#: includes/class-templates.php:92
 msgid "Hello {customer_name}, your order {order_number} at {shop_name} is now: {order_status}."
 msgstr "Bonjour {customer_name}, votre commande {order_number} chez {shop_name} est maintenant : {order_status}."
 
-#: includes/class-templates.php:97
+#: includes/class-templates.php:100
 msgid "New order {order_number} on {shop_name}: {order_total} from {customer_name} ({customer_phone})."
 msgstr "Nouvelle commande {order_number} sur {shop_name} : {order_total}, client {customer_name} ({customer_phone})."
 
-#: includes/class-templates.php:104
+#: includes/class-templates.php:107
 msgid "Test message from {shop_name} sent with Labyrinthe Connect."
 msgstr "Message de test de {shop_name} envoye avec Labyrinthe Connect."
 
@@ -753,79 +818,91 @@ msgstr "Ce compte ne peut pas se connecter par SMS."
 msgid "You are logged in."
 msgstr "Vous êtes connecté."
 
-#: includes/otp/class-otp-service.php:139
+#: includes/otp/class-otp-service.php:151
 msgid "Too many codes were requested from this connection. Please try again later."
 msgstr "Trop de codes ont été demandés depuis cette connexion. Réessayez plus tard."
 
-#: includes/otp/class-otp-service.php:144
+#: includes/otp/class-otp-service.php:156
 msgid "Please enter a valid phone number, for example 0812345678 or +243812345678."
 msgstr "Saisissez un numéro de téléphone valide, par exemple 0812345678 ou +243812345678."
 
 #. translators: %d: number of seconds.
-#: includes/otp/class-otp-service.php:174
+#: includes/otp/class-otp-service.php:204
 #, php-format
 msgid "Please wait %d second before requesting a new code."
 msgid_plural "Please wait %d seconds before requesting a new code."
 msgstr[0] "Patientez %d seconde avant de demander un nouveau code."
 msgstr[1] "Patientez %d secondes avant de demander un nouveau code."
 
-#: includes/otp/class-otp-service.php:178
+#: includes/otp/class-otp-service.php:208
 msgid "Too many codes were requested for this number. Please try again later."
 msgstr "Trop de codes ont été demandés pour ce numéro. Réessayez plus tard."
 
-#: includes/otp/class-otp-service.php:180
+#: includes/otp/class-otp-service.php:210
 msgid "The service is busy. Please try again in a moment."
 msgstr "Le service est occupé. Réessayez dans un instant."
 
-#: includes/otp/class-otp-service.php:184
+#: includes/otp/class-otp-service.php:218
+msgid "We could not confirm that the code was sent. If you do not receive it, request a new code."
+msgstr "Nous n'avons pas pu confirmer l'envoi du code. Si vous ne le recevez pas, demandez un nouveau code."
+
+#: includes/otp/class-otp-service.php:223
 msgid "This number cannot receive SMS. Please check it or use another number."
 msgstr "Ce numéro ne peut pas recevoir de SMS. Vérifiez-le ou utilisez un autre numéro."
 
-#: includes/otp/class-otp-service.php:187
-#: includes/otp/class-otp-service.php:191
+#: includes/otp/class-otp-service.php:226
+#: includes/otp/class-otp-service.php:230
 msgid "The code could not be sent. Please try again later."
 msgstr "Le code n’a pas pu être envoyé. Réessayez plus tard."
 
-#: includes/otp/class-otp-service.php:219
+#: includes/otp/class-otp-service.php:268
 msgid "Too many attempts from this connection. Please try again later."
 msgstr "Trop d’essais depuis cette connexion. Réessayez plus tard."
 
-#: includes/otp/class-otp-service.php:228
-#: includes/otp/class-otp-service.php:373
+#: includes/otp/class-otp-service.php:277
+#: includes/otp/class-otp-service.php:487
 msgid "This code has expired. Please request a new one."
 msgstr "Ce code a expiré. Demandez-en un nouveau."
 
-#: includes/otp/class-otp-service.php:233
-#: includes/otp/class-widget.php:106
+#: includes/otp/class-otp-service.php:282
+#: includes/otp/class-widget.php:130
 msgid "Please enter the code received by SMS."
 msgstr "Saisissez le code reçu par SMS."
 
-#: includes/otp/class-otp-service.php:259
+#: includes/otp/class-otp-service.php:312
 msgid "The code could not be checked. Please try again."
 msgstr "Le code n’a pas pu être vérifié. Réessayez."
 
-#: includes/otp/class-otp-service.php:282
-#: includes/otp/class-widget.php:111
+#: includes/otp/class-otp-service.php:335
+#: includes/otp/class-widget.php:135
 msgid "Phone number verified."
 msgstr "Numéro de téléphone vérifié."
 
 #. translators: %s: masked phone number.
-#: includes/otp/class-otp-service.php:353
+#: includes/otp/class-otp-service.php:464
 #, php-format
 msgid "A code was sent by SMS to %s."
 msgstr "Un code a été envoyé par SMS au %s."
 
-#: includes/otp/class-otp-service.php:375
+#: includes/otp/class-otp-service.php:489
 msgid "This code was already used. Please request a new one."
 msgstr "Ce code a déjà été utilisé. Demandez-en un nouveau."
 
-#: includes/otp/class-otp-service.php:377
+#: includes/otp/class-otp-service.php:491
 msgid "Too many wrong codes. Please request a new one."
 msgstr "Trop de codes erronés. Demandez-en un nouveau."
 
-#: includes/otp/class-otp-service.php:379
+#: includes/otp/class-otp-service.php:497
 msgid "Wrong code. Please check the SMS and try again."
 msgstr "Code incorrect. Vérifiez le SMS et réessayez."
+
+#. translators: %d: number of attempts left.
+#: includes/otp/class-otp-service.php:503
+#, php-format
+msgid "Wrong code. Please check the SMS and try again (%d attempt left)."
+msgid_plural "Wrong code. Please check the SMS and try again (%d attempts left)."
+msgstr[0] "Code incorrect. Vérifiez le SMS et réessayez (%d tentative restante)."
+msgstr[1] "Code incorrect. Vérifiez le SMS et réessayez (%d tentatives restantes)."
 
 #: includes/otp/class-registration.php:82
 msgid "<strong>Error:</strong> please enter a valid phone number."
@@ -848,122 +925,134 @@ msgstr "Vérifiez votre numéro de téléphone"
 msgid "Verify your phone number to place the order"
 msgstr "Vérifiez votre numéro de téléphone pour commander"
 
-#: includes/otp/class-widget.php:63
+#: includes/otp/class-widget.php:65
 msgid "Phone number"
 msgstr "Numéro de téléphone"
 
-#: includes/otp/class-widget.php:67
+#: includes/otp/class-widget.php:69
 msgid "Send me a code"
 msgstr "Recevoir un code"
 
-#: includes/otp/class-widget.php:70
+#: includes/otp/class-widget.php:72
 msgid "Code received by SMS"
 msgstr "Code reçu par SMS"
 
-#: includes/otp/class-widget.php:73
+#: includes/otp/class-widget.php:75
 msgid "Remember me"
 msgstr "Se souvenir de moi"
 
-#: includes/otp/class-widget.php:76
+#: includes/otp/class-widget.php:78
 msgid "Log in"
 msgstr "Se connecter"
 
-#: includes/otp/class-widget.php:76
+#: includes/otp/class-widget.php:78
 msgid "Verify"
 msgstr "Vérifier"
 
-#: includes/otp/class-widget.php:77
+#: includes/otp/class-widget.php:79
 msgid "Send a new code"
 msgstr "Renvoyer un code"
 
-#: includes/otp/class-widget.php:103
+#: includes/otp/class-widget.php:127
 msgid "Sending…"
 msgstr "Envoi…"
 
-#: includes/otp/class-widget.php:104
+#: includes/otp/class-widget.php:128
 msgid "Checking…"
 msgstr "Vérification…"
 
-#: includes/otp/class-widget.php:105
+#: includes/otp/class-widget.php:129
 msgid "Please enter your phone number first."
 msgstr "Saisissez d’abord votre numéro de téléphone."
 
 #. translators: %d: number of seconds.
-#: includes/otp/class-widget.php:108
+#: includes/otp/class-widget.php:132
 #, php-format
 msgid "(%ds)"
 msgstr "(%d s)"
 
 #. translators: %s: test code (test mode only, shown to administrators).
-#: includes/otp/class-widget.php:110
+#: includes/otp/class-widget.php:134
 #, php-format
 msgid "Test mode (visible to administrators only): the code is %s."
 msgstr "Mode test (visible des seuls administrateurs) : le code est %s."
 
-#: includes/otp/class-widget.php:112
+#. translators: %d: number of characters of the code.
+#: includes/otp/class-widget.php:137
+#, php-format
+msgid "The code has %d characters."
+msgstr "Le code compte %d caractères."
+
+#: includes/otp/class-widget.php:138
 msgid "Connection problem. Please try again."
 msgstr "Problème de connexion. Réessayez."
 
-#: includes/webhook/class-controller.php:107
+#: includes/webhook/class-controller.php:111
 msgid "The webhook secret is not configured."
 msgstr "Le secret du webhook n’est pas configuré."
 
-#: includes/webhook/class-controller.php:120
+#: includes/webhook/class-controller.php:124
 msgid "Invalid webhook signature."
 msgstr "Signature du webhook invalide."
 
-#: includes/webhook/class-controller.php:122
+#: includes/webhook/class-controller.php:126
 msgid "Invalid webhook payload."
 msgstr "Contenu du webhook invalide."
 
-#: includes/webhook/class-controller.php:143
+#: includes/webhook/class-controller.php:147
 msgid "The webhook could not be processed."
 msgstr "Le webhook n’a pas pu être traité."
 
 #. translators: %s: masked phone number.
-#: includes/webhook/class-controller.php:250
+#: includes/webhook/class-controller.php:293
 #, php-format
 msgid "Labyrinthe Connect: SMS delivered to %s."
 msgstr "Labyrinthe Connect : SMS remis au %s."
 
 #. translators: 1: masked phone number, 2: delivery status (failed, undeliverable…).
-#: includes/webhook/class-controller.php:252
+#: includes/webhook/class-controller.php:296
 #, php-format
 msgid "Labyrinthe Connect: SMS to %1$s not delivered (%2$s)."
 msgstr "Labyrinthe Connect : SMS au %1$s non remis (%2$s)."
 
-#: includes/woocommerce/class-order-notifications.php:153
+#. translators: 1: error code, 2: error message.
+#: includes/webhook/class-controller.php:299
+#, php-format
+msgid "Error %1$s: %2$s"
+msgstr "Erreur %1$s : %2$s"
+
+#: includes/woocommerce/class-order-notifications.php:156
 msgid "Labyrinthe Connect: no SMS sent, the order has no phone number."
 msgstr "Labyrinthe Connect : aucun SMS envoyé, la commande n’a pas de numéro de téléphone."
 
-#: includes/woocommerce/class-order-notifications.php:215
+#: includes/woocommerce/class-order-notifications.php:218
 msgid "new order (shop manager)"
 msgstr "nouvelle commande (gérant)"
 
 #. translators: 1: SMS label (order status), 2: masked phone number, 3: number of segments, 4: encoding (GSM-7 or Unicode), 5: message id.
-#: includes/woocommerce/class-order-notifications.php:251
+#: includes/woocommerce/class-order-notifications.php:277
 #, php-format
 msgid "Labyrinthe Connect: SMS \"%1$s\" sent to %2$s (%3$d segment, %4$s). Message ID: %5$s"
 msgid_plural "Labyrinthe Connect: SMS \"%1$s\" sent to %2$s (%3$d segments, %4$s). Message ID: %5$s"
 msgstr[0] "Labyrinthe Connect : SMS « %1$s » envoyé au %2$s (%3$d segment, %4$s). Identifiant : %5$s"
 msgstr[1] "Labyrinthe Connect : SMS « %1$s » envoyé au %2$s (%3$d segments, %4$s). Identifiant : %5$s"
 
-#: includes/woocommerce/class-order-notifications.php:260
+#: includes/woocommerce/class-order-notifications.php:286
 msgid "Unicode"
 msgstr "Unicode"
 
-#: includes/woocommerce/class-order-notifications.php:262
+#: includes/woocommerce/class-order-notifications.php:288
 msgid "(test mode: nothing was actually sent)"
 msgstr "(mode test : rien n’a réellement été envoyé)"
 
 #. translators: 1: SMS label, 2: masked phone number, 3: error code, 4: delay in minutes.
-#: includes/woocommerce/class-order-notifications.php:274
+#: includes/woocommerce/class-order-notifications.php:300
 #, php-format
 msgid "Labyrinthe Connect: SMS \"%1$s\" to %2$s not sent yet (%3$s). New attempt in %4$d minutes."
 msgstr "Labyrinthe Connect : SMS « %1$s » au %2$s pas encore envoyé (%3$s). Nouvel essai dans %4$d minutes."
 
 #. translators: 1: SMS label, 2: masked phone number, 3: error code, 4: error message.
-#: includes/woocommerce/class-order-notifications.php:288
+#: includes/woocommerce/class-order-notifications.php:314
 #, php-format
 msgid "Labyrinthe Connect: SMS \"%1$s\" to %2$s failed (%3$s): %4$s"
 msgstr "Labyrinthe Connect : échec du SMS « %1$s » au %2$s (%3$s) : %4$s"
