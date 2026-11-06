@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Labyrinthe\Connect\Laravel\Rules;
 
 use Illuminate\Contracts\Validation\ValidationRule;
+use Labyrinthe\Connect\Enum\OtpFailureReason;
 use Labyrinthe\Connect\Exception\InvalidArgumentException;
 use Labyrinthe\Connect\Exception\NotFoundException;
 use Labyrinthe\Connect\Laravel\Facades\Labyrinthe;
@@ -24,8 +25,20 @@ final class ValidOtp implements ValidationRule
 {
     private ?OtpVerifyResult $result = null;
 
-    public function __construct(private readonly ?string $otpId)
+    /**
+     * @param bool $showAttemptsRemaining for a wrong code, say how many attempts are left
+     *                                    ("The code field is incorrect. 2 attempts remaining.")
+     */
+    public function __construct(
+        private readonly ?string $otpId,
+        private readonly bool $showAttemptsRemaining = false,
+    ) {
+    }
+
+    /** Same rule, mentioning the attempts left after a wrong code. */
+    public static function withAttemptsRemaining(?string $otpId): self
     {
+        return new self($otpId, true);
     }
 
     public function validate(string $attribute, mixed $value, \Closure $fail): void
@@ -54,6 +67,13 @@ final class ValidOtp implements ValidationRule
         }
 
         if (!$this->result->isValid()) {
+            $remaining = $this->result->attemptsRemaining;
+            if ($this->showAttemptsRemaining && $this->result->reason === OtpFailureReason::InvalidCode && $remaining !== null) {
+                $fail('labyrinthe::validation.otp.invalid_code_attempts')->translateChoice($remaining, ['attempts' => $remaining]);
+
+                return;
+            }
+
             $reason = $this->result->reason->value ?? 'unknown';
             $fail('labyrinthe::validation.otp.'.$reason)->translate();
         }
