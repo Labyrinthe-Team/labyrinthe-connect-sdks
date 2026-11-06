@@ -343,7 +343,7 @@
             "dist": {
                 "type": "path",
                 "url": "../php",
-                "reference": "d83d0fe51b0a63cccfcb946eb4f9615251593ce4"
+                "reference": "f7bfb1473aef96ee8aef07a61e64cf861f004d41"
             },
             "require": {
                 "ext-json": "*",
@@ -408,7 +408,7 @@
                 }
             ],
             "description": "Official PHP SDK for Labyrinthe Connect: send SMS and verify phone numbers with OTP (DR Congo and Central Africa).",
-            "homepage": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/tree/main/php",
+            "homepage": "https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/tree/main/php",
             "keywords": [
                 "2fa",
                 "congo",
@@ -425,9 +425,9 @@
             ],
             "support": {
                 "email": "connect@labyrinthe-rdc.com",
-                "issues": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/issues",
-                "source": "https://github.com/labyrinthe-rdc/labyrinthe-connect-php",
-                "docs": "https://github.com/labyrinthe-rdc/labyrinthe-connect-sdks/blob/main/php/README.md"
+                "issues": "https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/issues",
+                "source": "https://github.com/Labyrinthe-Team/labyrinthe-connect-php",
+                "docs": "https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/blob/main/php/README.md"
             },
             "transport-options": {
                 "symlink": false,
