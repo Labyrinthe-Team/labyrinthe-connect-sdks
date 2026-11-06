@@ -9,16 +9,16 @@ the DR Congo and Central Africa. Send an SMS or verify a phone number in less th
 
 | Folder | Package | Registry | Status |
 |---|---|---|---|
-| [`php/`](php) | `labyrinthe/connect-php` | [Packagist](https://packagist.org/packages/labyrinthe/connect-php) | 1.0.0 — stable |
-| [`laravel/`](laravel) | `labyrinthe/connect-laravel` | [Packagist](https://packagist.org/packages/labyrinthe/connect-laravel) | 1.0.0 — stable |
+| [`php/`](php) | `labyrinthe/connect-php` | [Packagist](https://packagist.org/packages/labyrinthe/connect-php) | 1.1.1 — stable |
+| [`laravel/`](laravel) | `labyrinthe/connect-laravel` | [Packagist](https://packagist.org/packages/labyrinthe/connect-laravel) | 1.1.1 — stable |
 | [`openapi/`](openapi) | OpenAPI 3.1 specification | — | 1.1.0 — source of truth |
 | [`postman/`](postman) | Postman v2.1 collection + environments | — | 1.1.0 — generated from the spec |
-| [`node/`](node) | `@labyrinthe/connect` | [npm](https://www.npmjs.com/package/@labyrinthe/connect) | 1.0.0 — stable |
-| [`python/`](python) | `labyrinthe-connect` | [PyPI](https://pypi.org/project/labyrinthe-connect/) | 1.0.0 — stable |
-| [`widget-otp/`](widget-otp) | `@labyrinthe/otp-widget` (`<labyrinthe-otp>` + React + server handlers) | [npm](https://www.npmjs.com/package/@labyrinthe/otp-widget) | 1.0.0 — stable |
-| [`dotnet/`](dotnet) | `Labyrinthe.Connect` + `Labyrinthe.Connect.AspNetCore` | [NuGet](https://www.nuget.org/packages/Labyrinthe.Connect) | 1.0.0 — stable |
-| [`java/`](java) | `cd.labyrinthe:labyrinthe-connect` + `labyrinthe-connect-spring-boot-starter` | [Maven Central](https://central.sonatype.com/artifact/cd.labyrinthe/labyrinthe-connect) | 1.0.0 — stable |
-| [`wordpress/`](wordpress) | WordPress / WooCommerce plugin `labyrinthe-connect` (order SMS, OTP verification and login) | [wordpress.org](https://wordpress.org/plugins/labyrinthe-connect/) | 1.0.0 — ready, not yet on wordpress.org |
+| [`node/`](node) | `@labyrinthe/connect` | [npm](https://www.npmjs.com/package/@labyrinthe/connect) | 1.1.1 — stable |
+| [`python/`](python) | `labyrinthe-connect` | [PyPI](https://pypi.org/project/labyrinthe-connect/) | 1.1.1 — stable |
+| [`widget-otp/`](widget-otp) | `@labyrinthe/otp-widget` (`<labyrinthe-otp>` + React + server handlers) | [npm](https://www.npmjs.com/package/@labyrinthe/otp-widget) | 1.1.1 — stable |
+| [`dotnet/`](dotnet) | `Labyrinthe.Connect` + `Labyrinthe.Connect.AspNetCore` | [NuGet](https://www.nuget.org/packages/Labyrinthe.Connect) | 1.1.1 — stable |
+| [`java/`](java) | `cd.labyrinthe:labyrinthe-connect` + `labyrinthe-connect-spring-boot-starter` | [Maven Central](https://central.sonatype.com/artifact/cd.labyrinthe/labyrinthe-connect) | 1.1.1 — stable |
+| [`wordpress/`](wordpress) | WordPress / WooCommerce plugin `labyrinthe-connect` (order SMS, OTP verification and login) | [wordpress.org](https://wordpress.org/plugins/labyrinthe-connect/) | 1.1.1 (SDK PHP 1.1.1, API 1.2.0) — ready, not yet on wordpress.org |
 
 The npm, PyPI, NuGet and Maven Central packages are published directly from this repository (tags `node-vX.Y.Z`, `widget-otp-vX.Y.Z`, `python-vX.Y.Z`, `dotnet-vX.Y.Z`, `java-vX.Y.Z`). PHP packages are developed here and published through read-only mirrors
 (`labyrinthe-connect-php`, `labyrinthe-connect-laravel`) that Packagist reads. Open issues and pull requests in
