@@ -52,7 +52,8 @@ final class OtpService
      * 5xx, 429 TOO_MANY_REQUESTS and 409 IDEMPOTENCY_REQUEST_IN_PROGRESS: a
      * replay returns the same otpId without a second SMS (`replayed`). The
      * business limits OTP_RESEND_TOO_SOON and OTP_RATE_LIMITED are never
-     * retried. Pass your own key (e.g. "signup-<session id>") to also protect
+     * retried; 503 FEATURE_DISABLED / OTP_SERVICE_DISABLED (maintenance) only
+     * after a Retry-After no longer than maxRetryWait. Pass your own key (e.g. "signup-<session id>") to also protect
      * against your own retries (double clicks, jobs) for 24 hours.
      *
      * @param string|null $template       must contain "{code}"; optional "{app_name}", "{minutes}"
@@ -65,6 +66,7 @@ final class OtpService
      * @throws InvalidArgumentException
      * @throws \Labyrinthe\Connect\Exception\OtpResendTooSoonException
      * @throws \Labyrinthe\Connect\Exception\OtpRateLimitedException
+     * @throws \Labyrinthe\Connect\Exception\FeatureDisabledException  maintenance (FEATURE_DISABLED / OTP_SERVICE_DISABLED), nothing sent
      * @throws ApiException
      * @throws ConnectionException
      */
@@ -123,12 +125,14 @@ final class OtpService
      * verified=false with a reason and `attemptsRemaining`, and one attempt is
      * consumed. Free.
      *
-     * Only retried on 429 TOO_MANY_REQUESTS, never on network errors or 5xx
-     * (an attempt may have been consumed).
+     * Only retried on 429 TOO_MANY_REQUESTS and on 503 FEATURE_DISABLED with a
+     * Retry-After no longer than maxRetryWait (refused before processing),
+     * never on network errors or other 5xx (an attempt may have been consumed).
      *
      * @param string|null $requestId your X-Request-Id
      *
-     * @throws \Labyrinthe\Connect\Exception\NotFoundException unknown otpId (or from another account)
+     * @throws \Labyrinthe\Connect\Exception\FeatureDisabledException maintenance (FEATURE_DISABLED), nothing checked
+     * @throws \Labyrinthe\Connect\Exception\NotFoundException        unknown otpId (or from another account)
      * @throws ApiException
      * @throws ConnectionException
      */

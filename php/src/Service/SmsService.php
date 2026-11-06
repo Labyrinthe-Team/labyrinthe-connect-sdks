@@ -59,7 +59,7 @@ final class SmsService
      * @param string|null $requestId      your X-Request-Id (1 to 128 characters among A-Z a-z 0-9 . _ : -)
      *
      * @throws InvalidArgumentException before any call when the input is invalid
-     * @throws ApiException             RecipientNotSendableException, InsufficientCreditsException, SenderIdNotApprovedException…
+     * @throws ApiException             RecipientNotSendableException, InsufficientCreditsException, SenderIdNotApprovedException, FeatureDisabledException…
      * @throws ConnectionException
      */
     public function send(

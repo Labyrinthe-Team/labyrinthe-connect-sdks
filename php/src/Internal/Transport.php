@@ -30,6 +30,9 @@ final class Transport
     private const BASE_DELAY = 0.5;
     private const MAX_BACKOFF = 8.0;
 
+    /** Feature shut down by the platform (maintenance): only retried after a Retry-After. */
+    private const FEATURE_DISABLED_CODES = ['FEATURE_DISABLED', 'OTP_SERVICE_DISABLED'];
+
     private ?ResponseInfo $lastResponse = null;
 
     public function __construct(
@@ -173,6 +176,12 @@ final class Transport
 
     private static function isRetryable(RetryMode $mode, ApiException $error, bool $idempotent): bool
     {
+        // Refused before any processing, in every mode, but never with a blind backoff:
+        // only when an automatic re-enable is scheduled (Retry-After, see retryDelay()).
+        if (self::isFeatureDisabled($error)) {
+            return $error->getHeader('retry-after') !== null;
+        }
+
         // Only the generic throttle: OTP_RESEND_TOO_SOON / OTP_RATE_LIMITED are business limits.
         if ($error->getStatusCode() === 429) {
             return $error->getErrorCode() === 'TOO_MANY_REQUESTS';
@@ -192,6 +201,12 @@ final class Transport
      */
     private function retryDelay(ApiException $error, int $attempt): ?float
     {
+        if (self::isFeatureDisabled($error)) {
+            $retryAfter = self::retryAfterHeader($error);
+
+            return $retryAfter !== null && $retryAfter <= $this->maxRetryWait ? $retryAfter : null;
+        }
+
         if ($error->getStatusCode() === 429 || $error->getErrorCode() === 'IDEMPOTENCY_REQUEST_IN_PROGRESS') {
             $retryAfter = self::retryAfter($error);
             if ($retryAfter !== null) {
@@ -211,23 +226,37 @@ final class Transport
         return min($this->maxRetryWait, $delay * $jitter);
     }
 
+    private static function isFeatureDisabled(ApiException $error): bool
+    {
+        return \in_array($error->getErrorCode(), self::FEATURE_DISABLED_CODES, true);
+    }
+
     private static function retryAfter(ApiException $error): ?float
     {
-        $header = $error->getHeader('retry-after');
+        $header = self::retryAfterHeader($error);
         if ($header !== null) {
-            $header = trim($header);
-            if (preg_match('/^\d+(\.\d+)?$/', $header) === 1) {
-                return (float) $header;
-            }
-            $date = strtotime($header);
-            if ($date !== false) {
-                return (float) max(0, $date - time());
-            }
+            return $header;
         }
 
         $seconds = $error->getDetails()['retry_after_seconds'] ?? null;
 
         return \is_int($seconds) || \is_float($seconds) ? (float) $seconds : null;
+    }
+
+    /** Seconds from the Retry-After header (delta-seconds or HTTP date), null when absent or unreadable. */
+    private static function retryAfterHeader(ApiException $error): ?float
+    {
+        $header = $error->getHeader('retry-after');
+        if ($header === null) {
+            return null;
+        }
+        $header = trim($header);
+        if (preg_match('/^\d+(\.\d+)?$/', $header) === 1) {
+            return (float) $header;
+        }
+        $date = strtotime($header);
+
+        return $date !== false ? (float) max(0, $date - time()) : null;
     }
 
     /**
