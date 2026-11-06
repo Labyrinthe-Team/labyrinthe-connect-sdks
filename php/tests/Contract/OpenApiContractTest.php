@@ -7,12 +7,15 @@ namespace Labyrinthe\Connect\Tests\Contract;
 use Labyrinthe\Connect\Client;
 use Labyrinthe\Connect\Enum\Encoding;
 use Labyrinthe\Connect\Enum\MessageStatus;
+use Labyrinthe\Connect\Enum\OtpCodeType;
 use Labyrinthe\Connect\Enum\OtpFailureReason;
 use Labyrinthe\Connect\Enum\OtpRateLimitScope;
+use Labyrinthe\Connect\Enum\OtpWebhookStatus;
 use Labyrinthe\Connect\Enum\RejectionReason;
 use Labyrinthe\Connect\Enum\SenderIdStatus;
 use Labyrinthe\Connect\Enum\WebhookEvent;
 use Labyrinthe\Connect\Internal\ErrorFactory;
+use Labyrinthe\Connect\Internal\Transport;
 use Labyrinthe\Connect\Model\Message;
 use Labyrinthe\Connect\Service\OtpService;
 use Labyrinthe\Connect\Service\SmsService;
@@ -89,7 +92,7 @@ final class OpenApiContractTest extends TestCase
 
     public function test_the_spec_version_is_supported(): void
     {
-        self::assertSame('1.1.0', self::at('info.version'));
+        self::assertSame('1.2.0', self::at('info.version'));
     }
 
     public function test_every_operation_of_the_spec_is_implemented(): void
@@ -122,10 +125,16 @@ final class OpenApiContractTest extends TestCase
         self::assertSame(self::strings('components.schemas.MessageStatus.enum'), self::values(MessageStatus::cases()));
         self::assertSame(self::strings('components.schemas.SenderIdStatus.enum'), self::values(SenderIdStatus::cases()));
         self::assertSame(self::strings('components.schemas.RejectionReason.enum'), self::values(RejectionReason::cases()));
-        self::assertSame(self::strings('components.schemas.Message.properties.encoding.enum'), self::values(Encoding::cases()));
-        self::assertSame(self::strings('components.schemas.Estimate.properties.encoding.enum'), self::values(Encoding::cases()));
+        self::assertSame(self::strings('components.schemas.Encoding.enum'), self::values(Encoding::cases()));
+        self::assertSame('#/components/schemas/Encoding', self::at('components.schemas.Message.properties.encoding.$ref'));
+        self::assertSame('#/components/schemas/Encoding', self::at('components.schemas.Estimate.properties.encoding.$ref'));
         self::assertSame(self::strings('components.schemas.OtpVerifyResult.properties.reason.oneOf.1.enum'), self::values(OtpFailureReason::cases()));
         self::assertSame(self::strings('components.schemas.OtpRateLimitedError.allOf.1.properties.error.properties.details.properties.scope.enum'), self::values(OtpRateLimitScope::cases()));
+        self::assertSame(self::strings('components.schemas.OtpSendResult.properties.code_type.enum'), self::values(OtpCodeType::cases()));
+        self::assertSame(self::strings('components.schemas.OtpWebhookData.properties.status.enum'), self::values(OtpWebhookStatus::cases()));
+        foreach (self::strings('components.schemas.OtpWebhookData.properties.reason.oneOf.1.enum') as $reason) {
+            self::assertNotSame(OtpFailureReason::Unknown, OtpFailureReason::fromApi($reason), \sprintf('OTP webhook reason %s is not known.', $reason));
+        }
         self::assertSame(self::strings('components.schemas.WebhookEnvelope.properties.event.enum'), self::values(WebhookEvent::cases(), false));
 
         $webhooks = self::at('webhooks');
@@ -156,6 +165,75 @@ final class OpenApiContractTest extends TestCase
         self::assertSame(SmsService::MAX_PER_PAGE, self::at('paths./sms.get.parameters.1.schema.maximum'));
         self::assertSame(OtpService::MAX_TEMPLATE_LENGTH, self::at('components.schemas.SendOtpRequest.properties.template.maxLength'));
         self::assertSame(OtpService::MAX_CODE_LENGTH, self::at('components.schemas.VerifyOtpRequest.properties.code.maxLength'));
+        self::assertSame(OtpService::MAX_IDEMPOTENCY_KEY_LENGTH, self::at('components.parameters.IdempotencyKey.schema.maxLength'));
+        self::assertSame(OtpService::MAX_WEB_OTP_DOMAIN_LENGTH, self::at('components.schemas.SendOtpRequest.properties.web_otp_domain.maxLength'));
+        self::assertSame(OtpService::WEB_OTP_DOMAIN_PATTERN, self::at('components.schemas.SendOtpRequest.properties.web_otp_domain.pattern'));
+        $requestIdPattern = self::at('components.parameters.RequestId.schema.pattern');
+        self::assertIsString($requestIdPattern);
+        self::assertSame(Transport::REQUEST_ID_PATTERN, '/'.$requestIdPattern.'/');
+    }
+
+    public function test_idempotency_key_and_request_id_are_accepted_where_the_spec_says(): void
+    {
+        foreach (['/sms', '/otp/send'] as $path) {
+            $parameters = self::at('paths.'.$path.'.post.parameters');
+            self::assertIsArray($parameters);
+            self::assertContains(['$ref' => '#/components/parameters/IdempotencyKey'], $parameters, $path);
+        }
+
+        $paths = self::at('paths');
+        self::assertIsArray($paths);
+        foreach ($paths as $path => $methods) {
+            self::assertIsArray($methods);
+            foreach ($methods as $method => $operation) {
+                self::assertIsArray($operation);
+                $parameters = $operation['parameters'] ?? [];
+                self::assertIsArray($parameters);
+                self::assertContains(['$ref' => '#/components/parameters/RequestId'], $parameters, $method.' '.$path);
+            }
+        }
+    }
+
+    public function test_strip_accents_is_offered_on_every_operation_that_accepts_it(): void
+    {
+        foreach (['SendSmsRequest', 'EstimateSmsRequest', 'SendOtpRequest'] as $schema) {
+            self::assertSame(['$ref' => '#/components/schemas/StripAccents'], self::at('components.schemas.'.$schema.'.properties.strip_accents'), $schema);
+        }
+
+        foreach ([[SmsService::class, 'send'], [SmsService::class, 'sendMany'], [SmsService::class, 'estimate'], [OtpService::class, 'send']] as [$class, $method]) {
+            $names = array_map(static fn (\ReflectionParameter $p): string => $p->getName(), (new \ReflectionMethod($class, $method))->getParameters());
+            self::assertContains('stripAccents', $names, $class.'::'.$method);
+            self::assertContains('requestId', $names, $class.'::'.$method);
+        }
+        $names = array_map(static fn (\ReflectionParameter $p): string => $p->getName(), (new \ReflectionMethod(OtpService::class, 'send'))->getParameters());
+        self::assertContains('webOtpDomain', $names);
+        self::assertContains('idempotencyKey', $names);
+    }
+
+    public function test_otp_results_read_every_required_field(): void
+    {
+        $sources = [
+            'OtpSendResult' => \Labyrinthe\Connect\Model\OtpSendResult::class,
+            'OtpVerifyResult' => \Labyrinthe\Connect\Model\OtpVerifyResult::class,
+            'Estimate' => \Labyrinthe\Connect\Model\Estimate::class,
+        ];
+        foreach ($sources as $schema => $class) {
+            $file = (new \ReflectionClass($class))->getFileName();
+            self::assertIsString($file);
+            $code = (string) file_get_contents($file);
+            foreach (self::strings('components.schemas.'.$schema.'.required') as $field) {
+                self::assertStringContainsString("'".$field."'", $code, \sprintf('%s.%s is not read.', $schema, $field));
+            }
+        }
+
+        $fixture = self::otpSendData();
+        $keys = array_keys($fixture);
+        $properties = self::at('components.schemas.OtpSendResult.properties');
+        self::assertIsArray($properties);
+        $expected = array_keys($properties);
+        sort($keys);
+        sort($expected);
+        self::assertSame($expected, $keys, 'The OTP fixture has every field of the spec.');
     }
 
     public function test_the_message_fixture_has_exactly_the_spec_fields_and_parses(): void
@@ -177,6 +255,7 @@ final class OpenApiContractTest extends TestCase
             'MessageStatusChangedData' => \Labyrinthe\Connect\Webhook\Webhook::class,
             'CampaignCompletedData' => \Labyrinthe\Connect\Webhook\Webhook::class,
             'BalanceLowData' => \Labyrinthe\Connect\Webhook\Webhook::class,
+            'OtpWebhookData' => \Labyrinthe\Connect\Webhook\Webhook::class,
         ];
         foreach ($sources as $schema => $class) {
             $file = (new \ReflectionClass($class))->getFileName();
