@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import cd.labyrinthe.connect.exception.ApiConnectionException;
 import cd.labyrinthe.connect.exception.ApiTimeoutException;
 import cd.labyrinthe.connect.exception.IdempotencyKeyReusedException;
+import cd.labyrinthe.connect.exception.IdempotencyKeyUnresolvedException;
+import cd.labyrinthe.connect.exception.IdempotencyRequestInProgressException;
 import cd.labyrinthe.connect.exception.OtpRateLimitedException;
 import cd.labyrinthe.connect.exception.OtpResendTooSoonException;
 import cd.labyrinthe.connect.exception.RateLimitException;
@@ -24,8 +26,9 @@ import org.junit.jupiter.api.Test;
 class RetryTest {
 
   static final String OTP_SENT =
-      "{\"otp_id\":\"otp-1\",\"expires_at\":\"2026-11-05T10:05:00+00:00\",\"max_attempts\":3}";
-  static final String VERIFIED = "{\"verified\":true,\"reason\":null}";
+      "{\"otp_id\":\"otp-1\",\"expires_at\":\"2026-11-05T10:05:00+00:00\",\"max_attempts\":3,"
+          + "\"code_length\":6,\"code_type\":\"numeric\",\"resend_after_seconds\":60}";
+  static final String VERIFIED = "{\"verified\":true,\"reason\":null,\"attempts_remaining\":null}";
 
   @Test
   void retriesAGetOn5xxThenSucceeds() {
@@ -229,39 +232,150 @@ class RetryTest {
   }
 
   @Test
-  void otpSendIsNeverRetriedAfterANetworkError() {
+  void neverRetriesAnUnresolvedIdempotencyKeyOnSmsSend() {
     try (MockApi api = new MockApi()) {
-      api.enqueue(MockApi.disconnect(), MockApi.data(201, OTP_SENT));
-      ApiConnectionException error =
-          assertThrows(ApiConnectionException.class, () -> api.client().otp().send("0812345678"));
-      assertTrue(error.getMessage().contains("may have been processed"), error.getMessage());
-      assertEquals("CONNECTION_ERROR", error.code());
+      api.enqueue(MockApi.error(409, "IDEMPOTENCY_KEY_UNRESOLVED"), MockApi.data(201, "{}"));
+      LabyrintheClient client = api.builder().maxRetries(3).build();
+      IdempotencyKeyUnresolvedException error =
+          assertThrows(
+              IdempotencyKeyUnresolvedException.class,
+              () -> client.sms().send("0812345678", "Hello"));
+      assertEquals(409, error.statusCode());
+      assertEquals("IDEMPOTENCY_KEY_UNRESOLVED", error.code());
       assertEquals(1, api.requests.size());
+      assertTrue(api.scheduler.sleeps.isEmpty());
     }
   }
 
   @Test
-  void otpSendIsNeverRetriedAfterATimeout() {
+  void neverRetriesAnUnresolvedIdempotencyKeyOnOtpSend() {
+    try (MockApi api = new MockApi()) {
+      api.enqueue(MockApi.error(409, "IDEMPOTENCY_KEY_UNRESOLVED"), MockApi.data(201, OTP_SENT));
+      LabyrintheClient client = api.builder().maxRetries(3).build();
+      assertThrows(IdempotencyKeyUnresolvedException.class, () -> client.otp().send("0812345678"));
+      assertEquals(1, api.requests.size());
+      assertTrue(api.scheduler.sleeps.isEmpty());
+    }
+  }
+
+  @Test
+  void otpSendIsRetriedAfterANetworkErrorWithTheSameKeyAndBody() {
+    try (MockApi api = new MockApi()) {
+      api.enqueue(
+          MockApi.disconnect(), MockApi.data(201, OTP_SENT).header("Idempotent-Replayed", "true"));
+      OtpSendResult otp = api.client().otp().send("0812345678");
+      assertEquals("otp-1", otp.otpId());
+      assertTrue(otp.replayed());
+      assertEquals(2, api.requests.size());
+      String key = api.requests.get(0).header("Idempotency-Key");
+      assertEquals(key, api.requests.get(1).header("Idempotency-Key"));
+      assertEquals(key, otp.idempotencyKey());
+      assertEquals(api.requests.get(0).body, api.requests.get(1).body);
+    }
+  }
+
+  @Test
+  void otpSendIsRetriedAfterATimeout() {
     try (MockApi api = new MockApi()) {
       api.enqueue(MockApi.data(201, OTP_SENT).delay(1500), MockApi.data(201, OTP_SENT));
+      OtpSendResult otp =
+          api.builder().timeout(Duration.ofMillis(300)).build().otp().send("0812345678");
+      assertEquals("otp-1", otp.otpId());
+      assertEquals(2, api.requests.size());
+      assertEquals(
+          api.requests.get(0).header("Idempotency-Key"),
+          api.requests.get(1).header("Idempotency-Key"));
+    }
+  }
+
+  @Test
+  void otpSendIsRetriedAfterA5xxButVerifyIsNot() {
+    try (MockApi api = new MockApi()) {
+      api.enqueue(
+          MockApi.error(500, "HTTP_ERROR"),
+          MockApi.data(201, OTP_SENT),
+          MockApi.error(503, "HTTP_ERROR"));
+      LabyrintheClient client = api.client();
+      assertEquals("otp-1", client.otp().send("0812345678").otpId());
+      assertThrows(ServiceUnavailableException.class, () -> client.otp().verify("otp-1", "123456"));
+      assertEquals(3, api.requests.size());
+    }
+  }
+
+  @Test
+  void otpVerifyIsNeverRetriedAfterATimeout() {
+    try (MockApi api = new MockApi()) {
+      api.enqueue(MockApi.data(200, VERIFIED).delay(1500), MockApi.data(200, VERIFIED));
       ApiTimeoutException error =
           assertThrows(
               ApiTimeoutException.class,
-              () -> api.builder().timeout(Duration.ofMillis(300)).build().otp().send("0812345678"));
+              () ->
+                  api.builder()
+                      .timeout(Duration.ofMillis(300))
+                      .build()
+                      .otp()
+                      .verify("otp-1", "123456"));
       assertTrue(error.getMessage().contains("within 0.3 s"), error.getMessage());
+      assertTrue(error.getMessage().contains("may have been processed"), error.getMessage());
       assertEquals("TIMEOUT", error.code());
       assertEquals(1, api.requests.size());
     }
   }
 
   @Test
-  void otpIsNeverRetriedAfterA5xx() {
+  void idempotencyRequestInProgressIsRetriedWithTheSameKeyForSmsAndOtp() {
     try (MockApi api = new MockApi()) {
-      api.enqueue(MockApi.error(500, "HTTP_ERROR"), MockApi.error(503, "HTTP_ERROR"));
+      api.enqueue(
+          MockApi.error(409, "IDEMPOTENCY_REQUEST_IN_PROGRESS", "{\"retry_after_seconds\":5}")
+              .header("Retry-After", "5"),
+          MockApi.data(202, "[" + MockApi.message() + "]").header("Idempotent-Replayed", "true"),
+          MockApi.error(409, "IDEMPOTENCY_REQUEST_IN_PROGRESS", "{\"retry_after_seconds\":2}"),
+          MockApi.data(201, OTP_SENT).header("Idempotent-Replayed", "true"));
       LabyrintheClient client = api.client();
-      assertThrows(ServiceUnavailableException.class, () -> client.otp().send("0812345678"));
-      assertThrows(ServiceUnavailableException.class, () -> client.otp().verify("otp-1", "123456"));
-      assertEquals(2, api.requests.size());
+      client.sms().send("0812345678", "Hello");
+      assertTrue(client.otp().send("0812345678").replayed());
+      assertEquals(List.of(Duration.ofSeconds(5), Duration.ofSeconds(2)), api.scheduler.sleeps);
+      assertEquals(4, api.requests.size());
+      assertEquals(
+          api.requests.get(0).header("Idempotency-Key"),
+          api.requests.get(1).header("Idempotency-Key"));
+      assertEquals(
+          api.requests.get(2).header("Idempotency-Key"),
+          api.requests.get(3).header("Idempotency-Key"));
+    }
+  }
+
+  @Test
+  void idempotencyRequestInProgressIsThrownWhenTheWaitIsTooLong() {
+    try (MockApi api = new MockApi()) {
+      api.enqueue(
+          MockApi.error(409, "IDEMPOTENCY_REQUEST_IN_PROGRESS", "{\"retry_after_seconds\":5}")
+              .header("Retry-After", "5"));
+      IdempotencyRequestInProgressException error =
+          assertThrows(
+              IdempotencyRequestInProgressException.class,
+              () ->
+                  api.builder()
+                      .maxRetryWait(Duration.ofSeconds(1))
+                      .build()
+                      .otp()
+                      .send("0812345678"));
+      assertEquals(409, error.statusCode());
+      assertEquals(Duration.ofSeconds(5), error.retryAfter().orElseThrow());
+      assertEquals(1, api.requests.size());
+      assertTrue(api.scheduler.sleeps.isEmpty());
+    }
+  }
+
+  @Test
+  void yourRequestIdIsSentOnEveryAttempt() {
+    try (MockApi api = new MockApi()) {
+      api.enqueue(MockApi.disconnect(), MockApi.error(503, "HTTP_ERROR"), MockApi.balance());
+      api.client().balance().get(RequestOptions.requestId("order-1042:try.1"));
+      assertEquals(3, api.requests.size());
+      for (MockApi.Recorded request : api.requests) {
+        assertEquals("order-1042:try.1", request.header("X-Request-Id"));
+      }
     }
   }
 
@@ -299,7 +413,10 @@ class RetryTest {
   void otpVerifyIsNeverRetriedAfterANetworkError() {
     try (MockApi api = new MockApi()) {
       api.enqueue(MockApi.disconnect());
-      assertThrows(ApiConnectionException.class, () -> api.client().otp().verify("otp-1", "1"));
+      ApiConnectionException error =
+          assertThrows(ApiConnectionException.class, () -> api.client().otp().verify("otp-1", "1"));
+      assertTrue(error.getMessage().contains("may have been processed"), error.getMessage());
+      assertEquals("CONNECTION_ERROR", error.code());
       assertEquals(1, api.requests.size());
     }
   }

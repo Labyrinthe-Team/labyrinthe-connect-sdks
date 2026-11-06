@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import cd.labyrinthe.connect.exception.ApiConnectionException;
 import cd.labyrinthe.connect.exception.ApiTimeoutException;
+import cd.labyrinthe.connect.exception.IdempotencyKeyUnresolvedException;
 import cd.labyrinthe.connect.exception.InsufficientCreditsException;
 import cd.labyrinthe.connect.exception.InvalidArgumentException;
 import cd.labyrinthe.connect.exception.OtpResendTooSoonException;
@@ -66,6 +67,24 @@ class AsyncTest {
   }
 
   @Test
+  void neverRetriesAnUnresolvedIdempotencyKeyAsynchronously() {
+    try (MockApi api = new MockApi()) {
+      api.enqueue(
+          MockApi.error(409, "IDEMPOTENCY_KEY_UNRESOLVED"),
+          MockApi.error(409, "IDEMPOTENCY_KEY_UNRESOLVED"),
+          MockApi.data(201, RetryTest.OTP_SENT));
+      LabyrintheAsyncClient client = api.builder().maxRetries(3).build().async();
+      assertInstanceOf(
+          IdempotencyKeyUnresolvedException.class,
+          failure(client.sms().send("0812345678", "Hello")));
+      assertInstanceOf(
+          IdempotencyKeyUnresolvedException.class, failure(client.otp().send("0812345678")));
+      assertEquals(2, api.requests.size());
+      assertTrue(api.scheduler.sleeps.isEmpty());
+    }
+  }
+
+  @Test
   void failsWithTypedExceptions() {
     try (MockApi api = new MockApi()) {
       api.enqueue(
@@ -113,14 +132,63 @@ class AsyncTest {
   }
 
   @Test
-  void neverRetriesOtpAfterANetworkErrorOrTimeout() {
+  void neverRetriesOtpVerifyAfterANetworkErrorOrTimeout() {
     try (MockApi api = new MockApi()) {
-      api.enqueue(MockApi.disconnect(), MockApi.data(201, RetryTest.OTP_SENT).delay(1000));
+      api.enqueue(MockApi.disconnect(), MockApi.data(200, RetryTest.VERIFIED).delay(1000));
       LabyrintheClient client = api.builder().timeout(Duration.ofMillis(200)).build();
       assertInstanceOf(
-          ApiConnectionException.class, failure(client.async().otp().send("0812345678")));
-      assertInstanceOf(ApiTimeoutException.class, failure(client.async().otp().send("0812345678")));
+          ApiConnectionException.class, failure(client.async().otp().verify("otp-1", "123456")));
+      assertInstanceOf(
+          ApiTimeoutException.class, failure(client.async().otp().verify("otp-1", "123456")));
       assertEquals(2, api.requests.size());
+    }
+  }
+
+  @Test
+  void retriesOtpSendWithTheSameKeyAfterANetworkErrorOrInProgress() {
+    try (MockApi api = new MockApi()) {
+      api.enqueue(
+          MockApi.disconnect(),
+          MockApi.error(409, "IDEMPOTENCY_REQUEST_IN_PROGRESS", "{\"retry_after_seconds\":5}")
+              .header("Retry-After", "5"),
+          MockApi.data(201, RetryTest.OTP_SENT).header("Idempotent-Replayed", "true"));
+      OtpSendResult otp =
+          api.builder()
+              .maxRetries(2)
+              .build()
+              .async()
+              .otp()
+              .send(SendOtpParams.builder().phone("0812345678").idempotencyKey("login-42").build())
+              .join();
+      assertTrue(otp.replayed());
+      assertEquals("login-42", otp.idempotencyKey());
+      assertEquals(3, api.requests.size());
+      for (MockApi.Recorded request : api.requests) {
+        assertEquals("login-42", request.header("Idempotency-Key"));
+      }
+      assertEquals(Duration.ofSeconds(5), api.scheduler.sleeps.get(1));
+    }
+  }
+
+  @Test
+  void callsOnResponseAndSendsTheRequestIdAsynchronously() {
+    try (MockApi api = new MockApi()) {
+      api.enqueue(
+          MockApi.balance().header("X-Request-Id", "req-async").header("X-Api-Version", "1"),
+          MockApi.error(404, "NOT_FOUND").header("X-Request-Id", "req-404"));
+      List<ResponseInfo> seen = new java.util.concurrent.CopyOnWriteArrayList<>();
+      LabyrintheAsyncClient client = api.client().async();
+      client
+          .balance()
+          .get(RequestOptions.builder().requestId("req-async").onResponse(seen::add).build())
+          .join();
+      assertEquals("req-async", api.last().header("X-Request-Id"));
+      assertEquals("req-async", seen.get(0).requestId().orElseThrow());
+      assertEquals("1", seen.get(0).apiVersion().orElseThrow());
+      Throwable error = failure(client.sms().get("missing"));
+      assertEquals(
+          "req-404",
+          ((cd.labyrinthe.connect.exception.ApiException) error).requestId().orElseThrow());
     }
   }
 

@@ -122,6 +122,50 @@ class ClientTest {
   }
 
   @Test
+  void sendsYourRequestIdAndReportsTheResponseHeaders() {
+    try (MockApi api = new MockApi()) {
+      api.enqueue(
+          MockApi.balance()
+              .header("X-Request-Id", "my-id.1")
+              .header("X-Api-Version", "1")
+              .header("X-RateLimit-Limit", "120")
+              .header("X-RateLimit-Remaining", "119"),
+          MockApi.balance());
+      java.util.List<ResponseInfo> seen = new java.util.ArrayList<>();
+      LabyrintheClient client = api.client();
+      client
+          .balance()
+          .get(RequestOptions.builder().requestId("my-id.1").onResponse(seen::add).build());
+      assertEquals("my-id.1", api.last().header("X-Request-Id"));
+      ResponseInfo info = seen.get(0);
+      assertEquals(200, info.status());
+      assertEquals("my-id.1", info.requestId().orElseThrow());
+      assertEquals("1", info.apiVersion().orElseThrow());
+      assertEquals(120, info.rateLimitLimit().getAsLong());
+      assertEquals(119, info.rateLimitRemaining().getAsLong());
+      assertFalse(info.replayed());
+      assertTrue(info.toString().contains("my-id.1"));
+
+      client.balance().get();
+      assertEquals(null, api.last().header("X-Request-Id"));
+      assertEquals(1, seen.size());
+    }
+  }
+
+  @Test
+  void validatesTheRequestId() {
+    for (String invalid : new String[] {"", "with space", "é", "a/b", "x".repeat(129)}) {
+      assertThrows(
+          InvalidArgumentException.class, () -> RequestOptions.requestId(invalid), invalid);
+    }
+    assertThrows(InvalidArgumentException.class, () -> RequestOptions.builder().requestId(null));
+    assertEquals(
+        "A-z_0.9:-", RequestOptions.requestId("A-z_0.9:-").requestIdOverride().orElseThrow());
+    assertEquals(128, RequestOptions.requestId("x".repeat(128)).requestIdOverride().get().length());
+    assertFalse(RequestOptions.none().onResponse().isPresent());
+  }
+
+  @Test
   void doesNotFollowRedirects() {
     try (MockApi api = new MockApi()) {
       api.enqueue(MockApi.json(302, "").header("Location", "http://evil.test/steal"));

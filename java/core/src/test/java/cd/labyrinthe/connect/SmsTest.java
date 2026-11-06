@@ -43,7 +43,7 @@ class SmsTest {
       assertEquals("POST", request.method);
       assertEquals("/api/public/v1/sms", request.path);
       assertEquals("application/json", request.header("Content-Type"));
-      assertEquals(Map.of("recipient", "243812345678", "body", "Hello"), request.json());
+      assertEquals(Map.of("recipient", "+243812345678", "body", "Hello"), request.json());
       UUID.fromString(request.header("Idempotency-Key"));
     }
   }
@@ -63,11 +63,61 @@ class SmsTest {
                   .idempotencyKey("order-1042-ready")
                   .build());
       Map<String, Object> body = api.last().json();
-      assertEquals("243812345678", body.get("recipient"));
+      assertEquals("+243812345678", body.get("recipient"));
       assertEquals("Réunion à 9h", body.get("body"));
       assertEquals("MYSHOP", body.get("sender"));
       assertEquals("order-1042", body.get("reference"));
       assertEquals("order-1042-ready", api.last().header("Idempotency-Key"));
+      assertFalse(body.containsKey("strip_accents"));
+    }
+  }
+
+  @Test
+  void sendsStripAccentsForSendSendManyAndEstimate() {
+    try (MockApi api = new MockApi()) {
+      api.enqueue(
+          MockApi.data(202, "[" + MockApi.message() + "]"),
+          MockApi.data(202, "[" + MockApi.message() + "]").header("X-Request-Id", "req-many"),
+          MockApi.data(
+              200,
+              "{\"encoding\":\"gsm7\",\"characters\":12,\"segments_per_message\":1,"
+                  + "\"recipients_count\":1,\"total_credits\":1,\"balance_after\":9}"));
+      LabyrintheClient client = api.client();
+      client
+          .sms()
+          .send(
+              SendSmsParams.builder().to("33612345678").body("Réunion").stripAccents(true).build());
+      assertEquals(true, api.last().json().get("strip_accents"));
+      assertEquals("+33612345678", api.last().json().get("recipient"));
+      MessageBatch batch =
+          client
+              .sms()
+              .sendMany(
+                  SendManySmsParams.builder()
+                      .addRecipient("0812345678")
+                      .body("Réunion")
+                      .stripAccents(true)
+                      .build());
+      assertEquals(true, api.last().json().get("strip_accents"));
+      assertEquals("req-many", batch.requestId().orElseThrow());
+      Estimate estimate =
+          client
+              .sms()
+              .estimate(
+                  EstimateSmsParams.builder()
+                      .body("Réunion à 9h")
+                      .addRecipient("0812345678")
+                      .stripAccents(true)
+                      .build());
+      assertEquals(true, api.last().json().get("strip_accents"));
+      assertEquals(Encoding.GSM7, estimate.encoding());
+      assertTrue(
+          EstimateSmsParams.builder()
+              .body("x")
+              .addRecipient("1")
+              .stripAccents(true)
+              .build()
+              .stripAccents());
     }
   }
 
@@ -81,7 +131,7 @@ class SmsTest {
           .build()
           .sms()
           .send("0612345678", "Bonjour");
-      assertEquals("33612345678", api.last().json().get("recipient"));
+      assertEquals("+33612345678", api.last().json().get("recipient"));
       assertEquals("DEFAULT", api.last().json().get("sender"));
     }
   }
@@ -126,7 +176,7 @@ class SmsTest {
       assertEquals(
           List.of("243812345678", "33612345678"),
           batch.messages().stream().map(Message::recipient).collect(Collectors.toList()));
-      assertEquals(List.of("243812345678", "33612345678"), api.last().json().get("recipients"));
+      assertEquals(List.of("+243812345678", "+33612345678"), api.last().json().get("recipients"));
       assertFalse(api.last().json().containsKey("recipient"));
     }
   }
@@ -186,6 +236,47 @@ class SmsTest {
   }
 
   @Test
+  void sendsEveryNumberInE164WithThePlus() {
+    // BACKEND-TODO n° 32 : sans « + », l'API lirait « 2481234567 » comme un numéro local RDC.
+    try (MockApi api = new MockApi()) {
+      api.enqueue(MockApi.data(202, "[" + MockApi.message() + "]"));
+      api.enqueue(MockApi.data(202, "[" + MockApi.message() + "]"));
+      api.enqueue(
+          MockApi.data(
+              200,
+              "{\"encoding\":\"gsm7\",\"characters\":2,\"segments_per_message\":1,"
+                  + "\"recipients_count\":2,\"total_credits\":2,\"balance_after\":10}"));
+      api.enqueue(MockApi.page(1, 1, 0));
+      LabyrintheClient client = api.client();
+
+      client.sms().send("+2481234567", "Hi");
+      assertEquals("+2481234567", api.last().json().get("recipient"));
+
+      client
+          .sms()
+          .sendMany(
+              SendManySmsParams.builder()
+                  .recipients(List.of("+2481234567", "0812345678"))
+                  .body("Hi")
+                  .build());
+      assertEquals(List.of("+2481234567", "+243812345678"), api.last().json().get("recipients"));
+
+      client
+          .sms()
+          .estimate(
+              EstimateSmsParams.builder()
+                  .body("Hi")
+                  .addRecipient("+2481234567")
+                  .addRecipient("0812345678")
+                  .build());
+      assertEquals(List.of("+2481234567", "+243812345678"), api.last().json().get("recipients"));
+
+      client.sms().list(ListSmsParams.builder().recipient("+2481234567").build());
+      assertEquals("+2481234567", api.last().query().get("recipient"));
+    }
+  }
+
+  @Test
   void estimatesACost() {
     try (MockApi api = new MockApi()) {
       api.enqueue(
@@ -207,7 +298,7 @@ class SmsTest {
       assertEquals(2, estimate.totalCredits());
       assertFalse(estimate.balanceAfter().isPresent());
       assertFalse(estimate.isAffordable());
-      assertEquals(List.of("243812345678", "not-a-number"), api.last().json().get("recipients"));
+      assertEquals(List.of("+243812345678", "not-a-number"), api.last().json().get("recipients"));
       assertEquals("/api/public/v1/sms/estimate", api.last().path);
     }
   }
@@ -291,7 +382,7 @@ class SmsTest {
       assertTrue(page.hasMore());
       Map<String, String> query = api.last().query();
       assertEquals("queued", query.get("status"));
-      assertEquals("243812345678", query.get("recipient"));
+      assertEquals("+243812345678", query.get("recipient"));
       assertEquals("order 1042", query.get("reference"));
       assertEquals("2026-11-01", query.get("from"));
       assertEquals("2026-11-30T22:00:00Z", query.get("to"));

@@ -26,6 +26,18 @@ class PhoneNumbersTest {
     "'+33 6 12 34 56 78', 33612345678",
     "0033612345678, 33612345678",
     "'+1 415 555 2671', 14155552671",
+    // API 1.2.0 : sans « + », 11 chiffres ou plus ne commençant pas par 0 = déjà international.
+    "33612345678, 33612345678",
+    "'33 6 12 34 56 78', 33612345678",
+    "14155552671, 14155552671",
+    "447911123456, 447911123456",
+    "2250701020304, 2250701020304",
+    // Formats RDC inchangés.
+    "0812345678, 243812345678",
+    "'081 234 5678', 243812345678",
+    "899999999, 243899999999",
+    // 10 chiffres ou moins sans « + » : format local, l'indicatif par défaut est ajouté.
+    "4155552671, 2434155552671",
   })
   void normalisesLikeTheApi(String raw, String expected) {
     assertEquals(Optional.of(expected), PhoneNumbers.normalize(raw));
@@ -36,6 +48,17 @@ class PhoneNumbersTest {
   void rejectsWhatCannotBeAPhoneNumber(String raw) {
     assertFalse(PhoneNumbers.normalize(raw).isPresent());
     assertFalse(PhoneNumbers.isValid(raw));
+  }
+
+  @Test
+  void normalisingANormalisedNumberDoesNotChangeIt() {
+    for (String raw :
+        new String[] {
+          "+243 81 234 5678", "0812345678", "+33 6 12 34 56 78", "+1 415 555 2671", "812345678"
+        }) {
+      String once = PhoneNumbers.normalize(raw).orElseThrow();
+      assertEquals(Optional.of(once), PhoneNumbers.normalize(once), raw);
+    }
   }
 
   @Test

@@ -6,9 +6,11 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import cd.labyrinthe.connect.exception.AccountSuspendedException;
 import cd.labyrinthe.connect.exception.ApiException;
 import cd.labyrinthe.connect.exception.AuthenticationException;
 import cd.labyrinthe.connect.exception.IdempotencyKeyReusedException;
+import cd.labyrinthe.connect.exception.IdempotencyRequestInProgressException;
 import cd.labyrinthe.connect.exception.InsufficientCreditsException;
 import cd.labyrinthe.connect.exception.InvalidPhoneException;
 import cd.labyrinthe.connect.exception.LabyrintheException;
@@ -43,6 +45,7 @@ class ErrorsTest {
     "401, UNAUTHENTICATED, AuthenticationException",
     "403, FORBIDDEN, PermissionException",
     "403, OTP_DISABLED_FOR_ACCOUNT, PermissionException",
+    "403, ACCOUNT_SUSPENDED, AccountSuspendedException",
     "404, NOT_FOUND, NotFoundException",
     "422, VALIDATION_ERROR, ValidationException",
     "422, RECIPIENT_NOT_SENDABLE, RecipientNotSendableException",
@@ -51,6 +54,8 @@ class ErrorsTest {
     "422, INVALID_OTP_TEMPLATE, ApiException",
     "409, INSUFFICIENT_CREDITS, InsufficientCreditsException",
     "409, IDEMPOTENCY_KEY_REUSED, IdempotencyKeyReusedException",
+    "409, IDEMPOTENCY_KEY_UNRESOLVED, IdempotencyKeyUnresolvedException",
+    "409, IDEMPOTENCY_REQUEST_IN_PROGRESS, IdempotencyRequestInProgressException",
     "429, TOO_MANY_REQUESTS, RateLimitException",
     "429, OTP_RESEND_TOO_SOON, OtpResendTooSoonException",
     "429, OTP_RATE_LIMITED, OtpRateLimitedException",
@@ -168,6 +173,31 @@ class ErrorsTest {
     assertEquals(OtpRateLimitScope.ACCOUNT, limited.scope());
     assertEquals(100, limited.limit().getAsLong());
     assertFalse(limited.retryAfter().isPresent());
+
+    // API 1.2.0 : Retry-After sur les deux limites métier OTP.
+    OtpRateLimitedException withHeader =
+        (OtpRateLimitedException)
+            failWith(
+                MockApi.error(
+                        429,
+                        "OTP_RATE_LIMITED",
+                        "{\"retry_after_seconds\":1800,\"scope\":\"phone\",\"limit\":5}")
+                    .header("Retry-After", "1800"));
+    assertEquals(Duration.ofMinutes(30), withHeader.retryAfter().orElseThrow());
+    assertEquals(OtpRateLimitScope.PHONE, withHeader.scope());
+    OtpResendTooSoonException tooSoonHeader =
+        (OtpResendTooSoonException)
+            failWith(
+                MockApi.error(429, "OTP_RESEND_TOO_SOON", "{\"retry_after_seconds\":42}")
+                    .header("Retry-After", "42"));
+    assertEquals(Duration.ofSeconds(42), tooSoonHeader.retryAfter().orElseThrow());
+
+    IdempotencyRequestInProgressException inProgress =
+        (IdempotencyRequestInProgressException)
+            failWith(
+                MockApi.error(
+                    409, "IDEMPOTENCY_REQUEST_IN_PROGRESS", "{\"retry_after_seconds\":5}"));
+    assertEquals(Duration.ofSeconds(5), inProgress.retryAfter().orElseThrow());
   }
 
   @Test
@@ -176,6 +206,15 @@ class ErrorsTest {
         (ApiException) failWith(MockApi.error(404, "NOT_FOUND").header("X-Request-Id", "req-123"));
     assertEquals("req-123", error.requestId().orElseThrow());
     assertEquals("req-123", error.headers().get("x-request-id"));
+    assertFalse(error.apiVersion().isPresent());
+    ApiException versioned =
+        (ApiException)
+            failWith(
+                MockApi.error(403, "ACCOUNT_SUSPENDED")
+                    .header("X-Request-Id", "5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81")
+                    .header("X-Api-Version", "1"));
+    assertEquals("5f0c2b9e-1d3a-4e7f-8b6c-9a0d2e4f6b81", versioned.requestId().orElseThrow());
+    assertEquals("1", versioned.apiVersion().orElseThrow());
     assertEquals(
         "NotFoundException(code=NOT_FOUND, statusCode=404, message=Message de l'API.)",
         error.toString());
@@ -190,6 +229,11 @@ class ErrorsTest {
         new OtpRateLimitedException("m", "c", 429, null, null) instanceof RateLimitException);
     assertTrue(new AuthenticationException("m", "c", 401, null, null) instanceof ApiException);
     assertTrue(new PermissionException("m", "c", 403, null, null) instanceof ApiException);
+    assertTrue(
+        new AccountSuspendedException("m", "c", 403, null, null) instanceof PermissionException);
+    assertTrue(
+        new IdempotencyRequestInProgressException("m", "c", 409, null, null)
+            instanceof ApiException);
     assertTrue(new NotFoundException("m", "c", 404, null, null) instanceof ApiException);
     assertTrue(new InvalidPhoneException("m", "c", 422, null, null) instanceof ApiException);
     assertTrue(new SenderIdNotApprovedException("m", "c", 422, null, null) instanceof ApiException);

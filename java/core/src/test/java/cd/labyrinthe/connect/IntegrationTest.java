@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cd.labyrinthe.connect.exception.ApiException;
 import cd.labyrinthe.connect.exception.AuthenticationException;
 import cd.labyrinthe.connect.exception.IdempotencyKeyReusedException;
 import cd.labyrinthe.connect.exception.NotFoundException;
@@ -241,12 +242,14 @@ class IntegrationTest {
     assertFalse(otp.toString().contains(code));
 
     String wrong = "000000".equals(code) ? "111111" : "000000";
-    assertEquals(
-        OtpVerifyResult.failed(OtpFailureReason.INVALID_CODE),
+    OtpVerifyResult failed =
         run(
             async,
             () -> client.otp().verify(otp.otpId(), wrong),
-            () -> client.async().otp().verify(otp.otpId(), wrong)));
+            () -> client.async().otp().verify(otp.otpId(), wrong));
+    assertEquals(OtpFailureReason.INVALID_CODE, failed.reason().orElseThrow());
+    // API 1.2.0 : une tentative consommée.
+    assertEquals(otp.maxAttempts() - 1, failed.attemptsRemaining().orElseThrow());
     assertEquals(
         OtpVerifyResult.verified(),
         run(
@@ -259,6 +262,129 @@ class IntegrationTest {
             async,
             () -> client.otp().verify(otp.otpId(), code),
             () -> client.async().otp().verify(otp.otpId(), code)));
+  }
+
+  @ParameterizedTest(name = "async={0}")
+  @ValueSource(booleans = {false, true})
+  void otpSendIsIdempotentAndDescribesTheCode(boolean async) {
+    LabyrintheClient client = client();
+    String key = "sdk-java-it-otp-" + Long.toHexString(RANDOM.nextLong());
+    SendOtpParams params = SendOtpParams.builder().phone(randomPhone()).idempotencyKey(key).build();
+    OtpSendResult first =
+        run(async, () -> client.otp().send(params), () -> client.async().otp().send(params));
+    assertFalse(first.replayed());
+    assertEquals(key, first.idempotencyKey());
+    assertTrue(first.codeLength() >= 4 && first.codeLength() <= 8, first::toString);
+    assertNotEquals(OtpCodeType.UNKNOWN, first.codeType());
+    assertTrue(first.resendAfterSeconds() >= 0);
+    String code = first.testCode().orElseThrow();
+    assertEquals(first.codeLength(), code.length());
+    if (first.codeType() == OtpCodeType.NUMERIC) {
+      assertTrue(code.matches("[0-9]+"), "numeric code");
+    }
+
+    // Même clé, même contenu : rejeu, même OTP, aucun nouveau SMS.
+    OtpSendResult replay =
+        run(async, () -> client.otp().send(params), () -> client.async().otp().send(params));
+    assertTrue(replay.replayed());
+    assertEquals(first.otpId(), replay.otpId());
+    assertEquals(code, replay.testCode().orElseThrow());
+  }
+
+  @ParameterizedTest(name = "async={0}")
+  @ValueSource(booleans = {false, true})
+  void stripAccentsGivesGsm7AndForeignNumbersAreKept(boolean async) {
+    LabyrintheClient client = client();
+    EstimateSmsParams accented =
+        EstimateSmsParams.builder()
+            .body("Réunion à l'hôtel demain")
+            .recipients(List.of("0812345678", "243812345678", "+243812345678"))
+            .stripAccents(true)
+            .build();
+    Estimate estimate =
+        run(
+            async,
+            () -> client.sms().estimate(accented),
+            () -> client.async().sms().estimate(accented));
+    assertEquals(Encoding.GSM7, estimate.encoding());
+    // Doublons fusionnés comme à l'envoi (API 1.2.0).
+    assertEquals(1, estimate.recipientsCount());
+
+    String foreign = String.format("336%08d", RANDOM.nextInt(100_000_000));
+    SendSmsParams params =
+        SendSmsParams.builder()
+            .to(foreign)
+            .body("Integration test")
+            .reference(reference())
+            .stripAccents(true)
+            .build();
+    Message message =
+        run(async, () -> client.sms().send(params), () -> client.async().sms().send(params));
+    assertEquals(foreign, message.recipient());
+    assertEquals(Encoding.GSM7, message.encoding().orElseThrow());
+  }
+
+  @ParameterizedTest(name = "async={0}")
+  @ValueSource(booleans = {false, true})
+  void shortForeignNumberKeepsItsCountryCode(boolean async) {
+    // BACKEND-TODO n° 32 : « +248… » (Seychelles, 10 chiffres) ne doit pas recevoir l'indicatif
+    // 243.
+    LabyrintheClient client = client();
+    String digits = String.format("2482%06d", RANDOM.nextInt(1_000_000));
+    EstimateSmsParams estimateParams =
+        EstimateSmsParams.builder()
+            .body("Integration test")
+            .addRecipient("+" + digits)
+            .addRecipient("0812345678")
+            .build();
+    Estimate estimate =
+        run(
+            async,
+            () -> client.sms().estimate(estimateParams),
+            () -> client.async().sms().estimate(estimateParams));
+    // Sans « + », « 2481234567 » deviendrait 2432481234567 et serait compté à part.
+    assertEquals(2, estimate.recipientsCount());
+
+    SendSmsParams params =
+        SendSmsParams.builder()
+            .to("+" + digits)
+            .body("Integration test")
+            .reference(reference())
+            .build();
+    Message message =
+        run(async, () -> client.sms().send(params), () -> client.async().sms().send(params));
+    assertEquals(digits, message.recipient());
+  }
+
+  @ParameterizedTest(name = "async={0}")
+  @ValueSource(booleans = {false, true})
+  void requestIdIsEchoedOnResponsesAndExceptions(boolean async) {
+    LabyrintheClient client = client();
+    String requestId = "sdk-java-it:" + Long.toHexString(RANDOM.nextLong());
+    List<ResponseInfo> seen = new java.util.concurrent.CopyOnWriteArrayList<>();
+    RequestOptions options =
+        RequestOptions.builder().requestId(requestId).onResponse(seen::add).build();
+    run(async, () -> client.balance().get(options), () -> client.async().balance().get(options));
+    assertEquals(requestId, seen.get(0).requestId().orElseThrow());
+    assertEquals("1", seen.get(0).apiVersion().orElseThrow());
+
+    ApiException error =
+        assertThrows(
+            NotFoundException.class,
+            () ->
+                run(
+                    async,
+                    () -> client.sms().get("00000000-0000-4000-8000-000000000000", options),
+                    () ->
+                        client.async().sms().get("00000000-0000-4000-8000-000000000000", options)));
+    assertEquals(requestId, error.requestId().orElseThrow());
+    assertEquals("1", error.apiVersion().orElseThrow());
+    // Sans identifiant fourni, l'API en génère un.
+    ApiException generated =
+        assertThrows(
+            NotFoundException.class,
+            () -> client.sms().get("00000000-0000-4000-8000-000000000000"));
+    assertFalse(generated.requestId().orElseThrow().isEmpty());
   }
 
   @Test
