@@ -14,11 +14,15 @@ use Labyrinthe\Connect\Exception\SignatureVerificationException;
 use Labyrinthe\Connect\Laravel\Events\BalanceLow;
 use Labyrinthe\Connect\Laravel\Events\CampaignCompleted;
 use Labyrinthe\Connect\Laravel\Events\MessageStatusChanged;
+use Labyrinthe\Connect\Laravel\Events\OtpFailed;
+use Labyrinthe\Connect\Laravel\Events\OtpVerified;
 use Labyrinthe\Connect\Laravel\Events\WebhookReceived;
 use Labyrinthe\Connect\Webhook\Event;
 use Labyrinthe\Connect\Webhook\Event\BalanceLow as BalanceLowPayload;
 use Labyrinthe\Connect\Webhook\Event\CampaignCompleted as CampaignCompletedPayload;
 use Labyrinthe\Connect\Webhook\Event\MessageStatusChanged as MessageStatusChangedPayload;
+use Labyrinthe\Connect\Webhook\Event\OtpFailed as OtpFailedPayload;
+use Labyrinthe\Connect\Webhook\Event\OtpVerified as OtpVerifiedPayload;
 use Labyrinthe\Connect\Webhook\Webhook;
 use Psr\Log\LoggerInterface;
 
@@ -93,6 +97,8 @@ final class WebhookController
             $event instanceof MessageStatusChangedPayload => new MessageStatusChanged($event),
             $event instanceof CampaignCompletedPayload => new CampaignCompleted($event),
             $event instanceof BalanceLowPayload => new BalanceLow($event),
+            $event instanceof OtpVerifiedPayload => new OtpVerified($event),
+            $event instanceof OtpFailedPayload => new OtpFailed($event),
             default => null,
         };
     }
