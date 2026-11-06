@@ -1,7 +1,7 @@
 import { InvalidArgumentError, InvalidWebhookPayloadError, SignatureVerificationError, UnexpectedResponseError, isRecord } from './errors.js';
 import { Reader, messageStatus, type Json } from './internal/data.js';
 import { getCrypto } from './internal/runtime.js';
-import type { MessageStatus } from './types.js';
+import type { MessageStatus, OtpVerificationStatus } from './types.js';
 
 /** Name of the signature header. */
 export const SIGNATURE_HEADER = 'X-Signature';
@@ -29,6 +29,11 @@ export interface MessageStatusChangedEvent extends EventEnvelope {
     status: MessageStatus;
     providerMessageId: string | null;
     campaignId: string | null;
+    /** The `reference` given at send time (`sms.send({ reference })`). */
+    reference: string | null;
+    /** Provider or platform error code when the message failed. */
+    errorCode: string | null;
+    errorMessage: string | null;
   };
 }
 
@@ -54,6 +59,31 @@ export interface BalanceLowEvent extends EventEnvelope {
   };
 }
 
+/** Outcome of an OTP verification (`otp.verified`, `otp.failed`). Never contains the code. */
+export interface OtpWebhookData {
+  otpId: string;
+  /** Normalised number (international, no "+"). */
+  phone: string;
+  /** `verified` with `otp.verified`; `failed` or `expired` with `otp.failed`. */
+  status: OtpVerificationStatus;
+  /** Null when verified; `max_attempts_reached` (status `failed`) or `expired` (status `expired`). */
+  reason: 'max_attempts_reached' | 'expired' | 'unknown' | null;
+  /** Verification date; null for `otp.failed`. */
+  verifiedAt: Date | null;
+}
+
+/** A code was verified (sent once, after `otp.verify()` got the right code — API or client area console). */
+export interface OtpVerifiedEvent extends EventEnvelope {
+  event: 'otp.verified';
+  data: OtpWebhookData;
+}
+
+/** A verification failed for good: attempts exhausted or code expired (sent once). */
+export interface OtpFailedEvent extends EventEnvelope {
+  event: 'otp.failed';
+  data: OtpWebhookData;
+}
+
 export interface TestPingEvent extends EventEnvelope {
   event: 'test.ping';
   data: Json;
@@ -75,6 +105,8 @@ export type WebhookEvent =
   | MessageStatusChangedEvent
   | CampaignCompletedEvent
   | BalanceLowEvent
+  | OtpVerifiedEvent
+  | OtpFailedEvent
   | TestPingEvent
   | UnknownEvent;
 
@@ -192,7 +224,22 @@ async function importKey(secret: string): Promise<CryptoKey> {
   ]);
 }
 
+const OTP_STATUSES: readonly string[] = ['verified', 'failed', 'expired'];
+
+function toOtpWebhookData(data: Json): OtpWebhookData {
+  const status = reader.string(data, 'status');
+  const reason = reader.nullableString(data, 'reason');
+  return {
+    otpId: reader.string(data, 'otp_id'),
+    phone: reader.string(data, 'phone'),
+    status: (OTP_STATUSES.includes(status) ? status : 'unknown') as OtpVerificationStatus,
+    reason: reason === null ? null : reason === 'max_attempts_reached' || reason === 'expired' ? reason : 'unknown',
+    verifiedAt: reader.nullableDate(data, 'verified_at'),
+  };
+}
+
 function toBytes(rawBody: RawBody): Uint8Array<ArrayBuffer> {
+
   if (typeof rawBody === 'string') {
     return encoder.encode(rawBody);
   }
@@ -225,6 +272,10 @@ function buildEvent(envelope: Json, timestamp: number): WebhookEvent {
           status: messageStatus(reader.string(data, 'status')),
           providerMessageId: reader.nullableString(data, 'provider_message_id'),
           campaignId: reader.nullableString(data, 'campaign_id'),
+          // Spec 1.2.0 : absents d'un backend plus ancien → null.
+          reference: reader.nullableString(data, 'reference'),
+          errorCode: reader.nullableString(data, 'error_code'),
+          errorMessage: reader.nullableString(data, 'error_message'),
         },
       };
     case 'campaign.completed': {
@@ -252,6 +303,9 @@ function buildEvent(envelope: Json, timestamp: number): WebhookEvent {
         event,
         data: { balance: reader.int(data, 'balance'), threshold: reader.int(data, 'threshold') },
       };
+    case 'otp.verified':
+    case 'otp.failed':
+      return { ...base, event, data: toOtpWebhookData(data) };
     case 'test.ping':
       return { ...base, event, data };
     default:

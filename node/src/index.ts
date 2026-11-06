@@ -4,7 +4,9 @@ export { VERSION } from './version.js';
 export {
   Encoding,
   MessageStatus,
+  OtpCodeType,
   OtpFailureReason,
+  OtpVerificationStatus,
   OtpRateLimitScope,
   RejectionReason,
   SenderIdStatus,
@@ -20,14 +22,18 @@ export {
   type OtpVerifyResult,
   type RejectedRecipient,
   type RequestOptions,
+  type ResponseInfo,
   type SenderId,
 } from './types.js';
 
 export {
+  AccountSuspendedError,
   ApiError,
   AuthenticationError,
   ConnectionError,
   IdempotencyKeyReusedError,
+  IdempotencyKeyUnresolvedError,
+  IdempotencyRequestInProgressError,
   InsufficientCreditsError,
   InvalidArgumentError,
   InvalidPhoneError,
@@ -67,6 +73,10 @@ export {
   type CampaignCompletedEvent,
   type ConstructEventOptions,
   type MessageStatusChangedEvent,
+  type OtpFailedEvent,
+  type OtpVerifiedEvent,
+  type OtpWebhookData,
+
   type RawBody,
   type TestPingEvent,
   type UnknownEvent,
