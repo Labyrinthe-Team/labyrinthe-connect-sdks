@@ -5,6 +5,13 @@ All notable changes to the Postman collection are documented here. The version f
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-06
+
+### Added
+- Collection regenerated from the OpenAPI spec 1.3.0: every request documents the new `503 FEATURE_DISABLED`
+  response (feature shut down by the platform, `details` = `{ feature, blocked_by, message, until }`,
+  `Retry-After` when a re-enable is scheduled), and `POST /otp/send` the enriched `503 OTP_SERVICE_DISABLED`.
+
 ## [1.2.0] - 2026-11-06
 
 ### Added
