@@ -44,6 +44,10 @@ export interface OtpErrorDetail {
   status: number | null;
   retryAfterSeconds?: number;
   attemptsLeft?: number | null;
+  /** `service_unavailable` during a Labyrinthe maintenance: the administrator's message (shown instead of the text). */
+  adminMessage?: string;
+  /** `service_unavailable` during a Labyrinthe maintenance: scheduled end, when known. */
+  until?: Date;
 }
 
 /** Public API of the `<labyrinthe-otp>` element. */
@@ -159,6 +163,7 @@ export function createElementClass(): CustomElementConstructor {
     #lastAutoSubmitted = '';
     #errorCode: OtpWidgetErrorCode | null = null;
     #errorValues: Record<string, string | number> = {};
+    #maintenance: Maintenance = {};
     /** Jeton du dernier envoi sans réponse exploitable : réutilisé pour ce numéro (Idempotency-Key côté serveur). */
     #pendingSend: { phone: string; id: string } | null = null;
 
@@ -340,7 +345,7 @@ export function createElementClass(): CustomElementConstructor {
         this.#onSent(phone, body);
         return;
       }
-      const { code, retryAfterSeconds } = readError(result);
+      const { code, retryAfterSeconds, maintenance } = readError(result);
       if (code === 'send_failed') {
         // Résultat inconnu côté Labyrinthe (un SMS a pu partir) : la même clé serait refusée à jamais.
         // Un nouvel envoi, demandé par l'utilisateur, part avec un nouveau jeton (donc une nouvelle clé).
@@ -353,7 +358,7 @@ export function createElementClass(): CustomElementConstructor {
       if (code === 'invalid_phone' && this.#step === 'phone') {
         this.#el.phone.setAttribute('aria-invalid', 'true');
       }
-      this.#fail(code, result.status, retryAfterSeconds);
+      this.#fail(code, result.status, retryAfterSeconds, undefined, maintenance);
     }
 
     #onSent(phone: string, body: Partial<SendSuccessBody>): void {
@@ -430,13 +435,13 @@ export function createElementClass(): CustomElementConstructor {
         this.#onRefused(reason, result.status);
         return;
       }
-      const { code: errorCode, retryAfterSeconds } = readError(result);
+      const { code: errorCode, retryAfterSeconds, maintenance } = readError(result);
       if (NEEDS_NEW_CODE.includes(errorCode)) {
         this.#onRefused(errorCode, result.status);
         return;
       }
       this.#lastAutoSubmitted = '';
-      this.#fail(errorCode, result.status, retryAfterSeconds);
+      this.#fail(errorCode, result.status, retryAfterSeconds, undefined, maintenance);
     }
 
     #onRefused(reason: OtpWidgetErrorCode, status: number): void {
@@ -731,12 +736,26 @@ export function createElementClass(): CustomElementConstructor {
     }
 
     #errorMessage(code: OtpWidgetErrorCode): string {
-      return format(this.#texts.errors[code], { count: this.#codeLength, ...this.#errorValues });
+      const t = this.#texts;
+      const values = { count: this.#codeLength, ...this.#errorValues };
+      if (code !== 'service_unavailable') {
+        return format(t.errors[code], values);
+      }
+      // Maintenance : message de l'administrateur Labyrinthe (texte brut, non formaté) et délai de retour s'il est connu.
+      const retry = this.#errorValues['time'] === undefined ? '' : ` ${format(t.retryIn, values)}`;
+      return (this.#maintenance.adminMessage ?? format(t.errors[code], values)) + retry;
     }
 
-    #fail(code: OtpWidgetErrorCode, status: number | null, retryAfterSeconds?: number, attemptsLeft?: number | null): void {
+    #fail(
+      code: OtpWidgetErrorCode,
+      status: number | null,
+      retryAfterSeconds?: number,
+      attemptsLeft?: number | null,
+      maintenance: Maintenance = {},
+    ): void {
       this.#errorCode = code;
       this.#errorValues = retryAfterSeconds === undefined ? {} : { time: formatDuration(retryAfterSeconds) };
+      this.#maintenance = maintenance;
       const message = this.#errorMessage(code);
       // Même texte deux fois de suite : on le modifie d'un caractère invisible pour qu'il soit réannoncé.
       this.#el.error.textContent = this.#el.error.textContent === message ? message + ZERO_WIDTH_SPACE : message;
@@ -747,6 +766,7 @@ export function createElementClass(): CustomElementConstructor {
         status,
         ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
         ...(attemptsLeft === undefined ? {} : { attemptsLeft }),
+        ...maintenance,
       };
       this.#emit(EVENT_ERROR, detail);
     }
@@ -754,6 +774,7 @@ export function createElementClass(): CustomElementConstructor {
     #clearError(): void {
       this.#errorCode = null;
       this.#errorValues = {};
+      this.#maintenance = {};
       this.#el.error.textContent = '';
       this.#el.attempts.textContent = '';
     }
@@ -808,10 +829,16 @@ function sendId(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** Lit `{ error: { code, retry_after_seconds } }` ; repli sur le statut HTTP. */
+interface Maintenance {
+  adminMessage?: string;
+  until?: Date;
+}
 
-function readError(result: HttpResult): { code: ServerErrorCode; retryAfterSeconds?: number } {
-  const error = (result.body as { error?: { code?: unknown; retry_after_seconds?: unknown } } | null)?.error;
+/** Lit `{ error: { code, retry_after_seconds, admin_message, until } }` ; repli sur le statut HTTP. */
+function readError(result: HttpResult): { code: ServerErrorCode; retryAfterSeconds?: number; maintenance: Maintenance } {
+  const error = (
+    result.body as { error?: { code?: unknown; retry_after_seconds?: unknown; admin_message?: unknown; until?: unknown } } | null
+  )?.error;
   const retry = error?.retry_after_seconds;
   const retryAfterSeconds = typeof retry === 'number' && retry >= 0 ? Math.ceil(retry) : undefined;
   let code: ServerErrorCode;
@@ -826,5 +853,15 @@ function readError(result: HttpResult): { code: ServerErrorCode; retryAfterSecon
   } else {
     code = 'server_error';
   }
-  return retryAfterSeconds === undefined ? { code } : { code, retryAfterSeconds };
+  const maintenance: Maintenance = {};
+  if (code === 'service_unavailable') {
+    if (typeof error?.admin_message === 'string' && error.admin_message.trim() !== '') {
+      maintenance.adminMessage = error.admin_message.trim();
+    }
+    const until = typeof error?.until === 'string' ? new Date(error.until) : null;
+    if (until !== null && !Number.isNaN(until.getTime())) {
+      maintenance.until = until;
+    }
+  }
+  return retryAfterSeconds === undefined ? { code, maintenance } : { code, retryAfterSeconds, maintenance };
 }

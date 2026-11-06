@@ -26,6 +26,8 @@ export interface OtpWidgetTexts {
   attemptsLeftOther: string;
   success: string;
   testMode: string;
+  /** Appended to `errors.service_unavailable` (or the maintenance message) when the end of a maintenance is known. */
+  retryIn: string;
   errors: Record<OtpWidgetErrorCode, string>;
 }
 
@@ -57,6 +59,7 @@ const fr: OtpWidgetTexts = {
   attemptsLeftOther: 'Il vous reste {count} tentatives.',
   success: 'Numéro vérifié.',
   testMode: 'Mode test : le code est {code}',
+  retryIn: 'Réessayez dans {time}.',
   errors: {
     invalid_phone: 'Ce numéro de téléphone n’est pas valide.',
     invalid_code: 'Code incorrect.',
@@ -98,6 +101,7 @@ const en: OtpWidgetTexts = {
   attemptsLeftOther: '{count} attempts left.',
   success: 'Phone number verified.',
   testMode: 'Test mode: the code is {code}',
+  retryIn: 'Try again in {time}.',
   errors: {
     invalid_phone: 'This phone number is not valid.',
     invalid_code: 'Wrong code.',
@@ -138,10 +142,13 @@ export function format(template: string, values: Record<string, string | number>
   });
 }
 
-/** 75 → "1:15". */
+/** 75 → "1:15" ; 5400 → "1:30:00". */
 export function formatDuration(seconds: number): string {
   const s = Math.max(0, Math.ceil(seconds));
-  return `${String(Math.floor(s / 60))}:${String(s % 60).padStart(2, '0')}`;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return s >= 3600
+    ? `${String(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`
+    : `${String(Math.floor(s / 60))}:${pad(s % 60)}`;
 }
 
 function stripUndefined<T extends object>(value: T): Partial<T> {
