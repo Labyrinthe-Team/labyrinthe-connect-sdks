@@ -3,8 +3,8 @@ package cd.labyrinthe.connect.exception;
 import java.util.Map;
 
 /**
- * 403: IP address not allowed for this key ({@code FORBIDDEN}) or OTP disabled for the account
- * ({@code OTP_DISABLED_FOR_ACCOUNT}).
+ * 403: IP address not allowed for this key ({@code FORBIDDEN}), OTP disabled for the account
+ * ({@code OTP_DISABLED_FOR_ACCOUNT}) or account suspended ({@link AccountSuspendedException}).
  */
 public class PermissionException extends ApiException {
 
