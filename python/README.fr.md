@@ -54,7 +54,7 @@ async with AsyncLabyrinthe() as client:               # mêmes méthodes, avec a
 
 ```python
 message = client.sms.send(
-    to="+243 81 234 5678",       # +243…, 00243…, 243…, 0812…, 812… sont acceptés
+    to="+243 81 234 5678",       # +243…, 00243…, 243…, 0812…, 812…, 33612345678 sont acceptés
     body="Votre commande 1042 est prête.",
     sender="MABOUTIQUE",         # facultatif : un Sender ID approuvé (client.sender_ids.list())
     reference="commande-1042",   # facultatif : votre référence, 64 caractères max.
@@ -74,6 +74,11 @@ non ASCII** (é, à, ç, emoji, guillemets typographiques…) passe en UCS-2 : 7
 estimate = client.sms.estimate(body="Réunion demain à 9h", recipients=["0812345678", "0899999999"])
 estimate.encoding, estimate.total_credits, estimate.is_affordable
 ```
+
+`strip_accents=True` (sur `send`, `send_many`, `estimate` et `otp.send`) demande à l'API de remplacer accents et
+caractères typographiques par leur équivalent ASCII : le message repasse en GSM-7, souvent deux fois moins cher. La
+translittération dépend du serveur (`Café` peut devenir `Cafe` ou `Caf'e`). L'estimation compte les destinataires
+comme l'envoi (normalisés, doublons fusionnés).
 
 ### Plusieurs destinataires : tout ou rien
 
@@ -105,7 +110,29 @@ batch = client.sms.send_many(recipients=["0812345678"], body="Commande 1042 prê
 batch.replayed   # True si c'était un rejeu
 ```
 
-La même clé avec un autre contenu est refusée : `IdempotencyKeyReusedError` (409).
+La même clé avec un autre contenu est refusée : `IdempotencyKeyReusedError` (409). L'empreinte porte sur les
+destinataires normalisés et dédoublonnés (`0812345678` puis `243812345678` avec la même clé = rejeu). Si la requête
+d'origine est encore en cours (`409 IDEMPOTENCY_REQUEST_IN_PROGRESS`), le SDK attend `Retry-After` (5 s) et relance
+avec la même clé ; ses relances épuisées, il lève `IdempotencyRequestInProgressError` (relancer reste sans risque).
+
+Si la requête d'origine a échoué de façon inattendue côté API, son résultat est inconnu (un SMS ou un code OTP a pu
+partir) et tout rejeu avec cette clé reçoit `409 IDEMPOTENCY_KEY_UNRESOLVED`, levée en `IdempotencyKeyUnresolvedError`.
+Le SDK ne la relance jamais, et **vous ne devez pas la relancer automatiquement** non plus :
+
+1. vérifiez ce qui s'est passé : `client.sms.list(reference="commande-1042")` pour un SMS (passez une `reference` pour
+   cela), ou demandez à l'utilisateur s'il a reçu un code pour un OTP ;
+2. seulement si rien n'est parti, renvoyez avec une **nouvelle** `Idempotency-Key` (l'ancienne reste non résolue).
+
+```python
+from labyrinthe_connect import IdempotencyKeyUnresolvedError
+
+try:
+    client.sms.send(to="0812345678", body="Commande prête", reference="commande-1042",
+                    idempotency_key="commande-1042-prete")
+except IdempotencyKeyUnresolvedError as error:
+    log.warning("Résultat inconnu, requête %s : vérifier avant de renvoyer", error.request_id)
+    deja_envoye = client.sms.list(reference="commande-1042", per_page=1).data
+```
 
 ### Lister les messages
 
@@ -135,6 +162,8 @@ from labyrinthe_connect import OtpFailureReason
 # 1. Envoyer le code. Garder otp_id CÔTÉ SERVEUR (session), jamais dans le navigateur.
 otp = client.otp.send(phone="0812345678")
 request.session["otp_id"] = otp.otp_id
+otp.code_length, otp.code_type      # 6, OtpCodeType.NUMERIC (ou ALPHANUMERIC) : choisir le bon champ de saisie
+otp.resend_after_seconds            # 60 : compte à rebours avant « Renvoyer le code »
 
 # 2. L'utilisateur saisit le code reçu par SMS.
 
@@ -143,7 +172,7 @@ result = client.otp.verify(otp_id=request.session["otp_id"], code=code_saisi)
 if result.verified:
     del request.session["otp_id"]          # connecter l'utilisateur
 elif result.reason is OtpFailureReason.INVALID_CODE:
-    ...                                     # mauvais code : une tentative consommée
+    ...                                     # mauvais code : result.attempts_remaining essais restants
 else:
     ...                                     # EXPIRED, ALREADY_USED, MAX_ATTEMPTS_REACHED : redemander un code
 ```
@@ -152,11 +181,20 @@ else:
 - Un nouvel envoi au même numéro invalide le code précédent.
 - Longueur, validité, tentatives, Sender ID et modèle viennent des paramètres OTP du compte ; `template` (doit
   contenir `{code}`) et `locale` (`"fr"` ou `"en"`) permettent de les surcharger.
-- Limites : `OtpResendTooSoonError` (attendre `retry_after` secondes), `OtpRateLimitedError` (`scope`, `limit`).
+- `attempts_remaining` : entier après `invalid_code`, `0` avec `max_attempts_reached`, `None` si vérifié, déjà
+  utilisé ou expiré.
+- `web_otp_domain="app.exemple.com"` ajoute la ligne `@app.exemple.com #123456` de la
+  [Web OTP API](https://developer.mozilla.org/docs/Web/API/WebOTP_API) (remplissage automatique sous Chrome,
+  Android) ; `strip_accents=True` garde le SMS en GSM-7.
+- Limites : `OtpResendTooSoonError` (attendre `retry_after` secondes ; un renvoi est accepté tout de suite après une
+  vérification réussie), `OtpRateLimitedError` (`scope`, `limit`, `retry_after`).
 - **Mode test** : avec une clé `lsk_test_`, aucun SMS n'est envoyé et `otp.test_code` contient le code pour tester
   le parcours complet. Toujours `None` en live ; masqué dans `repr()` et retiré lors d'un pickle.
 
-`otp.send()` n'est jamais relancé après une erreur réseau ou une 5xx (le SMS a pu partir).
+Comme les SMS, chaque `otp.send()` porte un `Idempotency-Key` (un `uuid4`, ou le vôtre : `idempotency_key=`)
+réutilisé par les relances du SDK : un rejeu renvoie le même `otp_id` (et le même `test_code` en mode test) sans
+second SMS, avec `otp.replayed` à `True`. `otp.send()` est donc relancé après une erreur réseau, une 5xx, un
+`TOO_MANY_REQUESTS` ou un `IDEMPOTENCY_REQUEST_IN_PROGRESS`, jamais après `OTP_RESEND_TOO_SOON` ni `OTP_RATE_LIMITED`.
 
 ## Webhooks
 
@@ -172,8 +210,9 @@ if isinstance(event, MessageStatusChanged):
     maj_message(event.data.message_id, event.data.status)
 ```
 
-Événements : `MessageStatusChanged`, `CampaignCompleted`, `BalanceLow`, `TestPing`, `UnknownEvent` (type ajouté
-après cette version : répondre 2xx). Dédoublonnez sur `event.id` (jusqu'à 5 tentatives, ordre non garanti).
+Événements : `MessageStatusChanged` (dont `reference`, `error_code`, `error_message`), `CampaignCompleted`,
+`BalanceLow`, `OtpVerified` et `OtpFailed` (`otp_id`, `phone`, `status`, `reason`, `verified_at` ; jamais le code),
+`TestPing`, `UnknownEvent` (type ajouté après cette version : répondre 2xx). Dédoublonnez sur `event.id` (jusqu'à 5 tentatives, ordre non garanti).
 `SignatureVerificationError` / `InvalidWebhookPayloadError` : répondre 400. Secret par défaut des intégrations :
 `LABYRINTHE_WEBHOOK_SECRET`.
 
@@ -186,6 +225,9 @@ urlpatterns = [path("webhooks/labyrinthe/", WebhookView.as_view())]   # settings
 @receiver(message_status_changed)
 def on_status(sender, event, **kwargs): ...
 ```
+
+Signaux : `webhook_received`, `message_status_changed`, `campaign_completed`, `balance_low`, `otp_verified`,
+`otp_failed`, `test_ping`, `unknown_event`.
 
 ### FastAPI
 
@@ -208,25 +250,34 @@ app.register_blueprint(create_webhook_blueprint(traiter))     # POST /webhooks/l
 
 ## Erreurs
 
-Toutes héritent de `LabyrintheError` (`code`, `message`, `status`, `details`) ; les erreurs API de `ApiError`
-(`headers`, `request_id`). Même hiérarchie que les SDK PHP et Node : `AuthenticationError` (401), `PermissionError`
-(403), `NotFoundError` (404), `ValidationError` (`field_errors`), `RecipientNotSendableError` (`rejected`),
+Toutes héritent de `LabyrintheError` (`code`, `message`, `status`, `details` toujours un `dict`, `request_id`) ;
+les erreurs API de `ApiError` (`headers`, `api_version`). Même hiérarchie que les SDK PHP et Node :
+`AuthenticationError` (401), `PermissionError` (403), `AccountSuspendedError` (403 `ACCOUNT_SUSPENDED`, compte
+suspendu, sous-classe de `PermissionError`), `NotFoundError` (404), `ValidationError` (`field_errors`), `RecipientNotSendableError` (`rejected`),
 `SenderIdNotApprovedError`, `InvalidPhoneError`, `InsufficientCreditsError` (`available`, `required`),
-`IdempotencyKeyReusedError`, `RateLimitError` (`retry_after`), `OtpResendTooSoonError`, `OtpRateLimitedError`,
+`IdempotencyKeyReusedError`, `IdempotencyRequestInProgressError` (`retry_after`), `IdempotencyKeyUnresolvedError` (résultat inconnu, jamais relancée), `RateLimitError` (`retry_after`), `OtpResendTooSoonError`, `OtpRateLimitedError`,
 `ServiceUnavailableError`, `ApiError` (code inconnu), `APIConnectionError`, `APITimeoutError`,
 `InvalidArgumentError`, `UnexpectedResponseError`. Testez `code`, jamais `message` (en français, pour les humains).
+
+### Identifiant de requête
+
+Chaque réponse porte l'en-tête `X-Request-Id`, à communiquer au support : le SDK l'expose en `request_id` sur chaque
+erreur et sur chaque objet renvoyé (`Message`, `MessageBatch`, `Estimate`, `Balance`, `SenderId`, `OtpSendResult`,
+`OtpVerifyResult`, pages ; hors égalité et `repr()`). Chaque méthode accepte `request_id=` pour envoyer le vôtre
+(1 à 128 caractères parmi `A-Z a-z 0-9 . _ : -`, vérifié localement), réutilisé par chaque relance et renvoyé par
+l'API — y compris sur une erreur réseau.
 
 ## Relances
 
 2 relances par défaut, backoff exponentiel 0,5 s → 1 s → 2 s avec jitter, **uniquement sans risque** :
 
-| Requête | Erreur réseau / timeout | 5xx | 429 `TOO_MANY_REQUESTS` |
-|---|---|---|---|
-| lectures, `estimate` | relancée | relancée | après `Retry-After` |
-| `send` / `send_many` (toujours avec `Idempotency-Key`) | relancée, même clé | relancée, même clé | après `Retry-After` |
-| `otp.send`, `otp.verify` | **jamais** | **jamais** | relancée |
+| Requête | Erreur réseau / timeout | 5xx | 429 `TOO_MANY_REQUESTS` | 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` |
+|---|---|---|---|---|
+| lectures, `estimate` | relancée | relancée | après `Retry-After` | — |
+| `send` / `send_many` / `otp.send` (toujours avec `Idempotency-Key`) | relancée, même clé | relancée, même clé | après `Retry-After` | après `Retry-After`, même clé |
+| `otp.verify` | **jamais** | **jamais** | relancée | — |
 
-Jamais de relance sur une erreur métier (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`). Au-delà de
+Jamais de relance sur une autre erreur métier (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`, `IDEMPOTENCY_KEY_UNRESOLVED`). Au-delà de
 `max_retry_wait` (10 s), `RateLimitError` est levée sans attendre. Les redirections ne sont jamais suivies.
 
 ## Configuration
@@ -235,7 +286,11 @@ Jamais de relance sur une erreur métier (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_
 default_sender=None, http_client=None)` — clé et URL lues par défaut dans `LABYRINTHE_API_KEY` et
 `LABYRINTHE_BASE_URL` (un hôte seul est complété par `/api/public/v1`). Journalisation via le logger
 `labyrinthe_connect` (clé, codes, corps et numéros complets jamais journalisés). `repr(client)` affiche
-`lsk_test_****` ; un client ne se « pickle » pas.
+`lsk_test_****` ; un client ne se « pickle » pas. `phone.normalize()` applique les règles de l'API : sans `+`,
+11 chiffres ou plus ne commençant pas par 0 = déjà international (`33612345678` reste tel quel) ; sinon numéro local
+complété par l'indicatif par défaut. Pour un numéro étranger court (10 chiffres ou moins), toujours utiliser le `+`.
+Les requêtes envoient le numéro normalisé au format E.164 avec son `+` (`+243812345678`) : un numéro étranger court
+garde ainsi son indicatif.
 
 ## Développement
 

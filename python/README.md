@@ -58,7 +58,7 @@ async with AsyncLabyrinthe() as client:               # same methods, awaited
 
 ```python
 message = client.sms.send(
-    to="+243 81 234 5678",       # +243…, 00243…, 243…, 0812…, 812… are all accepted
+    to="+243 81 234 5678",       # +243…, 00243…, 243…, 0812…, 812…, 33612345678 are all accepted
     body="Your order 1042 is ready.",
     sender="MYSHOP",             # optional: an approved Sender ID (client.sender_ids.list())
     reference="order-1042",      # optional: your own reference, max 64 characters
@@ -95,6 +95,17 @@ estimate.total_credits   # 2
 estimate.is_affordable   # does the balance cover it?
 ```
 
+`strip_accents=True` (on `send`, `send_many`, `estimate` and `otp.send`) asks the API to replace accents and
+typographic characters with ASCII before sending: the message goes back to GSM-7, often half the price. The
+transliteration depends on the server (`Café` may become `Cafe` or `Caf'e`): do not rely on it for an exact text.
+
+```python
+client.sms.estimate(body="Votre réservation est confirmée", recipients="0812345678", strip_accents=True).encoding
+# Encoding.GSM7
+```
+
+The estimate counts recipients like the send (normalised, duplicates merged).
+
 ### Several recipients: all or nothing
 
 ```python
@@ -126,7 +137,30 @@ batch = client.sms.send_many(recipients=["0812345678"], body="Your order 1042 is
 batch.replayed   # True when this was a replay
 ```
 
-The same key with a different content is refused with `IdempotencyKeyReusedError` (409).
+The same key with a different content is refused with `IdempotencyKeyReusedError` (409). The fingerprint uses the
+normalised, de-duplicated recipients: `0812345678` then `243812345678` with the same key is a replay. While the
+original request is still running, the API answers `409 IDEMPOTENCY_REQUEST_IN_PROGRESS`: the SDK waits
+`Retry-After` (5 s) and retries with the same key; once its retries are exhausted it raises
+`IdempotencyRequestInProgressError`, and retrying with the same key is still safe.
+
+If the original request failed unexpectedly on the API side, its outcome is unknown (an SMS or an OTP code may have
+been sent) and every replay with that key gets `409 IDEMPOTENCY_KEY_UNRESOLVED`, raised as
+`IdempotencyKeyUnresolvedError`. The SDK never retries it, and **you must not retry it automatically** either:
+
+1. check what happened: `client.sms.list(reference="order-1042")` for an SMS (send a `reference` for this), or ask the
+   user whether a code arrived for an OTP;
+2. only if nothing was sent, send again with a **new** `Idempotency-Key` (the old one stays unresolved).
+
+```python
+from labyrinthe_connect import IdempotencyKeyUnresolvedError
+
+try:
+    client.sms.send(to="0812345678", body="Order ready", reference="order-1042",
+                    idempotency_key="order-1042-ready")
+except IdempotencyKeyUnresolvedError as error:
+    log.warning("Outcome unknown, request %s: check before sending again", error.request_id)
+    already_sent = client.sms.list(reference="order-1042", per_page=1).data
+```
 
 ### Listing messages
 
@@ -165,6 +199,8 @@ from labyrinthe_connect import OtpFailureReason
 # 1. Send the code. Keep otp_id SERVER-SIDE (session, cache, database), never in the browser.
 otp = client.otp.send(phone="0812345678")
 request.session["otp_id"] = otp.otp_id
+otp.code_length, otp.code_type      # 6, OtpCodeType.NUMERIC (or ALPHANUMERIC): pick the right input field
+otp.resend_after_seconds            # 60: countdown before "Resend the code"
 
 # 2. The user types the code received by SMS.
 
@@ -173,7 +209,7 @@ result = client.otp.verify(otp_id=request.session["otp_id"], code=typed_code)
 if result.verified:
     del request.session["otp_id"]          # log the user in / mark the number as verified
 elif result.reason is OtpFailureReason.INVALID_CODE:
-    ...                                     # wrong code: one attempt consumed, let the user try again
+    ...                                     # wrong code: result.attempts_remaining tries left
 else:
     ...                                     # EXPIRED, ALREADY_USED, MAX_ATTEMPTS_REACHED: ask for a new code
 ```
@@ -183,12 +219,21 @@ else:
 - Length, validity, attempts, Sender ID and template come from the account's OTP settings. You can override the
   template (`template="Your MyShop code: {code}"`, must contain `{code}`; optional `{app_name}`, `{minutes}`) and
   the language (`locale="fr"` or `"en"`).
-- Limits: `OtpResendTooSoonError` (wait `retry_after` seconds) and `OtpRateLimitedError` (`scope`, `limit`).
+- `attempts_remaining`: an integer after `invalid_code`, `0` with `max_attempts_reached`, `None` when verified,
+  already used or expired.
+- `web_otp_domain="app.example.com"` adds the `@app.example.com #123456` line used by the
+  [Web OTP API](https://developer.mozilla.org/docs/Web/API/WebOTP_API) to fill the code automatically (Chrome,
+  Android). `strip_accents=True` keeps the message in GSM-7.
+- Limits: `OtpResendTooSoonError` (wait `retry_after` seconds; a new send is accepted right after a successful
+  verification) and `OtpRateLimitedError` (`scope`, `limit`, `retry_after`).
 - **Test mode**: with a `lsk_test_` key no SMS is sent and `otp.test_code` holds the code, so you can test the
   whole flow. Always `None` with a live key; hidden from `repr()` and dropped when the result is pickled.
 
-`otp.send()` is never retried after a network error or a 5xx (the SMS may have left): show an error and let the
-user ask for a new code.
+Like SMS sends, every `otp.send()` carries an `Idempotency-Key` (a `uuid4`, or yours: `idempotency_key=`), reused by
+the SDK's retries: a replay returns the same `otp_id` (and the same `test_code` in test mode) without a second SMS,
+with `otp.replayed` set to `True`. `otp.send()` is therefore retried after a network error, a 5xx, a
+`TOO_MANY_REQUESTS` or an `IDEMPOTENCY_REQUEST_IN_PROGRESS`, never after `OTP_RESEND_TOO_SOON` or `OTP_RATE_LIMITED`.
+Pass your own key (e.g. derived from the login attempt) to make your own retries safe too.
 
 ## Webhooks
 
@@ -212,9 +257,11 @@ Every event has `id` (deduplicate on it: deliveries are retried up to 5 times an
 
 | Class | `event.type` | `data` |
 |---|---|---|
-| `MessageStatusChanged` | `message.status_changed` | `message_id`, `recipient`, `status`, `provider_message_id`, `campaign_id` |
+| `MessageStatusChanged` | `message.status_changed` | `message_id`, `recipient`, `status`, `provider_message_id`, `campaign_id`, `reference`, `error_code`, `error_message` |
 | `CampaignCompleted` | `campaign.completed` | `campaign_id`, `name`, `recipients_count`, `messages_by_status`, `credits_charged`, `completed_at` |
 | `BalanceLow` | `balance.low` | `balance`, `threshold` |
+| `OtpVerified` | `otp.verified` | `otp_id`, `phone`, `status` (`verified`), `reason` (`None`), `verified_at` |
+| `OtpFailed` | `otp.failed` | `otp_id`, `phone`, `status` (`failed` / `expired`), `reason` (`max_attempts_reached` / `expired`), `verified_at` (`None`) |
 | `TestPing` | `test.ping` | `{}` |
 | `UnknownEvent` | a type added after this SDK version | as sent; acknowledge it with a 2xx |
 
@@ -240,7 +287,7 @@ def on_status(sender, event, **kwargs):
 ```
 
 CSRF-exempt, POST only, 400 on a bad signature. Signals: `webhook_received` (all), `message_status_changed`,
-`campaign_completed`, `balance_low`, `test_ping`, `unknown_event`. A receiver that raises gives a 500 (retried).
+`campaign_completed`, `balance_low`, `otp_verified`, `otp_failed`, `test_ping`, `unknown_event`. A receiver that raises gives a 500 (retried).
 
 ### FastAPI
 
@@ -277,12 +324,14 @@ Every verified event is also sent through the `webhook_received` blinker signal.
 ## Errors
 
 Every exception extends `LabyrintheError` and has `code` (stable, for your code), `message`, `status` (HTTP status,
-or `None` without a response) and `details`. API errors extend `ApiError` and also expose `headers` and `request_id`.
+or `None` without a response), `details` (always a `dict`) and `request_id`. API errors extend `ApiError` and also
+expose `headers` and `api_version` (`X-Api-Version`).
 
 | Exception | When |
 |---|---|
 | `AuthenticationError` | 401 — missing, invalid or revoked key |
 | `PermissionError` | 403 — IP not allowed (`FORBIDDEN`), OTP disabled for the account (`OTP_DISABLED_FOR_ACCOUNT`) |
+| `AccountSuspendedError` | 403 `ACCOUNT_SUSPENDED` — account suspended by the platform (extends `PermissionError`) |
 | `NotFoundError` | 404 — unknown message or `otp_id` |
 | `ValidationError` | 422 `VALIDATION_ERROR` — `field_errors` |
 | `RecipientNotSendableError` | 422 — `rejected`, `reason`; nothing was sent |
@@ -290,8 +339,10 @@ or `None` without a response) and `details`. API errors extend `ApiError` and al
 | `InvalidPhoneError` | 422 `INVALID_PHONE` (OTP) |
 | `InsufficientCreditsError` | 409 — `available`, `required`; nothing was sent |
 | `IdempotencyKeyReusedError` | 409 — same key, different request |
+| `IdempotencyRequestInProgressError` | 409 — original request still running (already retried); `retry_after` |
+| `IdempotencyKeyUnresolvedError` | 409 `IDEMPOTENCY_KEY_UNRESOLVED` — outcome of the original request unknown; never retried: check, then send with a new key |
 | `RateLimitError` | 429 `TOO_MANY_REQUESTS` — `retry_after` (seconds) |
-| `OtpResendTooSoonError`, `OtpRateLimitedError` | 429 — extend `RateLimitError`; `scope`, `limit` |
+| `OtpResendTooSoonError`, `OtpRateLimitedError` | 429 — extend `RateLimitError`; `retry_after`, `scope`, `limit` |
 | `ServiceUnavailableError` | 5xx, including 503 `OTP_SERVICE_DISABLED` |
 | `ApiError` | any other code (the list is open: new codes may appear) |
 | `APIConnectionError`, `APITimeoutError` | network error (`CONNECTION_ERROR`) or timeout (`TIMEOUT`) |
@@ -310,7 +361,20 @@ try:
 except InsufficientCreditsError as error:
     alert_finance(error.available, error.required)
 except ApiError as error:
-    logger.error("Labyrinthe Connect error %s (HTTP %s)", error.code, error.status)
+    logger.error("Labyrinthe Connect error %s (HTTP %s, request %s)", error.code, error.status, error.request_id)
+```
+
+### Request IDs
+
+Every API response carries an `X-Request-Id` header, to give to support. The SDK exposes it as `request_id` on every
+error and on every returned object (`Message`, `MessageBatch`, `Estimate`, `Balance`, `SenderId`, `OtpSendResult`,
+`OtpVerifyResult`, pages); it is left out of equality and `repr()`. Every method also accepts `request_id=` to send
+your own identifier (1 to 128 characters among `A-Z a-z 0-9 . _ : -`, checked locally), reused by every retry of the
+call and echoed by the API — handy to correlate with your own logs, also on network errors.
+
+```python
+balance = client.balance.get(request_id="checkout-1042")
+balance.request_id   # "checkout-1042"
 ```
 
 ## Retries and timeouts
@@ -318,13 +382,13 @@ except ApiError as error:
 The SDK retries automatically (default: 2 retries, exponential backoff 0.5 s → 1 s → 2 s with jitter) **only when a
 replay cannot cause a side effect twice**:
 
-| Request | Network error / timeout | 5xx | 429 `TOO_MANY_REQUESTS` |
-|---|---|---|---|
-| `get`, `list`, `balance.get`, `sender_ids.list`, `estimate` | retried | retried | retried after `Retry-After` |
-| `send` / `send_many` (always with an `Idempotency-Key`) | retried, same key | retried, same key | retried after `Retry-After` |
-| `otp.send`, `otp.verify` | **never** | **never** | retried (refused before processing) |
+| Request | Network error / timeout | 5xx | 429 `TOO_MANY_REQUESTS` | 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS` |
+|---|---|---|---|---|
+| `get`, `list`, `balance.get`, `sender_ids.list`, `estimate` | retried | retried | retried after `Retry-After` | — |
+| `send` / `send_many` / `otp.send` (always with an `Idempotency-Key`) | retried, same key | retried, same key | retried after `Retry-After` | retried after `Retry-After`, same key |
+| `otp.verify` | **never** | **never** | retried (refused before processing) | — |
 
-Business errors (4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`) are never retried. When the API asks to wait longer
+Business errors (other 4xx, `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`, `IDEMPOTENCY_KEY_UNRESOLVED`) are never retried. When the API asks to wait longer
 than `max_retry_wait` (default 10 s), the SDK raises `RateLimitError` instead of waiting. Redirects are never
 followed. Every method accepts `timeout=` (seconds, per attempt) to override the client's.
 
@@ -348,7 +412,10 @@ client = Labyrinthe(
   logging.
 - `repr(client)` shows `lsk_test_****`; clients refuse to be pickled (they hold the key): create one per process.
 - `labyrinthe_connect.phone.normalize("0812345678")` returns `"243812345678"` (or `None`) with the same rules as the
-  API; `is_valid()` and `mask()` are also available. International numbers are never blocked.
+  API: without `+`, 11 digits or more not starting with 0 are already international (`33612345678` stays
+  `33612345678`); otherwise a local number gets the default country code. For a short foreign number (10 digits or
+  fewer), always use the `+`. Requests send the normalised number in E.164 with its `+` (`+243812345678`), so a
+  short foreign number keeps its country code. `is_valid()` and `mask()` are also available. International numbers are never blocked.
 - `User-Agent: labyrinthe-python/<version> Python/<version>`.
 
 ## Development
