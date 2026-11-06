@@ -7,6 +7,7 @@
 import {
   ApiError,
   ConnectionError,
+  FeatureDisabledError,
   InvalidArgumentError,
   RequestAbortedError,
   TimeoutError,
@@ -30,6 +31,11 @@ import { clientIdentifier, isBrowser } from './runtime.js';
  * - `throttled-only` : POST /otp/verify. Relancée seulement sur 429 TOO_MANY_REQUESTS
  *   (refusée avant traitement). Jamais sur erreur réseau ni 5xx (risque d'une
  *   tentative consommée).
+ *
+ * 503 FEATURE_DISABLED / OTP_SERVICE_DISABLED (fonctionnalité coupée par la
+ * plateforme, refusée avant traitement) : jamais de backoff aveugle. Relancée,
+ * dans les deux modes, uniquement si `Retry-After` est présent et ne dépasse pas
+ * `maxRetryWaitMs`, après exactement ce délai ; sinon levée immédiatement.
  *
  * Les limites métier OTP (OTP_RESEND_TOO_SOON, OTP_RATE_LIMITED) ne sont jamais relancées.
  */
@@ -309,6 +315,11 @@ export class Transport {
 
   /** Délai avant la prochaine tentative, ou null pour abandonner (l'API demande d'attendre plus que le maximum). */
   #retryDelay(error: ApiError, attempt: number): number | null {
+    if (error instanceof FeatureDisabledError) {
+      // Seul l'en-tête Retry-After compte (réactivation programmée) : jamais de backoff aveugle.
+      const retryAfter = error.retryAfterMs;
+      return retryAfter !== null && retryAfter <= this.#config.maxRetryWaitMs ? retryAfter : null;
+    }
     if (error.status === 429 || error.code === IN_PROGRESS) {
       const retryAfter = retryAfterMsOf(error.headers, error.details);
       if (retryAfter !== null) {
@@ -337,6 +348,10 @@ export class Transport {
 const IN_PROGRESS = 'IDEMPOTENCY_REQUEST_IN_PROGRESS';
 
 function isRetryable(mode: RetryMode, error: ApiError): boolean {
+  // Fonctionnalité coupée : refusée avant traitement, relançable dans tous les modes (délai décidé par #retryDelay).
+  if (error instanceof FeatureDisabledError) {
+    return true;
+  }
   // Seulement la limite générique : OTP_RESEND_TOO_SOON / OTP_RATE_LIMITED sont des limites métier.
   if (error.status === 429) {
     return error.code === 'TOO_MANY_REQUESTS';

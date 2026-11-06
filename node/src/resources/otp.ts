@@ -177,7 +177,9 @@ export class Otp {
    * SDK retries network errors, 5xx, 429 TOO_MANY_REQUESTS and 409
    * IDEMPOTENCY_REQUEST_IN_PROGRESS with the same key: a retry never sends a
    * second SMS. The business limits (OTP_RESEND_TOO_SOON, OTP_RATE_LIMITED)
-   * are never retried.
+   * are never retried. 503 FEATURE_DISABLED / OTP_SERVICE_DISABLED
+   * (`FeatureDisabledError`) is retried only after a `Retry-After` no longer
+   * than `maxRetryWaitMs`.
    */
   async send(params: SendOtpParams, options: RequestOptions = {}): Promise<OtpSendResult> {
     const body: Json = {
@@ -245,8 +247,10 @@ export class Otp {
    * is consumed. Free. Throws `NotFoundError` for an unknown `otpId` (or one
    * from another account).
    *
-   * Retried only on 429 TOO_MANY_REQUESTS (refused before processing): after a
-   * network error or a 5xx, an attempt may have been consumed.
+   * Retried only on 429 TOO_MANY_REQUESTS and on 503 FEATURE_DISABLED with a
+   * `Retry-After` no longer than `maxRetryWaitMs` (both refused before
+   * processing): after a network error or another 5xx, an attempt may have
+   * been consumed.
    */
   async verify(params: VerifyOtpParams, options: RequestOptions = {}): Promise<OtpVerifyResult> {
     const { otpId, code } = params;
