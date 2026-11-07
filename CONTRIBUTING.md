@@ -15,7 +15,7 @@ cd python && pip install -r requirements-dev.txt -e . && ruff check . && ruff fo
   && mypy && pytest && python -m build && twine check --strict dist/*   # lint + mypy --strict + tests + build
 cd dotnet && dotnet format --verify-no-changes && dotnet build -c Release -warnaserror && dotnet test -c Release \
   && dotnet pack src/Labyrinthe.Connect -c Release -o artifacts   # .NET SDK 8+ (global.json rolls forward)
-cd java && ./mvnw verify                            # JDK 11+ (starter + Spotless on 17+): -Xlint:all -Werror, tests, SpotBugs, Javadoc
+cd java && ./mvnw verify                            # JDK 11+ (starter on 17+, Spotless on 21+): -Xlint:all -Werror, tests, SpotBugs, Javadoc
 cd wordpress && composer install && php bin/install-wp-tests.php && composer check && composer build \
   && php bin/smoke-test.php   # PHP 8.2+ to build (8.1+ to run), MySQL: WPCS + PHPStan + WordPress test suite + zip
 ```

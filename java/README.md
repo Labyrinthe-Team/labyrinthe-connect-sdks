@@ -713,7 +713,7 @@ Issues and pull requests go to the [monorepo](https://github.com/Labyrinthe-Team
 
 ```bash
 ./mvnw verify                 # unit + OpenAPI contract tests, -Xlint:all -Werror, Spotless, SpotBugs, Javadoc
-./mvnw spotless:apply         # format (google-java-format, JDK 17+)
+./mvnw spotless:apply         # format (google-java-format, JDK 21+)
 ./mvnw -q -pl examples -am verify -DskipTests   # build the examples only
 
 # integration tests against a local backend, with a TEST key only

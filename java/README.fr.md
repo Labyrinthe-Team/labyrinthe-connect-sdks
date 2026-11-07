@@ -726,7 +726,7 @@ lisez d'abord [CONTRIBUTING.md](../CONTRIBUTING.md). Depuis `java/` :
 
 ```bash
 ./mvnw verify                 # tests unitaires + contrat OpenAPI, -Xlint:all -Werror, Spotless, SpotBugs, Javadoc
-./mvnw spotless:apply         # formatage (google-java-format, JDK 17+)
+./mvnw spotless:apply         # formatage (google-java-format, JDK 21+)
 ./mvnw -q -pl examples -am verify -DskipTests   # construire seulement les exemples
 
 # tests d'intégration contre un backend local, avec une clé de TEST uniquement
