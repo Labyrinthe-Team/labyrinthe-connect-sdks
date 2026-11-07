@@ -26,6 +26,13 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <!-- Tests et exemples : fichier de documentation généré pour que le SDK .NET 10 applique IDE0005
+       (usings inutiles) au build, sans exiger de commentaires XML (CS1591). src/* garde CS1591. -->
+  <PropertyGroup Condition="!$([System.String]::Copy('$(MSBuildProjectDirectory)').Replace('\', '/').Contains('/src/'))">
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
   <!-- Builds reproductibles et SourceLink en CI (GitHub Actions). Hors dépôt git, SourceLink est désactivé. -->
   <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
