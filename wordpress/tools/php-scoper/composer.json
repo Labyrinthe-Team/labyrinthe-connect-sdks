@@ -8,6 +8,9 @@
         "humbug/php-scoper": "^0.18"
     },
     "config": {
-        "sort-packages": true
+        "sort-packages": true,
+        "platform": {
+            "php": "8.2.0"
+        }
     }
 }
