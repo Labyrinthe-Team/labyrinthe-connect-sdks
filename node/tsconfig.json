@@ -23,7 +23,9 @@
     "resolveJsonModule": true,
     "noEmit": true,
     "paths": {
-      "@labyrinthe/connect": ["./src/index.ts"]
+      "@labyrinthe/connect": ["./src/index.ts"],
+      "@labyrinthe/connect/express": ["./src/express.ts"],
+      "@labyrinthe/connect/next": ["./src/next.ts"]
     }
   },
   "include": ["src", "tests", "examples", "*.config.ts"]
