@@ -48,7 +48,8 @@ jobs:
 
   tests:
     name: Python ${{ matrix.python }}
-    runs-on: ubuntu-latest
+    # ubuntu-24.04 : Python 3.9 n'est plus fourni pour ubuntu-latest (Ubuntu 26.04).
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
