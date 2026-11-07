@@ -260,7 +260,7 @@
   </build>
 
   <profiles>
-    <!-- JDK 17+ : starter Spring Boot, exemple Spring Boot et formatage (google-java-format exige Java 17). -->
+    <!-- JDK 17+ : starter Spring Boot et exemple Spring Boot. -->
     <profile>
       <id>jdk17</id>
       <activation>
@@ -269,6 +269,15 @@
       <modules>
         <module>spring-boot-starter</module>
       </modules>
+    </profile>
+
+    <!-- JDK 21+ : contrôle du formatage (google-java-format ${google-java-format.version} exige Java 21 ;
+         sur Java 17, Spotless se limite à la 1.28.0 et échoue). -->
+    <profile>
+      <id>format</id>
+      <activation>
+        <jdk>[21,)</jdk>
+      </activation>
       <build>
         <plugins>
           <plugin>
