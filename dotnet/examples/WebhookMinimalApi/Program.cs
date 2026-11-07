@@ -44,7 +44,11 @@ internal sealed partial class StatusHandler : ILabyrintheWebhookHandler
         switch (webhookEvent)
         {
             case MessageStatusChanged changed:
-                LogStatus(changed.Data.MessageId, changed.Data.Status.ToApiString());
+                // IsEnabled: ToApiString() only runs when the log is written (CA1873).
+                if (logger.IsEnabled(LogLevel.Information))
+                {
+                    LogStatus(changed.Data.MessageId, changed.Data.Status.ToApiString());
+                }
                 break;
             case BalanceLow low:
                 LogBalance(low.Data.Balance, low.Data.Threshold);
