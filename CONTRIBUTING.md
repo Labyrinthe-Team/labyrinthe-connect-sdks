@@ -48,7 +48,7 @@ Tags are per package and SemVer:
 | `widget-otp-v1.2.3` | `widget-otp/` is published to npm as `@labyrinthe/otp-widget` 1.2.3 (`widget-otp-release.yml`, same `NPM_TOKEN` secret and `npm` environment as `node-release.yml`) |
 | `python-v1.2.3` | `python/` is published to PyPI as `labyrinthe-connect` 1.2.3 (`python-release.yml`, Trusted Publishing; prereleases use PEP 440: `python-v1.3.0rc1`) |
 | `dotnet-v1.2.3` | `dotnet/` is published to NuGet as `Labyrinthe.Connect` and `Labyrinthe.Connect.AspNetCore` 1.2.3, with symbol packages (`dotnet-release.yml`, NuGet Trusted Publishing or `NUGET_API_KEY`) |
-| `java-v1.2.3` | `java/` is published to Maven Central as `cd.labyrinthe:labyrinthe-connect` and `cd.labyrinthe:labyrinthe-connect-spring-boot-starter` 1.2.3, signed, with sources and Javadoc (`java-release.yml`) |
+| `java-v1.2.3` | `java/` is published to Maven Central as `com.labyrinthe-rdc:labyrinthe-connect` and `com.labyrinthe-rdc:labyrinthe-connect-spring-boot-starter` 1.2.3, signed, with sources and Javadoc (`java-release.yml`) |
 | `wordpress-v1.2.3` | `wordpress/` is built into `labyrinthe-connect.zip` (GitHub release) and deployed to the wordpress.org SVN (`trunk/` + `tags/1.2.3/`) as the `labyrinthe-connect` plugin (`wordpress-release.yml`, after Plugin Check) |
 
 1. Move `[Unreleased]` to the new version in the package CHANGELOG; update the version constant
@@ -77,7 +77,7 @@ environment. Fallback: a push-only `NUGET_API_KEY` secret in that environment (u
 `Labyrinthe` ID prefix on nuget.org before the first release.
 
 `java-release.yml` publishes with the Sonatype `central-publishing-maven-plugin` (profile `release` of
-`java/pom.xml`). Verify the `cd.labyrinthe` namespace once on central.sonatype.com, then add to the `maven-central`
+`java/pom.xml`). Verify the `com.labyrinthe-rdc` namespace (DNS TXT record on labyrinthe-rdc.com) once on central.sonatype.com, then add to the `maven-central`
 environment of this repository: `MAVEN_CENTRAL_USERNAME` / `MAVEN_CENTRAL_PASSWORD` (a Central Portal *user token*),
 `GPG_PRIVATE_KEY` (armored private key, public key on keys.openpgp.org) and `GPG_PASSPHRASE`.
 

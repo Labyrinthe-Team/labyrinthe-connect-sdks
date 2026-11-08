@@ -17,7 +17,7 @@ the DR Congo and Central Africa. Send an SMS or verify a phone number in less th
 | [`python/`](python) | `labyrinthe-connect` | [PyPI](https://pypi.org/project/labyrinthe-connect/) | 1.2.0 — stable |
 | [`widget-otp/`](widget-otp) | `@labyrinthe/otp-widget` (`<labyrinthe-otp>` + React + server handlers) | [npm](https://www.npmjs.com/package/@labyrinthe/otp-widget) | 1.2.0 — stable |
 | [`dotnet/`](dotnet) | `Labyrinthe.Connect` + `Labyrinthe.Connect.AspNetCore` | [NuGet](https://www.nuget.org/packages/Labyrinthe.Connect) | 1.2.0 — stable |
-| [`java/`](java) | `cd.labyrinthe:labyrinthe-connect` + `labyrinthe-connect-spring-boot-starter` | [Maven Central](https://central.sonatype.com/artifact/cd.labyrinthe/labyrinthe-connect) | 1.2.0 — stable |
+| [`java/`](java) | `com.labyrinthe-rdc:labyrinthe-connect` + `labyrinthe-connect-spring-boot-starter` | [Maven Central](https://central.sonatype.com/artifact/com.labyrinthe-rdc/labyrinthe-connect) | 1.2.0 — stable |
 | [`wordpress/`](wordpress) | WordPress / WooCommerce plugin `labyrinthe-connect` (order SMS, OTP verification and login) | [wordpress.org](https://wordpress.org/plugins/labyrinthe-connect/) | 1.2.0 (SDK PHP 1.2.0, API 1.3.0) — ready, not yet on wordpress.org |
 
 The npm, PyPI, NuGet and Maven Central packages are published directly from this repository (tags `node-vX.Y.Z`, `widget-otp-vX.Y.Z`, `python-vX.Y.Z`, `dotnet-vX.Y.Z`, `java-vX.Y.Z`). PHP packages are developed here and published through read-only mirrors
@@ -96,7 +96,7 @@ node/                 @labyrinthe/connect (npm, published from this repository)
 python/               labyrinthe-connect (PyPI, published from this repository, sync + asyncio)
 widget-otp/           @labyrinthe/otp-widget (npm): <labyrinthe-otp> web component, React wrapper, server handlers
 dotnet/               Labyrinthe.Connect + Labyrinthe.Connect.AspNetCore (NuGet, published from this repository)
-java/                 cd.labyrinthe:labyrinthe-connect + Spring Boot starter (Maven Central, published from this repository)
+java/                 com.labyrinthe-rdc:labyrinthe-connect + Spring Boot starter (Maven Central, published from this repository)
 wordpress/            labyrinthe-connect WordPress / WooCommerce plugin (bundles ../php prefixed, wordpress.org SVN)
 .github/workflows/    one CI workflow per package (path filters), openapi.yml, split.yml (mirrors)
 BACKEND-TODO.md       known API limits and proposals

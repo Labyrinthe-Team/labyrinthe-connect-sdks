@@ -1,11 +1,11 @@
 # Publication du SDK Java sur Maven Central, déclenchée par un tag java-vX.Y.Z.
-# Artefacts publiés : cd.labyrinthe:labyrinthe-connect-parent (pom), cd.labyrinthe:labyrinthe-connect,
-# cd.labyrinthe:labyrinthe-connect-spring-boot-starter (jars, sources, Javadoc, signatures GPG).
+# Artefacts publiés : com.labyrinthe-rdc:labyrinthe-connect-parent (pom), com.labyrinthe-rdc:labyrinthe-connect,
+# com.labyrinthe-rdc:labyrinthe-connect-spring-boot-starter (jars, sources, Javadoc, signatures GPG).
 # Le module examples n'est jamais publié.
 #
 # Prérequis (une seule fois) :
-#   - espace de noms cd.labyrinthe vérifié sur https://central.sonatype.com (preuve DNS sur labyrinthe.cd,
-#     ou groupId à adapter : voir java/README, points ouverts) ;
+#   - espace de noms com.labyrinthe-rdc vérifié sur https://central.sonatype.com (preuve DNS : enregistrement
+#     TXT sur labyrinthe-rdc.com) ;
 #   - environnement GitHub « maven-central » (Settings > Environments), relecteurs obligatoires conseillés,
 #     tags limités à java-v* ;
 #   - secrets de cet environnement :
@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: maven-central
-      url: https://central.sonatype.com/artifact/cd.labyrinthe/labyrinthe-connect
+      url: https://central.sonatype.com/artifact/com.labyrinthe-rdc/labyrinthe-connect
     steps:
       - uses: actions/checkout@v4
 
