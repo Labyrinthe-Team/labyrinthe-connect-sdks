@@ -1,8 +1,8 @@
 # Labyrinthe Connect — Java SDK
 
 [![CI](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/actions/workflows/java.yml/badge.svg)](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/actions/workflows/java.yml)
-[![Maven Central](https://img.shields.io/maven-central/v/cd.labyrinthe/labyrinthe-connect.svg?label=labyrinthe-connect)](https://central.sonatype.com/artifact/cd.labyrinthe/labyrinthe-connect)
-[![Maven Central](https://img.shields.io/maven-central/v/cd.labyrinthe/labyrinthe-connect-spring-boot-starter.svg?label=spring-boot-starter)](https://central.sonatype.com/artifact/cd.labyrinthe/labyrinthe-connect-spring-boot-starter)
+[![Maven Central](https://img.shields.io/maven-central/v/com.labyrinthe-rdc/labyrinthe-connect.svg?label=labyrinthe-connect)](https://central.sonatype.com/artifact/com.labyrinthe-rdc/labyrinthe-connect)
+[![Maven Central](https://img.shields.io/maven-central/v/com.labyrinthe-rdc/labyrinthe-connect-spring-boot-starter.svg?label=spring-boot-starter)](https://central.sonatype.com/artifact/com.labyrinthe-rdc/labyrinthe-connect-spring-boot-starter)
 ![Java](https://img.shields.io/badge/java-11%20%E2%86%92%2021-007396)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -13,8 +13,8 @@ with one-time codes (OTP), in the DR Congo and Central Africa.
 
 | Artifact | Content |
 |---|---|
-| `cd.labyrinthe:labyrinthe-connect` | The client (Java 11+): SMS, balance, Sender IDs, OTP, webhook verification. |
-| `cd.labyrinthe:labyrinthe-connect-spring-boot-starter` | Spring Boot 3 auto-configuration (Java 17+): client bean from `labyrinthe.*` properties and a signed webhook endpoint publishing Spring events. |
+| `com.labyrinthe-rdc:labyrinthe-connect` | The client (Java 11+): SMS, balance, Sender IDs, OTP, webhook verification. |
+| `com.labyrinthe-rdc:labyrinthe-connect-spring-boot-starter` | Spring Boot 3 auto-configuration (Java 17+): client bean from `labyrinthe.*` properties and a signed webhook endpoint publishing Spring events. |
 
 - Built on `java.net.http.HttpClient`. **No runtime dependency** (not even a JSON library).
 - Synchronous **and** asynchronous (`CompletableFuture`) API, thread-safe client, immutable models, `Optional` for
@@ -42,14 +42,14 @@ Maven:
 
 ```xml
 <dependency>
-  <groupId>cd.labyrinthe</groupId>
+  <groupId>com.labyrinthe-rdc</groupId>
   <artifactId>labyrinthe-connect</artifactId>
   <version>1.2.0</version>
 </dependency>
 
 <!-- Spring Boot 3 (Java 17+), instead of the line above: it brings labyrinthe-connect -->
 <dependency>
-  <groupId>cd.labyrinthe</groupId>
+  <groupId>com.labyrinthe-rdc</groupId>
   <artifactId>labyrinthe-connect-spring-boot-starter</artifactId>
   <version>1.2.0</version>
 </dependency>
@@ -59,9 +59,9 @@ Gradle (Kotlin DSL):
 
 ```kotlin
 dependencies {
-    implementation("cd.labyrinthe:labyrinthe-connect:1.2.0")
+    implementation("com.labyrinthe-rdc:labyrinthe-connect:1.2.0")
     // Spring Boot 3 (Java 17+):
-    implementation("cd.labyrinthe:labyrinthe-connect-spring-boot-starter:1.2.0")
+    implementation("com.labyrinthe-rdc:labyrinthe-connect-spring-boot-starter:1.2.0")
 }
 ```
 
@@ -69,9 +69,9 @@ Gradle (Groovy DSL):
 
 ```groovy
 dependencies {
-    implementation 'cd.labyrinthe:labyrinthe-connect:1.2.0'
+    implementation 'com.labyrinthe-rdc:labyrinthe-connect:1.2.0'
     // Spring Boot 3 (Java 17+):
-    implementation 'cd.labyrinthe:labyrinthe-connect-spring-boot-starter:1.2.0'
+    implementation 'com.labyrinthe-rdc:labyrinthe-connect-spring-boot-starter:1.2.0'
 }
 ```
 

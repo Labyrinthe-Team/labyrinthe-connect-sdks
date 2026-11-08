@@ -3,8 +3,8 @@
   Projet parent du SDK Java Labyrinthe Connect.
 
   Modules :
-  - core                 : cd.labyrinthe:labyrinthe-connect (Java 11+, aucune dépendance d'exécution) ;
-  - spring-boot-starter  : cd.labyrinthe:labyrinthe-connect-spring-boot-starter (Java 17+, Spring Boot 3) ;
+  - core                 : com.labyrinthe-rdc:labyrinthe-connect (Java 11+, aucune dépendance d'exécution) ;
+  - spring-boot-starter  : com.labyrinthe-rdc:labyrinthe-connect-spring-boot-starter (Java 17+, Spring Boot 3) ;
   - examples             : exemples compilés à chaque build, jamais publiés.
 
   Le starter et l'exemple Spring Boot ne sont construits qu'à partir du JDK 17 (profil « jdk17 ») :
@@ -15,7 +15,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>cd.labyrinthe</groupId>
+  <groupId>com.labyrinthe-rdc</groupId>
   <artifactId>labyrinthe-connect-parent</artifactId>
   <version>1.2.0</version>
   <packaging>pom</packaging>
@@ -96,12 +96,12 @@
         <scope>import</scope>
       </dependency>
       <dependency>
-        <groupId>cd.labyrinthe</groupId>
+        <groupId>com.labyrinthe-rdc</groupId>
         <artifactId>labyrinthe-connect</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>cd.labyrinthe</groupId>
+        <groupId>com.labyrinthe-rdc</groupId>
         <artifactId>labyrinthe-connect-spring-boot-starter</artifactId>
         <version>${project.version}</version>
       </dependency>

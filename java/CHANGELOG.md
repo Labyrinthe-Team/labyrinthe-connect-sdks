@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `cd.labyrinthe:labyrinthe-connect` and `cd.labyrinthe:labyrinthe-connect-spring-boot-starter`
+All notable changes to `com.labyrinthe-rdc:labyrinthe-connect` and `com.labyrinthe-rdc:labyrinthe-connect-spring-boot-starter`
 are documented here. This project follows [Semantic Versioning](https://semver.org/) and the format of
 [Keep a Changelog](https://keepachangelog.com/).
 

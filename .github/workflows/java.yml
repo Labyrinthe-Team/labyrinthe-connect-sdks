@@ -1,5 +1,5 @@
 # SDK Java (java/) : ./mvnw verify sur JDK 11, 17 et 21.
-# - JDK 11 : cœur (cd.labyrinthe:labyrinthe-connect) + exemples Java, tests unitaires et contrat OpenAPI,
+# - JDK 11 : cœur (com.labyrinthe-rdc:labyrinthe-connect) + exemples Java, tests unitaires et contrat OpenAPI,
 #   -Xlint:all -Werror, SpotBugs, Javadoc ;
 # - JDK 17 et 21 : en plus le starter Spring Boot, l'exemple Spring Boot et le formatage (Spotless).
 # Les tests d'intégration sont ignorés (pas de LABYRINTHE_API_KEY en CI).
