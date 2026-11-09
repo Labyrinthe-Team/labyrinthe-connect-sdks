@@ -5,7 +5,7 @@
 [![Licence : MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 ![Node](https://img.shields.io/badge/node-%E2%89%A5%2018-339933)
 
-Client JavaScript / TypeScript officiel de [Labyrinthe Connect](https://labyrinthe-rdc.com), la plateforme SMS et OTP
+Client JavaScript / TypeScript officiel de [Labyrinthe Connect](https://connect.labyrinthe-rdc.com), la plateforme SMS et OTP
 pour la RD Congo et l'Afrique centrale : envoyer des SMS, suivre leur remise et vérifier des numéros de téléphone par
 code à usage unique (OTP).
 
@@ -19,7 +19,7 @@ code à usage unique (OTP).
   `console.log()` ou `JSON.stringify()` ; les webhooks sont vérifiés en temps constant sur le corps brut.
 - Helpers de webhook pour **Express** et **Next.js** (App Router, et tout runtime Fetch `Request` / `Response`).
 
-Version **1.2.0**, construite sur la spécification de l'API **1.3.0**
+Version **1.2.1**, construite sur la spécification de l'API **1.3.0**
 ([`openapi.yaml`](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/blob/main/openapi/openapi.yaml)).
 Nouveautés : [CHANGELOG](CHANGELOG.md) (en anglais).
 
@@ -113,7 +113,7 @@ import { Labyrinthe } from '@labyrinthe/connect';
 
 const client = new Labyrinthe({
   apiKey: process.env.LABYRINTHE_API_KEY,                  // par défaut
-  baseUrl: 'https://api.labyrinthe-rdc.com/api/public/v1', // par défaut (ou LABYRINTHE_BASE_URL)
+  baseUrl: 'https://api.connect.labyrinthe-rdc.com/api/public/v1', // par défaut (ou LABYRINTHE_BASE_URL)
   timeoutMs: 30_000,
   maxRetries: 2,
   maxRetryWaitMs: 10_000,
@@ -127,7 +127,7 @@ const client = new Labyrinthe({
 | Option | Défaut | Description |
 |---|---|---|
 | `apiKey` | `LABYRINTHE_API_KEY` | `lsk_live_…` ou `lsk_test_…`. Absente → `InvalidArgumentError`. |
-| `baseUrl` | `LABYRINTHE_BASE_URL`, puis `https://api.labyrinthe-rdc.com/api/public/v1` | Un hôte seul (`http://localhost:8000`) est complété par `/api/public/v1`. |
+| `baseUrl` | `LABYRINTHE_BASE_URL`, puis `https://api.connect.labyrinthe-rdc.com/api/public/v1` | Un hôte seul (`http://localhost:8000`) est complété par `/api/public/v1`. |
 | `timeoutMs` | `30000` | Délai maximal de **chaque tentative**, en millisecondes. |
 | `maxRetries` | `2` | Relances automatiques quand elles sont sans risque (0 à 10 ; `0` les désactive). |
 | `maxRetryWaitMs` | `10000` | Plus long `Retry-After` accepté ; au-delà, l'erreur est levée. Plafonne aussi le backoff. |
@@ -732,7 +732,7 @@ L'API est du JSON sur HTTPS ; le SDK n'ajoute que la validation, les relances, l
 Avec `fetch` (Node 18+) :
 
 ```ts
-const API = 'https://api.labyrinthe-rdc.com/api/public/v1';
+const API = 'https://api.connect.labyrinthe-rdc.com/api/public/v1';
 const headers = {
   Authorization: `Bearer ${process.env.LABYRINTHE_API_KEY}`,   // lsk_test_… pendant les tests
   'Content-Type': 'application/json',
@@ -779,7 +779,7 @@ function verifyWebhook(rawBody: Buffer, signatureHeader: string | undefined, sec
 
 Référence : la spécification OpenAPI 3.1
 [`openapi/openapi.yaml`](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/blob/main/openapi/openapi.yaml)
-(aussi servie par l'API sur `https://api.labyrinthe-rdc.com/api/public/openapi.yaml`) et la
+(aussi servie par l'API sur `https://api.connect.labyrinthe-rdc.com/api/public/openapi.yaml`) et la
 [collection Postman](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/tree/main/postman).
 
 ## Mise à jour

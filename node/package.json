@@ -1,6 +1,6 @@
 {
   "name": "@labyrinthe/connect",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Official Node.js / TypeScript SDK for Labyrinthe Connect: send SMS and verify phone numbers with OTP (DR Congo, Central Africa).",
   "keywords": [
     "labyrinthe",

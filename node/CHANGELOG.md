@@ -5,6 +5,14 @@ All notable changes to `@labyrinthe/connect` are documented here. This project f
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-09
+
+### Fixed
+- Default API URL is now `https://api.connect.labyrinthe-rdc.com/api/public/v1`. The previous default (`api.labyrinthe-rdc.com`) does not serve
+  the Labyrinthe Connect API, so requests failed unless the URL was set explicitly. An explicitly configured URL
+  is unchanged.
+- Links to the website now point to https://connect.labyrinthe-rdc.com.
+
 ## [1.2.0] - 2026-11-06
 
 Built against the API specification 1.3.0. Backward compatible with 1.1.x.
@@ -95,7 +103,9 @@ First stable release, built against the API specification 1.1.0.
 - `PhoneNumber` helpers (normalisation identical to the API, validation, masking).
 - ESM + CommonJS + types; zero runtime dependency; Node.js 18+, edge runtimes, Deno and Bun.
 
-[Unreleased]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/node-v1.1.1...HEAD
+[Unreleased]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/node-v1.2.1...HEAD
+[1.2.1]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/node-v1.2.0...node-v1.2.1
+[1.2.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/node-v1.1.1...node-v1.2.0
 [1.1.1]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/node-v1.1.0...node-v1.1.1
 [1.1.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/node-v1.0.0...node-v1.1.0
 [1.0.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/releases/tag/node-v1.0.0

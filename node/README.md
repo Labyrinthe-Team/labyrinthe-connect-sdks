@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Node](https://img.shields.io/badge/node-%E2%89%A5%2018-339933)
 
-Official JavaScript / TypeScript client for [Labyrinthe Connect](https://labyrinthe-rdc.com), the SMS and OTP
+Official JavaScript / TypeScript client for [Labyrinthe Connect](https://connect.labyrinthe-rdc.com), the SMS and OTP
 platform for the DR Congo and Central Africa: send SMS, follow their delivery and verify phone numbers with one-time
 codes (OTP).
 
@@ -18,7 +18,7 @@ codes (OTP).
   `JSON.stringify()`; webhooks are verified in constant time on the raw body.
 - Webhook helpers for **Express** and **Next.js** (App Router, and any Fetch `Request` / `Response` runtime).
 
-Version **1.2.0**, built against the API specification **1.3.0**
+Version **1.2.1**, built against the API specification **1.3.0**
 ([`openapi.yaml`](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/blob/main/openapi/openapi.yaml)).
 What changed: [CHANGELOG](CHANGELOG.md).
 
@@ -110,7 +110,7 @@ import { Labyrinthe } from '@labyrinthe/connect';
 
 const client = new Labyrinthe({
   apiKey: process.env.LABYRINTHE_API_KEY,                  // default
-  baseUrl: 'https://api.labyrinthe-rdc.com/api/public/v1', // default (or LABYRINTHE_BASE_URL)
+  baseUrl: 'https://api.connect.labyrinthe-rdc.com/api/public/v1', // default (or LABYRINTHE_BASE_URL)
   timeoutMs: 30_000,
   maxRetries: 2,
   maxRetryWaitMs: 10_000,
@@ -124,7 +124,7 @@ const client = new Labyrinthe({
 | Option | Default | Description |
 |---|---|---|
 | `apiKey` | `LABYRINTHE_API_KEY` | `lsk_live_…` or `lsk_test_…`. Missing → `InvalidArgumentError`. |
-| `baseUrl` | `LABYRINTHE_BASE_URL`, then `https://api.labyrinthe-rdc.com/api/public/v1` | A bare host (`http://localhost:8000`) is completed with `/api/public/v1`. |
+| `baseUrl` | `LABYRINTHE_BASE_URL`, then `https://api.connect.labyrinthe-rdc.com/api/public/v1` | A bare host (`http://localhost:8000`) is completed with `/api/public/v1`. |
 | `timeoutMs` | `30000` | Timeout of **each attempt**, in milliseconds. |
 | `maxRetries` | `2` | Automatic retries when safe (0 to 10; `0` disables them). |
 | `maxRetryWaitMs` | `10000` | Longest `Retry-After` the SDK waits for; beyond, the error is thrown. Also caps the backoff. |
@@ -723,7 +723,7 @@ The API is plain JSON over HTTPS; the SDK only adds validation, retries, typing 
 (Node 18+):
 
 ```ts
-const API = 'https://api.labyrinthe-rdc.com/api/public/v1';
+const API = 'https://api.connect.labyrinthe-rdc.com/api/public/v1';
 const headers = {
   Authorization: `Bearer ${process.env.LABYRINTHE_API_KEY}`,   // lsk_test_… while testing
   'Content-Type': 'application/json',
@@ -770,7 +770,7 @@ function verifyWebhook(rawBody: Buffer, signatureHeader: string | undefined, sec
 
 Reference: the OpenAPI 3.1 specification
 [`openapi/openapi.yaml`](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/blob/main/openapi/openapi.yaml)
-(also served by the API at `https://api.labyrinthe-rdc.com/api/public/openapi.yaml`) and the
+(also served by the API at `https://api.connect.labyrinthe-rdc.com/api/public/openapi.yaml`) and the
 [Postman collection](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/tree/main/postman).
 
 ## Upgrading

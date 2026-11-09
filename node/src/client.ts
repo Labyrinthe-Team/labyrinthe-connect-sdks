@@ -7,7 +7,7 @@ import { BalanceResource, SenderIds } from './resources/account.js';
 import { Otp } from './resources/otp.js';
 import { Sms } from './resources/sms.js';
 
-export const DEFAULT_BASE_URL = 'https://api.labyrinthe-rdc.com/api/public/v1';
+export const DEFAULT_BASE_URL = 'https://api.connect.labyrinthe-rdc.com/api/public/v1';
 const API_PATH = '/api/public/v1';
 
 export interface LabyrintheOptions {
@@ -159,7 +159,7 @@ function normalizeBaseUrl(baseUrl: string): string {
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new InvalidArgumentError(
-      'baseUrl must be an absolute http(s) URL, e.g. https://api.labyrinthe-rdc.com/api/public/v1.',
+      'baseUrl must be an absolute http(s) URL, e.g. https://api.connect.labyrinthe-rdc.com/api/public/v1.',
     );
   }
   // Un hôte seul ("http://localhost:8000") désigne la racine du backend.

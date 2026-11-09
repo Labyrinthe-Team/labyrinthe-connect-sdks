@@ -76,7 +76,7 @@ const requestSchema = (pathKey: string) => ['paths', pathKey, 'post', 'requestBo
 
 describe.skipIf(!available)('OpenAPI contract', () => {
   it('targets spec 1.3.0', () => {
-    expect(dotted('info.version')).toBe('1.3.0');
+    expect(dotted('info.version')).toBe('1.3.1');
   });
 
   it('implements every operation of the spec, and only those', () => {
