@@ -1,6 +1,6 @@
 {
   "name": "@labyrinthe/otp-widget",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Drop-in phone verification widget for Labyrinthe Connect: <labyrinthe-otp> web component, React wrapper and server handlers (Express, Next.js). No API key in the browser.",
   "keywords": [
     "labyrinthe",
@@ -96,7 +96,7 @@
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
-    "@labyrinthe/connect": "^1.2.0",
+    "@labyrinthe/connect": "^1.2.1",
     "react": ">=18"
   },
   "peerDependenciesMeta": {

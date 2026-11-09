@@ -5,7 +5,7 @@
 [![Licence : MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 ![min+gzip](https://img.shields.io/badge/min%2Bgzip-8.1%20kB-008374)
 
-Vérification de numéro de téléphone prête à l'emploi pour [Labyrinthe Connect](https://labyrinthe-rdc.com), la
+Vérification de numéro de téléphone prête à l'emploi pour [Labyrinthe Connect](https://connect.labyrinthe-rdc.com), la
 plateforme SMS et OTP pour la RD Congo et l'Afrique centrale : un composant web `<labyrinthe-otp>`, un wrapper React,
 et les deux points de terminaison serveur dont il a besoin (Express, Next.js et tout runtime Fetch API).
 
@@ -21,7 +21,7 @@ et les deux points de terminaison serveur dont il a besoin (Express, Next.js et 
   personnalisable par propriétés CSS et `::part()`, français (par défaut) et anglais, chaque texte remplaçable.
 - Aucune dépendance, Shadow DOM, **8,1 ko min+gzip** (script autonome), compatible SSR.
 
-Version **1.2.0**, construite sur la spécification de l'API **1.3.0** et `@labyrinthe/connect` 1.2. Nouveautés :
+Version **1.2.1**, construite sur la spécification de l'API **1.3.0** et `@labyrinthe/connect` 1.2. Nouveautés :
 [CHANGELOG](CHANGELOG.md) (en anglais).
 
 ## Sommaire
@@ -75,7 +75,7 @@ Le navigateur ne voit jamais qu'un numéro masqué, l'expiration, les essais res
 |---|---|
 | `<labyrinthe-otp>` | Un navigateur avec Custom Elements et Shadow DOM : Chrome / Edge 84+, Firefox 90+, Safari 15+ |
 | `@labyrinthe/otp-widget/react` | React ≥ 18 (18 et 19, App Router de Next.js) |
-| `@labyrinthe/otp-widget/server` | Node.js ≥ 18 (`engines`), ou tout runtime avec Fetch et Web Crypto (edge, Deno, Bun), et `@labyrinthe/connect` ^1.2.0 |
+| `@labyrinthe/otp-widget/server` | Node.js ≥ 18 (`engines`), ou tout runtime avec Fetch et Web Crypto (edge, Deno, Bun), et `@labyrinthe/connect` ^1.2.1 |
 
 `@labyrinthe/connect` et `react` sont des dépendances pairs facultatives : installez-les seulement là où vous
 utilisez le helper serveur ou le wrapper React.
@@ -93,8 +93,8 @@ yarn add @labyrinthe/otp-widget @labyrinthe/connect
 Sans bundler, chargez le script autonome depuis un CDN (fixez la version) :
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@labyrinthe/otp-widget@1.2.0/dist/labyrinthe-otp.min.js" defer></script>
-<!-- ou https://unpkg.com/@labyrinthe/otp-widget@1.2.0/dist/labyrinthe-otp.min.js -->
+<script src="https://cdn.jsdelivr.net/npm/@labyrinthe/otp-widget@1.2.1/dist/labyrinthe-otp.min.js" defer></script>
+<!-- ou https://unpkg.com/@labyrinthe/otp-widget@1.2.1/dist/labyrinthe-otp.min.js -->
 ```
 
 Pour l'héberger vous-même, le fichier est exporté sous `@labyrinthe/otp-widget/cdn` (voir
@@ -129,7 +129,7 @@ app.listen(3000);
 **2. Navigateur.**
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@labyrinthe/otp-widget@1.2.0/dist/labyrinthe-otp.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@labyrinthe/otp-widget@1.2.1/dist/labyrinthe-otp.min.js" defer></script>
 
 <labyrinthe-otp send-url="/api/otp/send" verify-url="/api/otp/verify"></labyrinthe-otp>
 <script>
@@ -269,7 +269,7 @@ navigateur ne choisit jamais la clé) et ne faites confiance au numéro qu'aprè
 
 ```html
 <!-- Script autonome (CDN ou auto-hébergé) : définit <labyrinthe-otp> et la variable globale LabyrintheOtp -->
-<script src="https://cdn.jsdelivr.net/npm/@labyrinthe/otp-widget@1.2.0/dist/labyrinthe-otp.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@labyrinthe/otp-widget@1.2.1/dist/labyrinthe-otp.min.js" defer></script>
 ```
 
 ```ts

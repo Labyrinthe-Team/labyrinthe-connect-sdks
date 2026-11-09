@@ -5,6 +5,12 @@ All notable changes to `@labyrinthe/otp-widget` are documented here. This projec
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-09
+
+### Fixed
+- Peer dependency `@labyrinthe/connect` ^1.2.1, whose default API URL is now `https://api.connect.labyrinthe-rdc.com/api/public/v1`.
+- Links to the website now point to https://connect.labyrinthe-rdc.com.
+
 ## [1.2.0] - 2026-11-06
 
 Built against the API specification 1.3.0 and `@labyrinthe/connect` 1.2 (peer dependency now `^1.2.0`).
