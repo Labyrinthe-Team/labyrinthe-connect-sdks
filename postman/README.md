@@ -10,7 +10,7 @@ Collection **1.3.0**, generated from the spec 1.3.0 (see the [CHANGELOG](CHANGEL
 |---|---|
 | `labyrinthe-connect.postman_collection.json` | the collection: one folder per tag (SMS, Compte, OTP), Bearer auth at collection level, light test scripts |
 | `local.postman_environment.json` | `baseUrl` = `http://localhost:8000/api/public/v1`, empty `apiKey` |
-| `production.postman_environment.json` | `baseUrl` = `https://api.labyrinthe-rdc.com/api/public/v1`, empty `apiKey` |
+| `production.postman_environment.json` | `baseUrl` = `https://api.connect.labyrinthe-rdc.com/api/public/v1`, empty `apiKey` |
 
 Requests: `POST /sms`, `GET /sms`, `GET /sms/:id`, `POST /sms/estimate` (SMS); `GET /balance`, `GET /sender-ids`
 (Compte); `POST /otp/send`, its replay with the same `Idempotency-Key`, `POST /otp/verify` (OTP). Every request

@@ -5,6 +5,11 @@ All notable changes to the Postman collection are documented here. The version f
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-11-09
+
+### Fixed
+- Production environment: `baseUrl` is now `https://api.connect.labyrinthe-rdc.com/api/public/v1`.
+
 ## [1.3.0] - 2026-11-06
 
 ### Added
