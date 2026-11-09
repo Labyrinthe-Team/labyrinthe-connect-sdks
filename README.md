@@ -1,6 +1,6 @@
 # Labyrinthe Connect SDKs
 
-Official integration packages for [Labyrinthe Connect](https://labyrinthe-rdc.com), the SMS and OTP platform for
+Official integration packages for [Labyrinthe Connect](https://connect.labyrinthe-rdc.com), the SMS and OTP platform for
 the DR Congo and Central Africa. Send an SMS or verify a phone number in less than 10 minutes, whatever your stack.
 
 *Les README de chaque package existent aussi en français (`README.fr.md`).*
