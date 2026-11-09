@@ -1,14 +1,14 @@
 # Copyright (C) 2026 Labyrinthe Connect. This file is distributed under the GPL-2.0-or-later license.
 msgid ""
 msgstr ""
-"Project-Id-Version: Labyrinthe Connect 1.2.0\n"
+"Project-Id-Version: Labyrinthe Connect 1.2.1\n"
 "Report-Msgid-Bugs-To: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/issues\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-11-06T21:44:53+00:00\n"
+"POT-Creation-Date: 2026-11-09T05:48:28+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: labyrinthe-connect\n"
@@ -27,7 +27,7 @@ msgstr ""
 
 #. Plugin URI of the plugin
 #: labyrinthe-connect.php:4
-msgid "https://labyrinthe-rdc.com/connect/wordpress"
+msgid "https://connect.labyrinthe-rdc.com/developpeurs/docs/packages/wordpress"
 msgstr ""
 
 #. Description of the plugin
@@ -37,7 +37,7 @@ msgstr ""
 
 #. Author URI of the plugin
 #: labyrinthe-connect.php:10
-msgid "https://labyrinthe-rdc.com"
+msgid "https://connect.labyrinthe-rdc.com"
 msgstr ""
 
 #: includes/admin/class-admin.php:131

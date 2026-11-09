@@ -6,6 +6,13 @@ The wordpress.org changelog lives in `readme.txt`.
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-09
+
+### Fixed
+- The plugin now connects to `https://api.connect.labyrinthe-rdc.com/api/public/v1` (the previous address did not serve the Labyrinthe Connect
+  API). Bundles the PHP SDK 1.2.1.
+- Plugin, terms of service and privacy policy links now point to https://connect.labyrinthe-rdc.com.
+
 ## [1.2.0] - 2026-11-06
 
 Built on `labyrinthe/connect-php` 1.2.0 (API specification 1.3.0). No setting to change.
@@ -102,6 +109,8 @@ First release, built on `labyrinthe/connect-php` 1.0.0 (API specification 1.1.0)
 - French translation (fr_FR, also used for the other French locales).
 - Bundled SDK prefixed with PHP-Scoper (`LabyrintheConnect\Vendor\`), reproducible zip build.
 
-[Unreleased]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/wordpress-v1.1.0...HEAD
+[Unreleased]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/wordpress-v1.2.1...HEAD
+[1.2.1]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/wordpress-v1.2.0...wordpress-v1.2.1
+[1.2.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/wordpress-v1.1.0...wordpress-v1.2.0
 [1.1.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/wordpress-v1.0.0...wordpress-v1.1.0
 [1.0.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/releases/tag/wordpress-v1.0.0

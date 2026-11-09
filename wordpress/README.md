@@ -1,12 +1,12 @@
 # Labyrinthe Connect for WordPress & WooCommerce
 
-![Version](https://img.shields.io/badge/version-1.2.0-008374)
+![Version](https://img.shields.io/badge/version-1.2.1-008374)
 [![CI](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/actions/workflows/wordpress.yml/badge.svg)](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/actions/workflows/wordpress.yml)
 [![License: GPL v2 or later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](LICENSE)
 ![WordPress](https://img.shields.io/badge/wordpress-6.4%2B-21759b)
 ![PHP](https://img.shields.io/badge/php-%E2%89%A5%208.1-777bb4)
 
-Official WordPress plugin of [Labyrinthe Connect](https://labyrinthe-rdc.com), the SMS and OTP platform for the DR
+Official WordPress plugin of [Labyrinthe Connect](https://connect.labyrinthe-rdc.com), the SMS and OTP platform for the DR
 Congo and Central Africa (slug `labyrinthe-connect`). Without writing code: WooCommerce order SMS for every status,
 a shop manager SMS for each new order, phone verification by SMS at registration and checkout, and login with a code
 received by SMS (login form, shortcode, block). SMS are sent in the background and never twice, every SMS leaves an
@@ -246,7 +246,7 @@ A complete must-use plugin (custom variable, alert on final failure, low balance
 
 The SDK is bundled under the `LabyrintheConnect\Vendor\` prefix and is not meant to be called by other plugins. To
 call the API from your own code, require [`labyrinthe/connect-php`](../php) in your plugin (no conflict thanks to the
-prefix), or call the REST API directly (one SMS: `POST https://api.labyrinthe-rdc.com/api/public/v1/sms` with
+prefix), or call the REST API directly (one SMS: `POST https://api.connect.labyrinthe-rdc.com/api/public/v1/sms` with
 `Authorization: Bearer lsk_test_…` and `{"recipient": "+243812345678", "body": "…"}`; see the
 [OpenAPI specification](../openapi/openapi.yaml)).
 

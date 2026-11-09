@@ -71,7 +71,7 @@ final class Client_Factory {
 	}
 
 	/**
-	 * URL de l'API : https://api.labyrinthe-rdc.com par défaut ; constante
+	 * URL de l'API : https://api.connect.labyrinthe-rdc.com par défaut ; constante
 	 * LABYRINTHE_CONNECT_BASE_URL ou filtre labyrinthe_connect_base_url pour un autre environnement.
 	 */
 	public function base_url(): ?string {

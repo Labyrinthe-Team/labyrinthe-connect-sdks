@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "47663587206cf1edbb5f032b788a1bd8",
+    "content-hash": "9d9a4e3d7fa82b416e75f3ba6d51bd8a",
     "packages": [
         {
             "name": "guzzlehttp/guzzle",
@@ -339,11 +339,11 @@
         },
         {
             "name": "labyrinthe/connect-php",
-            "version": "1.2.0",
+            "version": "1.2.1",
             "dist": {
                 "type": "path",
                 "url": "../php",
-                "reference": "f7bfb1473aef96ee8aef07a61e64cf861f004d41"
+                "reference": "6ae17827ce15ec493503721e992412ccc9330ad2"
             },
             "require": {
                 "ext-json": "*",
@@ -404,7 +404,7 @@
                 {
                     "name": "Labyrinthe Connect",
                     "email": "connect@labyrinthe-rdc.com",
-                    "homepage": "https://labyrinthe-rdc.com"
+                    "homepage": "https://connect.labyrinthe-rdc.com"
                 }
             ],
             "description": "Official PHP SDK for Labyrinthe Connect: send SMS and verify phone numbers with OTP (DR Congo and Central Africa).",

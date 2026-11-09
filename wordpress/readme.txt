@@ -1,10 +1,10 @@
 === Labyrinthe Connect ===
-Contributors: labyrinthe
+Contributors: drlab1
 Tags: sms, otp, woocommerce, notifications, congo
 Requires at least: 6.4
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 1.2.0
+Stable tag: 1.2.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -12,7 +12,7 @@ Order SMS notifications, phone verification and login with a code received by SM
 
 == Description ==
 
-**Français** — Labyrinthe Connect envoie des SMS et des codes de vérification (OTP) depuis votre site WordPress, avec le service [Labyrinthe Connect](https://labyrinthe-rdc.com) (RDC et Afrique centrale, paiement en USD ou CDF). Aucune ligne de code à écrire : collez votre clé API, choisissez vos messages, c'est prêt.
+**Français** — Labyrinthe Connect envoie des SMS et des codes de vérification (OTP) depuis votre site WordPress, avec le service [Labyrinthe Connect](https://connect.labyrinthe-rdc.com) (RDC et Afrique centrale, paiement en USD ou CDF). Aucune ligne de code à écrire : collez votre clé API, choisissez vos messages, c'est prêt.
 
 * **SMS de commande WooCommerce** : un SMS au client à chaque changement de statut (en attente, en cours, terminée, annulée, remboursée…), avec un modèle par statut et des variables ({order_number}, {customer_name}, {order_total}, {order_status}, {shop_name}, {tracking_url}…).
 * **Notification au gérant** : un SMS pour chaque nouvelle commande, sur un ou plusieurs numéros.
@@ -24,7 +24,7 @@ Order SMS notifications, phone verification and login with a code received by SM
 * **Journal des SMS** (numéros masqués, purge automatique) et **mode test** : avec une clé `lsk_test_`, rien n'est envoyé et rien n'est facturé.
 * Interface en français (et en anglais), compatible HPOS.
 
-**English** — Labyrinthe Connect sends SMS and one-time codes (OTP) from your WordPress site with the [Labyrinthe Connect](https://labyrinthe-rdc.com) service (DR Congo and Central Africa). No code to write: paste your API key, choose your messages, done.
+**English** — Labyrinthe Connect sends SMS and one-time codes (OTP) from your WordPress site with the [Labyrinthe Connect](https://connect.labyrinthe-rdc.com) service (DR Congo and Central Africa). No code to write: paste your API key, choose your messages, done.
 
 * **WooCommerce order SMS**: an SMS to the customer on every status change, with one editable template per status and variables.
 * **Shop manager notification** for every new order.
@@ -44,13 +44,13 @@ Order SMS notifications, phone verification and login with a code received by SM
 
 == External services ==
 
-This plugin connects to the **Labyrinthe Connect API** (`https://api.labyrinthe-rdc.com`), operated by Labyrinthe Connect, to send SMS and one-time codes. It is required for the plugin to work.
+This plugin connects to the **Labyrinthe Connect API** (`https://api.connect.labyrinthe-rdc.com`), operated by Labyrinthe Connect, to send SMS and one-time codes. It is required for the plugin to work.
 
 * **When**: only when an SMS is sent (order status change, new order, test SMS from the settings), when a visitor asks for or types a verification code, and on the plugin settings page (balance, approved Sender IDs). Public pages never call the API on load.
 * **What is sent**: your API key, the recipient phone number, the message text (order SMS) or the verification request (OTP: phone number, optional message template and language, the domain of your site for Web OTP), a reference (order ID), a request identifier and whether accents must be removed.
 * **What is received**: delivery statuses, by the webhook `/wp-json/labyrinthe/v1/webhook` if you configure it (signed with your webhook secret).
 
-Terms of service: https://labyrinthe-rdc.com/conditions — Privacy policy: https://labyrinthe-rdc.com/confidentialite
+Terms of service: https://connect.labyrinthe-rdc.com/cgu — Privacy policy: https://connect.labyrinthe-rdc.com/confidentialite
 
 == Installation ==
 
@@ -119,6 +119,11 @@ Yes for order SMS. For OTP forms, exclude the login, registration and checkout p
 
 == Changelog ==
 
+= 1.2.1 =
+* Fix: the plugin now connects to the Labyrinthe Connect API at https://api.connect.labyrinthe-rdc.com (the previous address did not answer, so no SMS could be sent).
+* Plugin, terms of service and privacy policy links now point to https://connect.labyrinthe-rdc.com.
+* Requires the Labyrinthe Connect PHP SDK 1.2.1 (bundled).
+
 = 1.2.0 =
 * Platform maintenance (Labyrinthe Connect temporarily shut down the API, SMS sending or OTP): visitors see the message announced by Labyrinthe Connect (or a "temporarily unavailable" message) with the expected return time when known; nothing is sent and no credit is used.
 * Order SMS during a maintenance are sent again automatically: at the announced return time when it is known, otherwise after 5, 10 then 15 minutes, without calling the API in between.
@@ -140,6 +145,9 @@ Yes for order SMS. For OTP forms, exclude the login, registration and checkout p
 * First release: WooCommerce order SMS (per status, shop manager notification, Action Scheduler, idempotency, order notes), OTP phone verification (registration, classic and block checkout), login by SMS (login form, shortcode, block), signed webhook endpoint with deduplication, SMS log with automatic purge, encrypted API key, French translation.
 
 == Upgrade Notice ==
+
+= 1.2.1 =
+Fixes the Labyrinthe Connect API address: update to send SMS again. No setting to change.
 
 = 1.2.0 =
 Clear message and automatic order SMS retry during a Labyrinthe Connect maintenance. Automatic update, no setting to change.

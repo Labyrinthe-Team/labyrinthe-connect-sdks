@@ -1,13 +1,13 @@
 <?php
 /**
  * Plugin Name:          Labyrinthe Connect
- * Plugin URI:           https://labyrinthe-rdc.com/connect/wordpress
+ * Plugin URI:           https://connect.labyrinthe-rdc.com/developpeurs/docs/packages/wordpress
  * Description:          SMS and OTP for WordPress and WooCommerce: order notifications by SMS, phone verification and login with a code received by SMS (DR Congo and Central Africa).
- * Version:              1.2.0
+ * Version:              1.2.1
  * Requires at least:    6.4
  * Requires PHP:         8.1
  * Author:               Labyrinthe Connect
- * Author URI:           https://labyrinthe-rdc.com
+ * Author URI:           https://connect.labyrinthe-rdc.com
  * License:              GPL-2.0-or-later
  * License URI:          https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:          labyrinthe-connect
@@ -25,7 +25,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LABYRINTHE_CONNECT_VERSION', '1.2.0' );
+define( 'LABYRINTHE_CONNECT_VERSION', '1.2.1' );
 define( 'LABYRINTHE_CONNECT_FILE', __FILE__ );
 define( 'LABYRINTHE_CONNECT_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LABYRINTHE_CONNECT_URL', plugin_dir_url( __FILE__ ) );

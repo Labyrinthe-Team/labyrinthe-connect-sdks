@@ -8,7 +8,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "POT-Creation-Date: 2026-11-05T22:04:12+00:00\n"
-"PO-Revision-Date: 2026-11-06T21:44:56+00:00\n"
+"PO-Revision-Date: 2026-11-09T05:48:30+00:00\n"
 "Language: fr_FR\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: labyrinthe-connect\n"
@@ -28,8 +28,8 @@ msgstr "Labyrinthe Connect"
 
 #. Plugin URI of the plugin
 #: labyrinthe-connect.php:4
-msgid "https://labyrinthe-rdc.com/connect/wordpress"
-msgstr "https://labyrinthe-rdc.com/connect/wordpress"
+msgid "https://connect.labyrinthe-rdc.com/developpeurs/docs/packages/wordpress"
+msgstr "https://connect.labyrinthe-rdc.com/developpeurs/docs/packages/wordpress"
 
 #. Description of the plugin
 #: labyrinthe-connect.php:5
@@ -38,8 +38,8 @@ msgstr "SMS et OTP pour WordPress et WooCommerce : notifications de commande par
 
 #. Author URI of the plugin
 #: labyrinthe-connect.php:10
-msgid "https://labyrinthe-rdc.com"
-msgstr "https://labyrinthe-rdc.com"
+msgid "https://connect.labyrinthe-rdc.com"
+msgstr "https://connect.labyrinthe-rdc.com"
 
 #: includes/admin/class-admin.php:131
 msgid "When you place an order, create an account or log in with a code received by SMS, your phone number and the text of the SMS are sent to Labyrinthe Connect (labyrinthe-rdc.com), which delivers the SMS. This site keeps a log of the SMS sent, with masked phone numbers and without the texts, for a limited time."
