@@ -98,7 +98,7 @@ class ContractTest {
 
   @Test
   void targetsSpec130() {
-    assertEquals("1.3.0", at("info", "version"));
+    assertEquals("1.3.1", at("info", "version"));
   }
 
   @Test

@@ -6,6 +6,14 @@ are documented here. This project follows [Semantic Versioning](https://semver.o
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-09
+
+### Fixed
+- Default API URL is now `https://api.connect.labyrinthe-rdc.com/api/public/v1`. The previous default (`api.labyrinthe-rdc.com`) does not serve
+  the Labyrinthe Connect API, so requests failed unless the URL was set explicitly. An explicitly configured URL
+  is unchanged.
+- Links to the website now point to https://connect.labyrinthe-rdc.com.
+
 ## [1.2.0] - 2026-11-06
 
 Built against the API specification 1.3.0. Backward compatible with 1.1.1, except the retry change listed under
@@ -111,7 +119,9 @@ First stable release, built against the API specification 1.1.0.
   `LabyrintheClientBuilderCustomizer`, signed webhook endpoint (`labyrinthe.webhook.*`) publishing events as
   Spring application events; configuration metadata for IDE completion.
 
-[Unreleased]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/java-v1.1.1...HEAD
+[Unreleased]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/java-v1.2.1...HEAD
+[1.2.1]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/java-v1.2.0...java-v1.2.1
+[1.2.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/java-v1.1.1...java-v1.2.0
 [1.1.1]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/java-v1.1.0...java-v1.1.1
 [1.1.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/java-v1.0.0...java-v1.1.0
 [1.0.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/releases/tag/java-v1.0.0

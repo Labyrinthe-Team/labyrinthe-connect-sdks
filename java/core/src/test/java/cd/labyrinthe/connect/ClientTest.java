@@ -56,7 +56,7 @@ class ClientTest {
   @Test
   void defaultsToProduction() {
     assertEquals(
-        "https://api.labyrinthe-rdc.com/api/public/v1",
+        "https://api.connect.labyrinthe-rdc.com/api/public/v1",
         offline().apiKey("lsk_test_x").build().baseUrl());
   }
 

@@ -335,7 +335,7 @@ public final class Transport {
         || uri.getRawFragment() != null) {
       throw new InvalidArgumentException(
           "baseUrl must be an absolute http(s) URL, e.g."
-              + " https://api.labyrinthe-rdc.com/api/public/v1.");
+              + " https://api.connect.labyrinthe-rdc.com/api/public/v1.");
     }
     String path = uri.getRawPath();
     return path == null || path.isEmpty() ? trimmed + API_PATH : trimmed;

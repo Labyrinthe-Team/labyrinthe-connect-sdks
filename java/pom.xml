@@ -17,7 +17,7 @@
 
   <groupId>com.labyrinthe-rdc</groupId>
   <artifactId>labyrinthe-connect-parent</artifactId>
-  <version>1.2.0</version>
+  <version>1.2.1</version>
   <packaging>pom</packaging>
 
   <name>Labyrinthe Connect SDK (parent)</name>
@@ -27,7 +27,7 @@
 
   <organization>
     <name>Labyrinthe Connect</name>
-    <url>https://labyrinthe-rdc.com</url>
+    <url>https://connect.labyrinthe-rdc.com</url>
   </organization>
 
   <licenses>
@@ -44,7 +44,7 @@
       <name>Labyrinthe Connect</name>
       <email>connect@labyrinthe-rdc.com</email>
       <organization>Labyrinthe Connect</organization>
-      <organizationUrl>https://labyrinthe-rdc.com</organizationUrl>
+      <organizationUrl>https://connect.labyrinthe-rdc.com</organizationUrl>
     </developer>
   </developers>
 

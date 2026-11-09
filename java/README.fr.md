@@ -6,7 +6,7 @@
 ![Java](https://img.shields.io/badge/java-11%20%E2%86%92%2021-007396)
 ![Licence](https://img.shields.io/badge/licence-MIT-green)
 
-Client Java officiel de [Labyrinthe Connect](https://labyrinthe-rdc.com) : envoyez des SMS et vérifiez des numéros
+Client Java officiel de [Labyrinthe Connect](https://connect.labyrinthe-rdc.com) : envoyez des SMS et vérifiez des numéros
 de téléphone par code à usage unique (OTP), en RDC et en Afrique centrale.
 
 *English version: [README.md](README.md).*
@@ -44,14 +44,14 @@ Maven :
 <dependency>
   <groupId>com.labyrinthe-rdc</groupId>
   <artifactId>labyrinthe-connect</artifactId>
-  <version>1.2.0</version>
+  <version>1.2.1</version>
 </dependency>
 
 <!-- Spring Boot 3 (Java 17+), à la place de la dépendance ci-dessus : il apporte labyrinthe-connect -->
 <dependency>
   <groupId>com.labyrinthe-rdc</groupId>
   <artifactId>labyrinthe-connect-spring-boot-starter</artifactId>
-  <version>1.2.0</version>
+  <version>1.2.1</version>
 </dependency>
 ```
 
@@ -59,9 +59,9 @@ Gradle (DSL Kotlin) :
 
 ```kotlin
 dependencies {
-    implementation("com.labyrinthe-rdc:labyrinthe-connect:1.2.0")
+    implementation("com.labyrinthe-rdc:labyrinthe-connect:1.2.1")
     // Spring Boot 3 (Java 17+) :
-    implementation("com.labyrinthe-rdc:labyrinthe-connect-spring-boot-starter:1.2.0")
+    implementation("com.labyrinthe-rdc:labyrinthe-connect-spring-boot-starter:1.2.1")
 }
 ```
 
@@ -69,9 +69,9 @@ Gradle (DSL Groovy) :
 
 ```groovy
 dependencies {
-    implementation 'com.labyrinthe-rdc:labyrinthe-connect:1.2.0'
+    implementation 'com.labyrinthe-rdc:labyrinthe-connect:1.2.1'
     // Spring Boot 3 (Java 17+) :
-    implementation 'com.labyrinthe-rdc:labyrinthe-connect-spring-boot-starter:1.2.0'
+    implementation 'com.labyrinthe-rdc:labyrinthe-connect-spring-boot-starter:1.2.1'
 }
 ```
 
@@ -119,7 +119,7 @@ une future en échec.
 | `LabyrintheClient.builder()` | Défaut | Rôle |
 |---|---|---|
 | `apiKey(String)` | `LABYRINTHE_API_KEY` | `lsk_live_…` ou `lsk_test_…`. Obligatoire (`InvalidArgumentException` sans clé). |
-| `baseUrl(String)` | `LABYRINTHE_BASE_URL`, puis `https://api.labyrinthe-rdc.com/api/public/v1` | Racine de l'API. Un hôte seul (`http://localhost:8000`) est complété par `/api/public/v1`. |
+| `baseUrl(String)` | `LABYRINTHE_BASE_URL`, puis `https://api.connect.labyrinthe-rdc.com/api/public/v1` | Racine de l'API. Un hôte seul (`http://localhost:8000`) est complété par `/api/public/v1`. |
 | `timeout(Duration)` | 30 s | Délai de **chaque tentative**, aussi délai de connexion. |
 | `maxRetries(int)` | 2 | Relances automatiques quand elles sont sûres ; `0` les désactive (10 au maximum). |
 | `maxRetryWait(Duration)` | 10 s | Plus long `Retry-After` que le SDK accepte d'attendre ; au-delà, l'erreur est levée. |
@@ -130,7 +130,7 @@ une future en échec.
 ```java
 LabyrintheClient client = LabyrintheClient.builder()
     .apiKey(System.getenv("LABYRINTHE_API_KEY"))
-    .baseUrl("https://api.labyrinthe-rdc.com/api/public/v1")
+    .baseUrl("https://api.connect.labyrinthe-rdc.com/api/public/v1")
     .timeout(Duration.ofSeconds(30))
     .maxRetries(2)
     .maxRetryWait(Duration.ofSeconds(10))
@@ -159,7 +159,7 @@ Avec le starter dans le classpath, configurez `application.yml` (ou les clés é
 ```yaml
 labyrinthe:
   api-key: ${LABYRINTHE_API_KEY}            # nécessaire au bean client (ou la variable d'environnement seule)
-  base-url: https://api.labyrinthe-rdc.com/api/public/v1   # défaut : LABYRINTHE_BASE_URL, puis la production
+  base-url: https://api.connect.labyrinthe-rdc.com/api/public/v1   # défaut : LABYRINTHE_BASE_URL, puis la production
   timeout: 30s
   max-retries: 2
   max-retry-wait: 10s
@@ -675,7 +675,7 @@ L'API est du JSON sur HTTPS ; le SDK est une commodité. Avec `java.net.http.Htt
 
 ```java
 HttpClient http = HttpClient.newHttpClient();
-HttpRequest request = HttpRequest.newBuilder(URI.create("https://api.labyrinthe-rdc.com/api/public/v1/sms"))
+HttpRequest request = HttpRequest.newBuilder(URI.create("https://api.connect.labyrinthe-rdc.com/api/public/v1/sms"))
     .timeout(Duration.ofSeconds(30))
     .header("Authorization", "Bearer " + System.getenv("LABYRINTHE_API_KEY"))
     .header("Content-Type", "application/json")

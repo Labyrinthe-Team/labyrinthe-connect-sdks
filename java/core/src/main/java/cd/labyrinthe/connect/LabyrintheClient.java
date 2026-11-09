@@ -26,7 +26,8 @@ import java.util.function.UnaryOperator;
 public final class LabyrintheClient {
 
   /** Production API root: {@value}. */
-  public static final String DEFAULT_BASE_URL = "https://api.labyrinthe-rdc.com/api/public/v1";
+  public static final String DEFAULT_BASE_URL =
+      "https://api.connect.labyrinthe-rdc.com/api/public/v1";
 
   /** Default timeout of each attempt: 30 seconds. */
   public static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
@@ -207,7 +208,7 @@ public final class LabyrintheClient {
   /**
    * The API root used by this client.
    *
-   * @return e.g. {@code https://api.labyrinthe-rdc.com/api/public/v1}
+   * @return e.g. {@code https://api.connect.labyrinthe-rdc.com/api/public/v1}
    */
   public String baseUrl() {
     return baseUrl;

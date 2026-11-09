@@ -11,7 +11,7 @@
   <parent>
     <groupId>com.labyrinthe-rdc</groupId>
     <artifactId>labyrinthe-connect-parent</artifactId>
-    <version>1.2.0</version>
+    <version>1.2.1</version>
   </parent>
 
   <artifactId>labyrinthe-connect-examples</artifactId>
