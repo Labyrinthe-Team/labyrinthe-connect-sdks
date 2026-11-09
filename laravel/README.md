@@ -5,10 +5,10 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Laravel](https://img.shields.io/badge/laravel-10%20%7C%2011%20%7C%2012%20%7C%2013-ff2d20)
 
-Send SMS and verify phone numbers with [Labyrinthe Connect](https://labyrinthe-rdc.com), the SMS and OTP platform for
+Send SMS and verify phone numbers with [Labyrinthe Connect](https://connect.labyrinthe-rdc.com), the SMS and OTP platform for
 the DR Congo and Central Africa, the Laravel way: a `Labyrinthe` facade, a `labyrinthe` notification channel, an OTP
 helper with validation rules, signed webhooks turned into Laravel events, and `Labyrinthe::fake()` for your tests.
-Package 1.2.0, built on the [PHP SDK](../php) 1.2.0 (API specification 1.3.0): same typed exceptions, same safe
+Package 1.2.1, built on the [PHP SDK](../php) 1.2.1 (API specification 1.3.0): same typed exceptions, same safe
 retries, never a double SMS.
 
 *Version française : [README.fr.md](README.fr.md).*
@@ -26,7 +26,7 @@ retries, never a double SMS.
 |---|---|
 | PHP | 8.1 or newer (and what your Laravel version requires) |
 | Laravel | 10, 11, 12 or 13 |
-| SDK | `labyrinthe/connect-php` ^1.2.0 (installed automatically) |
+| SDK | `labyrinthe/connect-php` ^1.2.1 (installed automatically) |
 
 ## Installation
 
@@ -66,7 +66,7 @@ used.
 | Variable | Config key | Default | |
 |---|---|---|---|
 | `LABYRINTHE_API_KEY` | `api_key` | — | `lsk_test_…` (sandbox) or `lsk_live_…` |
-| `LABYRINTHE_BASE_URL` | `base_url` | `https://api.labyrinthe-rdc.com/api/public/v1` | `http://localhost:8000` is completed with `/api/public/v1` |
+| `LABYRINTHE_BASE_URL` | `base_url` | `https://api.connect.labyrinthe-rdc.com/api/public/v1` | `http://localhost:8000` is completed with `/api/public/v1` |
 | `LABYRINTHE_TIMEOUT` | `timeout` | `30` | seconds |
 | `LABYRINTHE_CONNECT_TIMEOUT` | `connect_timeout` | `10` | seconds |
 | `LABYRINTHE_MAX_RETRIES` | `max_retries` | `2` | safe retries only (never a second SMS or OTP) |
@@ -457,7 +457,7 @@ The package wraps a REST JSON API; with Laravel's HTTP client only:
 ```php
 Http::withToken(config('labyrinthe.api_key'))
     ->withHeaders(['Idempotency-Key' => (string) Str::uuid()])
-    ->post('https://api.labyrinthe-rdc.com/api/public/v1/sms', ['recipient' => '+243812345678', 'body' => 'Hello'])
+    ->post('https://api.connect.labyrinthe-rdc.com/api/public/v1/sms', ['recipient' => '+243812345678', 'body' => 'Hello'])
     ->throw()
     ->json('data.0.status');                               // "queued"
 ```

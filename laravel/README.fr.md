@@ -5,10 +5,10 @@
 [![Licence : MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 ![Laravel](https://img.shields.io/badge/laravel-10%20%7C%2011%20%7C%2012%20%7C%2013-ff2d20)
 
-Envoyez des SMS et vérifiez des numéros de téléphone avec [Labyrinthe Connect](https://labyrinthe-rdc.com), la
+Envoyez des SMS et vérifiez des numéros de téléphone avec [Labyrinthe Connect](https://connect.labyrinthe-rdc.com), la
 plateforme SMS et OTP de la RD Congo et de l'Afrique centrale, à la manière de Laravel : une façade `Labyrinthe`, un
 canal de notification `labyrinthe`, un assistant OTP avec règles de validation, des webhooks signés transformés en
-événements Laravel, et `Labyrinthe::fake()` pour vos tests. Package 1.2.0, construit sur le [SDK PHP](../php) 1.2.0
+événements Laravel, et `Labyrinthe::fake()` pour vos tests. Package 1.2.1, construit sur le [SDK PHP](../php) 1.2.1
 (spécification de l'API 1.3.0) : mêmes exceptions typées, mêmes relances sans risque, jamais de double SMS.
 
 *English version: [README.md](README.md).*
@@ -26,7 +26,7 @@ canal de notification `labyrinthe`, un assistant OTP avec règles de validation,
 |---|---|
 | PHP | 8.1 ou plus (et ce qu'exige votre version de Laravel) |
 | Laravel | 10, 11, 12 ou 13 |
-| SDK | `labyrinthe/connect-php` ^1.2.0 (installé automatiquement) |
+| SDK | `labyrinthe/connect-php` ^1.2.1 (installé automatiquement) |
 
 ## Installation
 
@@ -66,7 +66,7 @@ lorsque l'API est utilisée.
 | Variable | Clé de config | Défaut | |
 |---|---|---|---|
 | `LABYRINTHE_API_KEY` | `api_key` | — | `lsk_test_…` (bac à sable) ou `lsk_live_…` |
-| `LABYRINTHE_BASE_URL` | `base_url` | `https://api.labyrinthe-rdc.com/api/public/v1` | `http://localhost:8000` est complété par `/api/public/v1` |
+| `LABYRINTHE_BASE_URL` | `base_url` | `https://api.connect.labyrinthe-rdc.com/api/public/v1` | `http://localhost:8000` est complété par `/api/public/v1` |
 | `LABYRINTHE_TIMEOUT` | `timeout` | `30` | secondes |
 | `LABYRINTHE_CONNECT_TIMEOUT` | `connect_timeout` | `10` | secondes |
 | `LABYRINTHE_MAX_RETRIES` | `max_retries` | `2` | relances sans risque uniquement (jamais un second SMS ni un second OTP) |
@@ -468,7 +468,7 @@ Le package enveloppe une API REST JSON ; avec le seul client HTTP de Laravel :
 ```php
 Http::withToken(config('labyrinthe.api_key'))
     ->withHeaders(['Idempotency-Key' => (string) Str::uuid()])
-    ->post('https://api.labyrinthe-rdc.com/api/public/v1/sms', ['recipient' => '+243812345678', 'body' => 'Bonjour'])
+    ->post('https://api.connect.labyrinthe-rdc.com/api/public/v1/sms', ['recipient' => '+243812345678', 'body' => 'Bonjour'])
     ->throw()
     ->json('data.0.status');                               // "queued"
 ```

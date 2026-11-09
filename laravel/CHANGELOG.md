@@ -5,6 +5,13 @@ All notable changes to `labyrinthe/connect-laravel` are documented here. This pr
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-09
+
+### Fixed
+- Default `LABYRINTHE_BASE_URL` (config `labyrinthe.base_url`) is now `https://api.connect.labyrinthe-rdc.com/api/public/v1`, and the package requires
+  `labyrinthe/connect-php` ^1.2.1, which has the same new default. An explicitly configured URL is unchanged.
+- Links to the website now point to https://connect.labyrinthe-rdc.com.
+
 ## [1.2.0] - 2026-11-06
 
 On top of `labyrinthe/connect-php` ^1.2.0 (API specification 1.3.0). Backward compatible with 1.1.x.
@@ -70,6 +77,8 @@ First stable release, for Laravel 10, 11, 12 and 13, on top of `labyrinthe/conne
   `assertSmsSentCount`, `assertNothingSent`, `assertOtpSent`, `assertNoOtpSent`) and helpers (`otpCode`,
   `withBalance`, `withSenderIds`, `withOtpCode`, `failNextRequest`).
 
-[Unreleased]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/laravel-v1.1.0...HEAD
+[Unreleased]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/laravel-v1.2.1...HEAD
+[1.2.1]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/laravel-v1.2.0...laravel-v1.2.1
+[1.2.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/laravel-v1.1.0...laravel-v1.2.0
 [1.1.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/laravel-v1.0.0...laravel-v1.1.0
 [1.0.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/releases/tag/laravel-v1.0.0

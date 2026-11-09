@@ -17,7 +17,7 @@ return [
     'api_key' => env('LABYRINTHE_API_KEY'),
 
     // API root. "http://localhost:8000" is completed with /api/public/v1.
-    'base_url' => env('LABYRINTHE_BASE_URL', 'https://api.labyrinthe-rdc.com/api/public/v1'),
+    'base_url' => env('LABYRINTHE_BASE_URL', 'https://api.connect.labyrinthe-rdc.com/api/public/v1'),
 
     // HTTP timeouts (seconds) and automatic retries, only when safe (SMS and
     // OTP sends carry an Idempotency-Key): never a second SMS, never a second OTP.
