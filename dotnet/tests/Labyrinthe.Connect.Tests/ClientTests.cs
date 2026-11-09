@@ -1,6 +1,7 @@
 using System;
 using System.Net.Http;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Labyrinthe.Connect.Tests.Support;
 using Xunit;
@@ -89,7 +90,7 @@ public class ClientTests
         Assert.Equal("https://api.test/api/public/v1/balance", request.Uri.ToString());
         Assert.Equal("Bearer lsk_test_unit_secret_123", request.Header("Authorization"));
         Assert.Equal("application/json", request.Header("Accept"));
-        Assert.Matches(@"^labyrinthe-dotnet/1\.2\.0 \.NET/\d+\.\d+", request.Header("User-Agent"));
+        Assert.Matches($@"^labyrinthe-dotnet/{Regex.Escape(LabyrintheClient.Version)} \.NET/\d+\.\d+", request.Header("User-Agent"));
         Assert.Null(request.Body);
     }
 
