@@ -6,7 +6,7 @@ namespace Labyrinthe.Connect;
 public sealed class LabyrintheClientOptions
 {
     /// <summary>Production API root.</summary>
-    public const string DefaultBaseUrl = "https://api.labyrinthe-rdc.com/api/public/v1";
+    public const string DefaultBaseUrl = "https://api.connect.labyrinthe-rdc.com/api/public/v1";
 
     /// <summary><c>lsk_live_…</c> or <c>lsk_test_…</c>; defaults to the <c>LABYRINTHE_API_KEY</c> environment variable. Keep it server-side.</summary>
     public string? ApiKey { get; set; }

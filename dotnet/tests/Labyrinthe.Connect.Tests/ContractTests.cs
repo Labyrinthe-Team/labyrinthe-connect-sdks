@@ -21,7 +21,7 @@ public class ContractTests
     private static Spec S => Spec.Current ?? throw new InvalidOperationException("openapi/openapi.yaml not found");
 
     [SpecFact]
-    public void Targets_spec_1_3_0() => Assert.Equal("1.3.0", S.At("info", "version").GetValue<string>());
+    public void Targets_spec_1_3_1() => Assert.Equal("1.3.1", S.At("info", "version").GetValue<string>());
 
     [SpecFact]
     public void Every_response_documents_the_request_id_and_api_version_headers()

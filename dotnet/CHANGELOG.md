@@ -5,6 +5,14 @@ project follows [Semantic Versioning](https://semver.org/) and the format of [Ke
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-09
+
+### Fixed
+- Default API URL is now `https://api.connect.labyrinthe-rdc.com/api/public/v1`. The previous default (`api.labyrinthe-rdc.com`) does not serve
+  the Labyrinthe Connect API, so requests failed unless the URL was set explicitly. An explicitly configured URL
+  is unchanged.
+- Links to the website now point to https://connect.labyrinthe-rdc.com.
+
 ## [1.2.0] - 2026-11-06
 
 Built against the API specification 1.3.0. Backward compatible with 1.1.x.
@@ -104,7 +112,9 @@ First stable release, built against the API specification 1.1.0.
   `IHttpClientFactory`, `ILogger<LabyrintheClient>`), `AddLabyrintheWebhookHandler<T>()` and
   `app.MapLabyrintheWebhooks()` (raw body, signature and timestamp checked; 400 / 413 / 500).
 
-[Unreleased]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/dotnet-v1.1.1...HEAD
+[Unreleased]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/dotnet-v1.2.1...HEAD
+[1.2.1]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/dotnet-v1.2.0...dotnet-v1.2.1
+[1.2.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/dotnet-v1.1.1...dotnet-v1.2.0
 [1.1.1]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/dotnet-v1.1.0...dotnet-v1.1.1
 [1.1.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/dotnet-v1.0.0...dotnet-v1.1.0
 [1.0.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/releases/tag/dotnet-v1.0.0

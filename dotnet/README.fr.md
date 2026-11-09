@@ -6,7 +6,7 @@
 ![.NET](https://img.shields.io/badge/.NET-netstandard2.0%20%7C%20net8.0-512BD4)
 ![Licence](https://img.shields.io/badge/licence-MIT-green)
 
-Client .NET officiel de [Labyrinthe Connect](https://labyrinthe-rdc.com) : envoyez des SMS et vérifiez des numéros de
+Client .NET officiel de [Labyrinthe Connect](https://connect.labyrinthe-rdc.com) : envoyez des SMS et vérifiez des numéros de
 téléphone par code à usage unique (OTP), en RDC et en Afrique centrale.
 
 *English version: [README.md](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/blob/main/dotnet/README.md).*
@@ -48,9 +48,9 @@ Ou dans votre `.csproj` :
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Labyrinthe.Connect" Version="1.2.0" />
+  <PackageReference Include="Labyrinthe.Connect" Version="1.2.1" />
   <!-- ASP.NET Core : celui-ci suffit, il apporte Labyrinthe.Connect -->
-  <PackageReference Include="Labyrinthe.Connect.AspNetCore" Version="1.2.0" />
+  <PackageReference Include="Labyrinthe.Connect.AspNetCore" Version="1.2.1" />
 </ItemGroup>
 ```
 
@@ -83,7 +83,7 @@ enregistrez-le avec `AddLabyrinthe`) et réutilisez-le.
 | `LabyrintheClientOptions` | Défaut | Rôle |
 |---|---|---|
 | `ApiKey` | `LABYRINTHE_API_KEY` | `lsk_live_…` ou `lsk_test_…`. Obligatoire (une `ArgumentException` est levée sans clé). |
-| `BaseUrl` | `LABYRINTHE_BASE_URL`, puis `https://api.labyrinthe-rdc.com/api/public/v1` | Racine de l'API. Un hôte seul (`http://localhost:8000`) est complété par `/api/public/v1`. |
+| `BaseUrl` | `LABYRINTHE_BASE_URL`, puis `https://api.connect.labyrinthe-rdc.com/api/public/v1` | Racine de l'API. Un hôte seul (`http://localhost:8000`) est complété par `/api/public/v1`. |
 | `Timeout` | 30 s | Délai de **chaque tentative**. |
 | `MaxRetries` | 2 | Relances automatiques quand elles sont sûres ; `0` les désactive (10 au maximum). |
 | `MaxRetryWait` | 10 s | Plus long `Retry-After` que le SDK accepte d'attendre ; au-delà, l'erreur est levée. |
@@ -95,7 +95,7 @@ enregistrez-le avec `AddLabyrinthe`) et réutilisez-le.
 using var client = new LabyrintheClient(new LabyrintheClientOptions
 {
     ApiKey = Environment.GetEnvironmentVariable("LABYRINTHE_API_KEY"),
-    BaseUrl = "https://api.labyrinthe-rdc.com/api/public/v1",
+    BaseUrl = "https://api.connect.labyrinthe-rdc.com/api/public/v1",
     Timeout = TimeSpan.FromSeconds(30),
     MaxRetries = 2,
     MaxRetryWait = TimeSpan.FromSeconds(10),
@@ -660,7 +660,7 @@ L'API est du JSON sur HTTPS ; le SDK est une commodité. Avec `HttpClient` seule
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 
-using var http = new HttpClient { BaseAddress = new Uri("https://api.labyrinthe-rdc.com/api/public/v1/") };
+using var http = new HttpClient { BaseAddress = new Uri("https://api.connect.labyrinthe-rdc.com/api/public/v1/") };
 http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Environment.GetEnvironmentVariable("LABYRINTHE_API_KEY"));
 
 using var request = new HttpRequestMessage(HttpMethod.Post, "sms")

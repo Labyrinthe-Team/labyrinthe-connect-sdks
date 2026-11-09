@@ -97,7 +97,7 @@ internal sealed class Transport
             || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
             || string.IsNullOrEmpty(uri.Host))
         {
-            throw new ArgumentException("BaseUrl must be an absolute http(s) URL, e.g. https://api.labyrinthe-rdc.com/api/public/v1.", nameof(baseUrl));
+            throw new ArgumentException("BaseUrl must be an absolute http(s) URL, e.g. https://api.connect.labyrinthe-rdc.com/api/public/v1.", nameof(baseUrl));
         }
 
         // Un hôte seul ("http://localhost:8000") désigne la racine du backend.

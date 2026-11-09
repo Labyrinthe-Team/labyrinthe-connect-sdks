@@ -44,7 +44,7 @@ public class ClientTests
     {
         using var _ = new EnvironmentScope(("LABYRINTHE_BASE_URL", null));
         using var client = new LabyrintheClient(new LabyrintheClientOptions { ApiKey = "lsk_test_x" });
-        Assert.Equal("https://api.labyrinthe-rdc.com/api/public/v1", client.BaseUrl);
+        Assert.Equal("https://api.connect.labyrinthe-rdc.com/api/public/v1", client.BaseUrl);
     }
 
     [Theory]

@@ -51,7 +51,7 @@ public sealed class MockHttp : HttpMessageHandler
     public MockHttp Error(int status, string code, string details = "{}", params (string Name, string Value)[] headers) =>
         Respond(() => Responses.Error(status, code, details, headers));
 
-    public MockHttp NetworkError() => Respond((_, _) => throw new HttpRequestException("Connection refused (api.labyrinthe-rdc.com:443)"));
+    public MockHttp NetworkError() => Respond((_, _) => throw new HttpRequestException("Connection refused (api.connect.labyrinthe-rdc.com:443)"));
 
     /// <summary>Ne répond jamais : seul le délai (ou l'annulation) termine la requête.</summary>
     public MockHttp Hang() => Respond(async (_, token) =>

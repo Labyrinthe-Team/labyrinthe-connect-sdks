@@ -17,7 +17,7 @@ namespace Labyrinthe.Connect;
 public sealed class LabyrintheClient : IDisposable
 {
     /// <summary>Version of this SDK (also in the <c>User-Agent</c> header).</summary>
-    public const string Version = "1.2.0";
+    public const string Version = "1.2.1";
 
     private readonly string apiKey;
     private readonly HttpClient httpClient;
