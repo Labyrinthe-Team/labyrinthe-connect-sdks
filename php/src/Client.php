@@ -33,7 +33,7 @@ use Psr\Log\NullLogger;
  */
 final class Client
 {
-    public const DEFAULT_BASE_URL = 'https://api.labyrinthe-rdc.com/api/public/v1';
+    public const DEFAULT_BASE_URL = 'https://api.connect.labyrinthe-rdc.com/api/public/v1';
     private const API_PATH = '/api/public/v1';
 
     public readonly SmsService $sms;
@@ -209,7 +209,7 @@ final class Client
         $baseUrl = rtrim(trim($baseUrl), '/');
         $parts = parse_url($baseUrl);
         if ($parts === false || !isset($parts['scheme'], $parts['host']) || !\in_array(strtolower($parts['scheme']), ['http', 'https'], true)) {
-            throw new InvalidArgumentException('baseUrl must be an absolute http(s) URL, e.g. https://api.labyrinthe-rdc.com/api/public/v1.');
+            throw new InvalidArgumentException('baseUrl must be an absolute http(s) URL, e.g. https://api.connect.labyrinthe-rdc.com/api/public/v1.');
         }
 
         // A bare host ("http://localhost:8000") points to the root of the backend.

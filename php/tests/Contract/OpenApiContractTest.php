@@ -93,7 +93,7 @@ final class OpenApiContractTest extends TestCase
 
     public function test_the_spec_version_is_supported(): void
     {
-        self::assertSame('1.3.0', self::at('info.version'));
+        self::assertSame('1.3.1', self::at('info.version'));
     }
 
     public function test_every_operation_of_the_spec_is_implemented(): void

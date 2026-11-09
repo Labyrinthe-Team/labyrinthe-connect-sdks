@@ -35,7 +35,7 @@ final class ClientTest extends TestCase
      */
     public static function baseUrls(): iterable
     {
-        yield 'default' => ['https://api.labyrinthe-rdc.com/api/public/v1', 'https://api.labyrinthe-rdc.com/api/public/v1'];
+        yield 'default' => ['https://api.connect.labyrinthe-rdc.com/api/public/v1', 'https://api.connect.labyrinthe-rdc.com/api/public/v1'];
         yield 'bare host' => ['http://localhost:8000', 'http://localhost:8000/api/public/v1'];
         yield 'bare host with slash' => ['http://localhost:8000/', 'http://localhost:8000/api/public/v1'];
         yield 'explicit path' => ['https://proxy.example/labyrinthe/v1/', 'https://proxy.example/labyrinthe/v1'];

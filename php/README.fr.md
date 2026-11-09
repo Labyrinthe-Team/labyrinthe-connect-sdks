@@ -5,12 +5,12 @@
 [![Licence : MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 ![PHP](https://img.shields.io/badge/php-%E2%89%A5%208.1-777bb4)
 
-Client PHP officiel de [Labyrinthe Connect](https://labyrinthe-rdc.com), la plateforme SMS et OTP de la RD Congo et
+Client PHP officiel de [Labyrinthe Connect](https://connect.labyrinthe-rdc.com), la plateforme SMS et OTP de la RD Congo et
 de l'Afrique centrale : envoyer des SMS, consulter le solde et les Sender IDs, vérifier des numéros de téléphone avec
 un code à usage unique (OTP) et recevoir des webhooks signés. Réponses et exceptions typées, nouvelles tentatives
 automatiques **uniquement** quand elles ne peuvent pas envoyer un SMS deux fois, Guzzle par défaut ou n'importe quel
 client PSR-18, et ni la clé API, ni les codes OTP, ni les numéros complets n'atteignent les journaux ou les dumps.
-SDK 1.2.0, construit sur la spécification de l'API 1.3.0.
+SDK 1.2.1, construit sur la spécification de l'API 1.3.0.
 
 *English version: [README.md](README.md). Laravel ? Utilisez [`labyrinthe/connect-laravel`](../laravel).
 WordPress ? Utilisez le [plugin](../wordpress).*
@@ -55,7 +55,7 @@ echo $message->status->value;                           // "queued"
 ```php
 $client = new Client(
     apiKey: getenv('LABYRINTHE_API_KEY'),
-    baseUrl: null,                 // par défaut https://api.labyrinthe-rdc.com/api/public/v1
+    baseUrl: null,                 // par défaut https://api.connect.labyrinthe-rdc.com/api/public/v1
     timeout: 30.0,
     connectTimeout: 10.0,
     maxRetries: 2,
@@ -74,7 +74,7 @@ $client = Client::fromEnv();       // LABYRINTHE_API_KEY, et LABYRINTHE_BASE_URL
 | Option | Défaut | Rôle |
 |---|---|---|
 | `apiKey` | — (obligatoire) | `lsk_test_…` (bac à sable) ou `lsk_live_…` (production) |
-| `baseUrl` | `https://api.labyrinthe-rdc.com/api/public/v1` | racine de l'API ; un hôte seul comme `http://localhost:8000` est complété par `/api/public/v1` |
+| `baseUrl` | `https://api.connect.labyrinthe-rdc.com/api/public/v1` | racine de l'API ; un hôte seul comme `http://localhost:8000` est complété par `/api/public/v1` |
 | `timeout` / `connectTimeout` | `30.0` / `10.0` s | délais du client Guzzle par défaut (à régler vous-même sur votre propre client PSR-18) |
 | `maxRetries` | `2` | nouvelles tentatives automatiques quand elles sont sans risque (0 à 10 ; `0` les désactive) |
 | `maxRetryWait` | `10.0` s | plus longue attente (`Retry-After` ou backoff) acceptée par le SDK ; au-delà, l'exception est levée |
@@ -82,7 +82,7 @@ $client = Client::fromEnv();       // LABYRINTHE_API_KEY, et LABYRINTHE_BASE_URL
 | `defaultSender` | `null` | Sender ID utilisé quand `send()` / `sendMany()` n'en reçoivent pas (sinon celui du compte) |
 | `httpClient`, `requestFactory`, `streamFactory` | Guzzle | tout client PSR-18 et toutes fabriques PSR-17 |
 | `logger` | aucun | logger PSR-3 (voir [journaux](#mode-test-journaux-et-sécurité)) |
-| `userAgentSuffix` | `null` | ajouté à `User-Agent: labyrinthe-php/1.2.0 PHP/x.y` (pour les intégrations) |
+| `userAgentSuffix` | `null` | ajouté à `User-Agent: labyrinthe-php/1.2.1 PHP/x.y` (pour les intégrations) |
 
 | Variable d'environnement | Lue par | |
 |---|---|---|
@@ -491,7 +491,7 @@ try {
 Le SDK est une fine couche sur une API REST JSON. Le même envoi avec cURL :
 
 ```bash
-curl https://api.labyrinthe-rdc.com/api/public/v1/sms \
+curl https://api.connect.labyrinthe-rdc.com/api/public/v1/sms \
   -H "Authorization: Bearer lsk_test_…" \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: 6f1c2d0e-8a4b-4c3d-9e2f-1a2b3c4d5e6f" \
