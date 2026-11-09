@@ -6,7 +6,7 @@
 ![Typed](https://img.shields.io/badge/typing-mypy%20strict-2A6DB2)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Official Python client for [Labyrinthe Connect](https://labyrinthe-rdc.com): send SMS and verify phone numbers
+Official Python client for [Labyrinthe Connect](https://connect.labyrinthe-rdc.com): send SMS and verify phone numbers
 with one-time codes (OTP), in the DR Congo and Central Africa.
 
 *Version française : [README.fr.md](README.fr.md).*
@@ -17,7 +17,7 @@ with one-time codes (OTP), in the DR Congo and Central Africa.
 - One dependency: [`httpx`](https://www.python-httpx.org/). Optional Django, FastAPI and Flask helpers.
 - Never logs or prints your API key, OTP codes or full phone numbers.
 
-SDK **1.2.0**, built against the API specification **1.3.0** ([`openapi/openapi.yaml`](../openapi/openapi.yaml)).
+SDK **1.2.1**, built against the API specification **1.3.0** ([`openapi/openapi.yaml`](../openapi/openapi.yaml)).
 
 ## Contents
 
@@ -97,7 +97,7 @@ from labyrinthe_connect import Labyrinthe
 
 client = Labyrinthe(
     api_key=os.environ["LABYRINTHE_API_KEY"],   # default: the LABYRINTHE_API_KEY environment variable
-    base_url="https://api.labyrinthe-rdc.com/api/public/v1",  # default (or LABYRINTHE_BASE_URL); a bare host is completed
+    base_url="https://api.connect.labyrinthe-rdc.com/api/public/v1",  # default (or LABYRINTHE_BASE_URL); a bare host is completed
     timeout=30.0,                # seconds, per attempt
     max_retries=2,               # 0 disables retries (max 10)
     max_retry_wait=10.0,         # longest Retry-After the SDK waits for
@@ -598,7 +598,7 @@ import uuid
 
 import httpx
 
-BASE_URL = "https://api.labyrinthe-rdc.com/api/public/v1"
+BASE_URL = "https://api.connect.labyrinthe-rdc.com/api/public/v1"
 headers = {"Authorization": f"Bearer {os.environ['LABYRINTHE_API_KEY']}", "Accept": "application/json"}
 
 response = httpx.post(

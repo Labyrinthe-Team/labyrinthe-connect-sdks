@@ -38,7 +38,7 @@ from .errors import (
 
 logger = logging.getLogger("labyrinthe_connect")
 
-DEFAULT_BASE_URL = "https://api.labyrinthe-rdc.com/api/public/v1"
+DEFAULT_BASE_URL = "https://api.connect.labyrinthe-rdc.com/api/public/v1"
 API_PATH = "/api/public/v1"
 
 DEFAULT_TIMEOUT = 30.0
@@ -126,7 +126,7 @@ def normalize_base_url(base_url: str) -> str:
     parts = urlsplit(trimmed)
     if parts.scheme not in ("http", "https") or not parts.netloc:
         raise InvalidArgumentError(
-            "base_url must be an absolute http(s) URL, e.g. https://api.labyrinthe-rdc.com/api/public/v1."
+            "base_url must be an absolute http(s) URL, e.g. https://api.connect.labyrinthe-rdc.com/api/public/v1."
         )
     # Un hôte seul ("http://localhost:8000") désigne la racine du backend.
     return trimmed + API_PATH if parts.path in ("", "/") else trimmed

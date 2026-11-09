@@ -6,7 +6,7 @@
 ![Typé](https://img.shields.io/badge/typing-mypy%20strict-2A6DB2)
 [![Licence : MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-SDK Python officiel de [Labyrinthe Connect](https://labyrinthe-rdc.com) : envoyez des SMS et vérifiez des numéros de
+SDK Python officiel de [Labyrinthe Connect](https://connect.labyrinthe-rdc.com) : envoyez des SMS et vérifiez des numéros de
 téléphone par code à usage unique (OTP), en RDC et en Afrique centrale.
 
 *English version: [README.md](README.md).*
@@ -17,7 +17,7 @@ téléphone par code à usage unique (OTP), en RDC et en Afrique centrale.
 - Une seule dépendance : [`httpx`](https://www.python-httpx.org/). Intégrations Django, FastAPI et Flask facultatives.
 - Ne journalise ni n'affiche jamais votre clé API, les codes OTP ou les numéros complets.
 
-SDK **1.2.0**, construit sur la spécification de l'API **1.3.0** ([`openapi/openapi.yaml`](../openapi/openapi.yaml)).
+SDK **1.2.1**, construit sur la spécification de l'API **1.3.0** ([`openapi/openapi.yaml`](../openapi/openapi.yaml)).
 
 ## Sommaire
 
@@ -98,7 +98,7 @@ from labyrinthe_connect import Labyrinthe
 
 client = Labyrinthe(
     api_key=os.environ["LABYRINTHE_API_KEY"],   # par défaut : la variable d'environnement LABYRINTHE_API_KEY
-    base_url="https://api.labyrinthe-rdc.com/api/public/v1",  # défaut (ou LABYRINTHE_BASE_URL) ; un hôte nu est complété
+    base_url="https://api.connect.labyrinthe-rdc.com/api/public/v1",  # défaut (ou LABYRINTHE_BASE_URL) ; un hôte nu est complété
     timeout=30.0,                # secondes, par tentative
     max_retries=2,               # 0 désactive les relances (10 max.)
     max_retry_wait=10.0,         # plus long Retry-After que le SDK accepte d'attendre
@@ -608,7 +608,7 @@ import uuid
 
 import httpx
 
-BASE_URL = "https://api.labyrinthe-rdc.com/api/public/v1"
+BASE_URL = "https://api.connect.labyrinthe-rdc.com/api/public/v1"
 headers = {"Authorization": f"Bearer {os.environ['LABYRINTHE_API_KEY']}", "Accept": "application/json"}
 
 response = httpx.post(

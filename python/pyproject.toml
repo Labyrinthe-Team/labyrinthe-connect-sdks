@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "labyrinthe-connect"
-version = "1.2.0"
+version = "1.2.1"
 description = "Official Python SDK for Labyrinthe Connect: send SMS and verify phone numbers (OTP) in the DR Congo and Central Africa."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -40,7 +40,7 @@ fastapi = ["fastapi>=0.95"]
 flask = ["Flask>=2.3"]
 
 [project.urls]
-Homepage = "https://labyrinthe-rdc.com"
+Homepage = "https://connect.labyrinthe-rdc.com"
 Documentation = "https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/tree/main/python#readme"
 Repository = "https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks"
 Issues = "https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/issues"

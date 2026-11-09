@@ -5,6 +5,14 @@ All notable changes to `labyrinthe-connect` (Python) are documented here. This p
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-09
+
+### Fixed
+- Default API URL is now `https://api.connect.labyrinthe-rdc.com/api/public/v1`. The previous default (`api.labyrinthe-rdc.com`) does not serve
+  the Labyrinthe Connect API, so requests failed unless the URL was set explicitly. An explicitly configured URL
+  is unchanged.
+- Links to the website now point to https://connect.labyrinthe-rdc.com.
+
 ## [1.2.0] - 2026-11-06
 
 Built against the API specification 1.3.0. Backwards compatible with 1.1.x.
@@ -95,7 +103,8 @@ First stable release, built against the API specification 1.1.0.
 - `phone` helpers (normalisation identical to the API, validation, masking); `logging` logger
   `labyrinthe_connect` (no key, code, body or full number); fully typed (`py.typed`); only dependency: `httpx`.
 
-[Unreleased]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/python-v1.2.0...HEAD
+[Unreleased]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/python-v1.2.1...HEAD
+[1.2.1]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/python-v1.2.0...python-v1.2.1
 [1.2.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/python-v1.1.1...python-v1.2.0
 [1.1.1]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/python-v1.1.0...python-v1.1.1
 [1.1.0]: https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/compare/python-v1.0.0...python-v1.1.0

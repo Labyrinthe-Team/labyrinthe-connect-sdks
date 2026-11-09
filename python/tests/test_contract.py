@@ -93,7 +93,7 @@ def known(enum: Any) -> List[str]:
 
 
 def test_targets_spec_1_3_0(spec: Dict[str, Any]) -> None:
-    assert spec["info"]["version"] == "1.3.0"
+    assert spec["info"]["version"] == "1.3.1"
 
 
 def test_implements_every_operation_and_only_those(spec: Dict[str, Any]) -> None:
