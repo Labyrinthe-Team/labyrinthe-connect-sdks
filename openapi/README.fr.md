@@ -13,14 +13,14 @@ exemples de messages d'erreur), comme les messages renvoyés par l'API.
 
 - Documentation HTML publiée : <https://labyrinthe-team.github.io/labyrinthe-connect-sdks/> (GitHub Pages, voir
   [plus bas](#publication-sur-github-pages)).
-- Copie servie par le backend, sans authentification : `GET https://api.labyrinthe-rdc.com/api/public/openapi.yaml`.
+- Copie servie par le backend, sans authentification : `GET https://api.connect.labyrinthe-rdc.com/api/public/openapi.yaml`.
 
 ## Contenu
 
 | Partie | Contenu |
 |---|---|
 | `info.description` | authentification (`lsk_live_…` / `lsk_test_…`), numéros, crédits et segments, idempotence, format d'erreur, maintenance, identifiant de requête, versions, dates, limites de débit, nouveautés |
-| `servers` | production `https://api.labyrinthe-rdc.com/api/public/v1`, local `http://localhost:8000/api/public/v1` |
+| `servers` | production `https://api.connect.labyrinthe-rdc.com/api/public/v1`, local `http://localhost:8000/api/public/v1` |
 | `paths` (8 opérations) | `POST /sms` (`sendSms`), `GET /sms` (`listSms`), `POST /sms/estimate` (`estimateSms`), `GET /sms/{id}` (`getSms`), `GET /balance` (`getBalance`), `GET /sender-ids` (`listSenderIds`), `POST /otp/send` (`sendOtp`), `POST /otp/verify` (`verifyOtp`) ; tags SMS, Compte, OTP |
 | `webhooks` (6) | `message.status_changed`, `campaign.completed`, `balance.low`, `otp.verified`, `otp.failed`, `test.ping` : enveloppe `{ id, event, data, timestamp }`, signature `X-Signature: sha256=…` (HMAC-SHA256 du corps brut), 5 tentatives |
 | `components.schemas` | `Message`, `Estimate`, `Balance`, `SenderId`, `OtpSendResult`, `OtpVerifyResult`, `Paginated`, enums (`MessageStatus`, `Encoding`, `SenderIdStatus`, `RejectionReason`), `Error` et chaque erreur typée (`ValidationError`, `InsufficientCreditsError`, `IdempotencyInProgressError`, `RecipientNotSendableError`, `TooManyRequestsError`, `OtpResendTooSoonError`, `OtpRateLimitedError`, `FeatureDisabledError`), `ErrorCode`, données des webhooks |
@@ -121,7 +121,7 @@ avec [OpenAPI Generator](https://openapi-generator.tech/) :
 npx @openapitools/openapi-generator-cli generate -i openapi.yaml -g go -o ./labyrinthe-go
 # …ou depuis la copie servie par l'API
 npx @openapitools/openapi-generator-cli generate \
-  -i https://api.labyrinthe-rdc.com/api/public/openapi.yaml -g ruby -o ./labyrinthe-ruby
+  -i https://api.connect.labyrinthe-rdc.com/api/public/openapi.yaml -g ruby -o ./labyrinthe-ruby
 ```
 
 Points d'attention pour un client généré :

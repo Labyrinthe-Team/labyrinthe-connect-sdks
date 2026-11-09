@@ -6,7 +6,7 @@ openapi: 3.1.0
 # Toute évolution de l'API publique commence ici.
 info:
   title: Labyrinthe Connect — API développeurs
-  version: "1.3.0"
+  version: "1.3.1"
   summary: Envoi de SMS et vérification OTP par API.
   description: |
     API REST JSON pour envoyer des SMS, consulter le solde de crédits et les Sender IDs
@@ -125,6 +125,10 @@ info:
     ## Webhooks
     Voir la section `webhooks` : événements envoyés en POST JSON, signés en HMAC-SHA256.
 
+    ## Nouveautés 1.3.1
+    Aucun changement de l'API.
+    - Adresse de production corrigée dans `servers` : `https://api.connect.labyrinthe-rdc.com/api/public/v1`.
+
     ## Nouveautés 1.3.0
     Compatible avec la 1.2.0 (ajout d'un code d'erreur).
     - Nouveau code `503 FEATURE_DISABLED` sur toutes les opérations (fonctionnalité coupée par la plateforme,
@@ -167,7 +171,7 @@ info:
     identifier: LicenseRef-Proprietary
 
 servers:
-  - url: https://api.labyrinthe-rdc.com/api/public/v1
+  - url: https://api.connect.labyrinthe-rdc.com/api/public/v1
     description: Production
   - url: http://localhost:8000/api/public/v1
     description: Local (développement)
