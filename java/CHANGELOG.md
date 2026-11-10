@@ -51,7 +51,7 @@ Built against the API specification 1.3.0. Backward compatible with 1.1.1, excep
   `0812345678` is sent as `+243812345678`. `PhoneNumbers.normalize()` still returns digits without "+", the format
   of the API responses.
 - The integration test of a short foreign number on `sms().send()` is enabled again: `POST /sms` now keeps
-  `+2481234567` as `2481234567` (`BACKEND-TODO.md` n° 34, fixed on the API side).
+  `+2481234567` as `2481234567` (fixed on the API side).
 
 ## [1.1.0] - 2026-11-06
 

@@ -81,7 +81,7 @@ export const PhoneNumber = Object.freeze({
 });
 
 /**
- * @internal Format envoyé à l'API : E.164 avec « + » (BACKEND-TODO n° 32). Sans « + », l'API lit un numéro
+ * @internal Format envoyé à l'API : E.164 avec « + ». Sans « + », l'API lit un numéro
  * de 10 chiffres ou moins comme local RDC et lui ajoute 243 (« 2481234567 » → « 2432481234567 ») ; avec
  * « + », elle conserve l'indicatif. Les réponses renvoient toujours les chiffres sans « + ».
  */

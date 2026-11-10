@@ -87,7 +87,7 @@ public static class PhoneNumber
     }
 
     /// <summary>
-    /// Normalise au format E.164 avec "+" pour l'envoi à l'API (BACKEND-TODO n° 32) : sans "+", l'API lit un numéro
+    /// Normalise au format E.164 avec "+" pour l'envoi à l'API : sans "+", l'API lit un numéro
     /// de moins de 11 chiffres comme local RDC (<c>2481234567</c> partirait en <c>2432481234567</c>).
     /// </summary>
     internal static string? ToE164(string? raw, string defaultCountryCode) =>

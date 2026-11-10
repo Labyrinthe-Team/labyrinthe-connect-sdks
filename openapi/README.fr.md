@@ -4,10 +4,9 @@
 
 [`openapi.yaml`](openapi.yaml) (OpenAPI 3.1) est **la source de vérité** de l'API développeurs publique de
 Labyrinthe Connect (`/api/public/v1`) : envoi de SMS et vérification OTP. Elle sert de base à tous les SDK, à la
-collection Postman, à la documentation HTML et aux tests de contrat. Elle décrit l'API **telle qu'elle est** ; les
-améliorations prévues sont dans [`../BACKEND-TODO.md`](../BACKEND-TODO.md).
+collection Postman, à la documentation HTML et aux tests de contrat. Elle décrit l'API **telle qu'elle est**.
 
-Version **1.3.0**. Les changements de chaque version sont décrits dans les sections « Nouveautés 1.3.0 » et
+Version **1.3.1**. Les changements de chaque version sont décrits dans les sections « Nouveautés 1.3.1 », « Nouveautés 1.3.0 » et
 « Nouveautés 1.2.0 » de `info.description` ; `info.version` suit SemVer. La spec est rédigée en français (descriptions,
 exemples de messages d'erreur), comme les messages renvoyés par l'API.
 
@@ -93,8 +92,8 @@ La spec suit le backend, jamais l'inverse ; les SDK suivent la spec (voir [`../C
    jour).
 5. Mettre à jour chaque SDK (types, enums, erreurs, docs) et son CHANGELOG ; les tests de contrat des SDK échouent
    quand les enums, limites ou opérations divergent de la spec.
-6. Une limite de l'API qui gêne l'intégration va dans [`../BACKEND-TODO.md`](../BACKEND-TODO.md) avec une
-   proposition ; elle n'est jamais contournée dans un SDK.
+6. Une limite de l'API qui gêne l'intégration est signalée à l'équipe backend avec une proposition ; elle n'est
+   jamais contournée dans un SDK.
 
 La CI [`openapi.yml`](../.github/workflows/openapi.yml) lance le lint sur chaque push et pull request touchant
 `openapi/**`, et `check:routes` quand la variable de dépôt `LABYRINTHE_BACKEND_REPOSITORY` et le secret

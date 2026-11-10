@@ -227,7 +227,7 @@ def test_a_foreign_number_without_plus_is_kept(run: Runner) -> None:
 
 
 def test_a_short_foreign_number_keeps_its_country_code(run: Runner) -> None:
-    """BACKEND-TODO n° 32 et 34 : « +2481234567 » (Seychelles) n'est pas lu comme un numéro local RDC."""
+    """« +2481234567 » (Seychelles) n'est pas lu comme un numéro local RDC."""
     estimate = run(lambda c: c.sms.estimate(body="Hello", recipients=["+2481234567", "2481234567"]))
     assert estimate.recipients_count == 2  # sans « + », le second est un autre numéro (2432481234567)
     message = run(lambda c: c.sms.send(to="+2481234567", body="Integration test", reference=reference()))

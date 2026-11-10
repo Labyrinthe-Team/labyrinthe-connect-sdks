@@ -162,7 +162,7 @@ describe('phone numbers (spec 1.2.0)', () => {
     expect(new URL(requests[2]!.url).searchParams.get('recipient')).toBe('+447911123456');
   });
 
-  // BACKEND-TODO n° 32 : sans « + », l'API lit « 2481234567 » (Seychelles, 10 chiffres) comme local RDC.
+  // Sans « + », l'API lit « 2481234567 » (Seychelles, 10 chiffres) comme local RDC.
   it('sends E.164 numbers with "+" so that a short foreign number keeps its country code (1.1.1)', async () => {
     const { client, requests } = harness([
       json(202, { data: [message({ recipient: '2481234567' })] }),

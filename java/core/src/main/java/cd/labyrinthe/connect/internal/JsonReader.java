@@ -165,7 +165,7 @@ public final class JsonReader {
 
   /**
    * ISO 8601 → {@link Instant}. Accepte {@code Z}, {@code +00:00}, 0 à 9 décimales, et une
-   * date-heure sans fuseau (lue en UTC) : voir BACKEND-TODO n° 14.
+   * date-heure sans fuseau (lue en UTC).
    *
    * @param text texte de la date
    * @return l'instant, ou {@code null} s'il est illisible

@@ -187,14 +187,14 @@ public sealed class IntegrationTests : IDisposable
         Assert.Equal(requestId, batch.RequestId);
     }
 
-    // BACKEND-TODO n° 32 : un numéro étranger court (Seychelles, 10 chiffres) envoyé avec "+" garde son indicatif.
+    // Un numéro étranger court (Seychelles, 10 chiffres) envoyé avec "+" garde son indicatif.
     [IntegrationFact]
     public async Task A_short_foreign_number_keeps_its_country_code()
     {
         var estimate = await client.Sms.EstimateAsync(new EstimateSmsRequest { Body = "Integration test", Recipients = new[] { "+2481234567", "0812345678" } });
         Assert.Equal(2, estimate.RecipientsCount);
 
-        // BACKEND-TODO n° 34 (corrigé) : POST /sms ne renormalise plus le destinataire.
+        // Corrigé côté API : POST /sms ne renormalise plus le destinataire.
         var message = await client.Sms.SendAsync(new SendSmsRequest { To = "+2481234567", Body = "Integration test" });
         Assert.Equal("2481234567", message.Recipient);
     }

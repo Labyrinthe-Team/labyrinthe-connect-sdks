@@ -105,7 +105,7 @@ describe.skipIf(!enabled)('integration (local backend, test key)', () => {
     expect(verifiedPhones).toContain(foreign);
   });
 
-  it('a short foreign number reaches the API with its "+" (BACKEND-TODO n° 32)', async () => {
+  it('a short foreign number reaches the API with its "+"', async () => {
     // Corps réellement envoyé à l'API, capturé sous le SDK Node.
     const phones: unknown[] = [];
     const seychelles = createOtpHandlers({

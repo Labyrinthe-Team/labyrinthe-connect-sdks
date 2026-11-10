@@ -126,7 +126,7 @@ export function toMessage(data: Json): Message {
     reference: api.nullableString(data, 'reference'),
     recipient: api.string(data, 'recipient'),
     sender: api.nullableString(data, 'sender'),
-    // Jamais null depuis la spec 1.2.0 (BACKEND-TODO n° 9) ; null toléré pour un backend plus ancien.
+    // Jamais null depuis la spec 1.2.0 ; null toléré pour un backend plus ancien.
     encoding: encoding(api.nullableString(data, 'encoding')),
     status: messageStatus(api.string(data, 'status')),
     segments: api.nullableInt(data, 'segments') ?? 0,

@@ -35,7 +35,7 @@ public class SmsTests
         Assert.Null(message.DeliveredAt);
     }
 
-    // BACKEND-TODO n° 32 : sans "+", l'API lit un numéro de moins de 11 chiffres comme local RDC
+    // Sans "+", l'API lit un numéro de moins de 11 chiffres comme local RDC
     // ("2481234567" partirait en 2432481234567). Le SDK envoie donc toujours le format E.164 avec "+".
     [Fact]
     public async Task Sends_numbers_in_e164_with_plus_so_a_short_foreign_number_keeps_its_country_code()

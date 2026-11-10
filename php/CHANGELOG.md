@@ -46,7 +46,7 @@ Built against the API specification 1.3.0. Backward compatible with 1.1.x.
 
 ### Tests
 - The integration test of a short foreign number (`+2481234567` → recipient `2481234567`) is no longer marked
-  incomplete: `POST /sms` no longer normalises the recipient twice (`BACKEND-TODO.md` n° 34, fixed on the API side).
+  incomplete: `POST /sms` no longer normalises the recipient twice (fixed on the API side).
 
 ## [1.1.0] - 2026-11-06
 

@@ -14,7 +14,7 @@ describe('PhoneNumber', () => {
     ['other country with plus', '+33 6 12 34 56 78', '33612345678'],
     ['other country with 00', '0033612345678', '33612345678'],
     ['us number', '+1 415 555 2671', '14155552671'],
-    // Spec 1.2.0 (BACKEND-TODO n° 23) : sans « + », 11 chiffres ou plus ne commençant pas par 0 = déjà international.
+    // Spec 1.2.0 : sans « + », 11 chiffres ou plus ne commençant pas par 0 = déjà international.
     ['France without plus', '33612345678', '33612345678'],
     ['Belgium without plus', '32470123456', '32470123456'],
     ['US without plus', '14155550123', '14155550123'],

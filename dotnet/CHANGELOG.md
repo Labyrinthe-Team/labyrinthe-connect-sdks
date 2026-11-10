@@ -46,7 +46,7 @@ Built against the API specification 1.3.0. Backward compatible with 1.1.x.
   reads a number of 10 digits or fewer as a local DR Congo number: `+2481234567` (Seychelles) was sent as
   `2481234567` and became `2432481234567`. `PhoneNumber.Normalize()` still returns digits without "+" (the format of
   the API responses). Request bodies no longer escape "+" and non-ASCII characters (plain UTF-8 JSON).
-  Since the API fix of `POST /sms` (BACKEND-TODO n° 34), a short foreign number keeps its country code on every
+  Since the API fix of `POST /sms`, a short foreign number keeps its country code on every
   endpoint; the integration test checks it again.
 
 ## [1.1.0] - 2026-11-06

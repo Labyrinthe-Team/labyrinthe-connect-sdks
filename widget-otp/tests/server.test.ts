@@ -63,7 +63,7 @@ describe('configuration', () => {
 });
 
 describe('send', () => {
-  // BACKEND-TODO n° 32 : sans « + », l'API lit un numéro de moins de 11 chiffres comme local RDC.
+  // Sans « + », l'API lit un numéro de moins de 11 chiffres comme local RDC.
   it('always hands the SDK an E.164 number with "+" (short foreign number kept, local number prefixed)', async () => {
     const client = fakeClient();
     await session(handlers(client)).call('send', { phone: '+2481234567' });

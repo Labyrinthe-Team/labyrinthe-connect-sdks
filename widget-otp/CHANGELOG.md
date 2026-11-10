@@ -38,7 +38,7 @@ Built against the API specification 1.3.0 and `@labyrinthe/connect` 1.2 (peer de
 
 ### Fixed
 - Short foreign numbers (`+2481234567`, Seychelles, 10 digits) are sent to the API with their country code instead of
-  being read as local DRC numbers (`2432481234567`), BACKEND-TODO n° 32. The widget and the server helper already
+  being read as local DRC numbers (`2432481234567`). The widget and the server helper already
   sent `+<digits>`, but `@labyrinthe/connect` 1.1.0 dropped the `+` before calling the API: the peer dependency is now
   `^1.1.1` (the release that sends E.164 numbers with `+`). Tests check the number handed to the SDK and the body
   received by a local API.

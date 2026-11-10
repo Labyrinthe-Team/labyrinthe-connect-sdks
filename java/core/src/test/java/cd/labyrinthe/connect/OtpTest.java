@@ -18,7 +18,7 @@ class OtpTest {
 
   @Test
   void sendsTheShortForeignNumberWithThePlus() {
-    // BACKEND-TODO n° 32 : « +2481234567 » (Seychelles) garde son indicatif.
+    // « +2481234567 » (Seychelles) garde son indicatif.
     try (MockApi api = new MockApi()) {
       api.enqueue(MockApi.data(201, RetryTest.OTP_SENT));
       api.client().otp().send("+2481234567");

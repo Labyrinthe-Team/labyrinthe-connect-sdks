@@ -129,7 +129,7 @@ def to_message(data: Json, request_id: Optional[str] = None) -> Message:
         reference=api.nullable_string(data, "reference"),
         recipient=api.string(data, "recipient"),
         sender=api.nullable_string(data, "sender"),
-        # Jamais null depuis l'API 1.2.0 (BACKEND-TODO n° 9) ; tolérance gardée.
+        # Jamais null depuis l'API 1.2.0 ; tolérance gardée.
         encoding=None if encoding is None else Encoding.parse(encoding),
         status=MessageStatus.parse(api.string(data, "status")),
         segments=api.nullable_integer(data, "segments") or 0,

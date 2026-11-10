@@ -153,7 +153,7 @@ def test_estimate(harness: HarnessFactory) -> None:
 
 
 def test_numbers_are_sent_in_e164_with_the_plus(harness: HarnessFactory) -> None:
-    """BACKEND-TODO n° 32 : sans « + », l'API lit un numéro étranger court comme un numéro local RDC."""
+    """Sans « + », l'API lit un numéro étranger court comme un numéro local RDC."""
     h = harness(
         [
             json_response(202, {"data": [message()]}),

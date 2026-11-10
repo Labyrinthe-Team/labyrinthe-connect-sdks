@@ -8,7 +8,7 @@ namespace Labyrinthe.Connect.Tests;
 
 public class OtpTests
 {
-    // BACKEND-TODO n° 32 : le numéro part en E.164 avec "+" (un numéro étranger court garde son indicatif).
+    // Le numéro part en E.164 avec "+" (un numéro étranger court garde son indicatif).
     [Fact]
     public async Task Sends_the_otp_phone_in_e164_with_plus()
     {

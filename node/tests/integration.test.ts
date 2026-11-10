@@ -76,7 +76,7 @@ describe.skipIf(!enabled)('integration (local backend, test key)', () => {
     expect(message.recipient).toBe('33612345678');
   });
 
-  // BACKEND-TODO n° 32 (1.1.1) : envoyé sans « + », « 2481234567 » serait lu comme local RDC (2432481234567).
+  // Depuis la 1.1.1 : envoyé sans « + », « 2481234567 » serait lu comme local RDC (2432481234567).
   it('keeps the country code of a short foreign number (+248, 10 digits) in estimates and list filters', async () => {
     // Sans « + », les deux numéros seraient le même (2432481234567) et comptés une seule fois.
     const estimate = await client.sms.estimate({ body: 'Hello', recipients: ['+2481234567', '2432481234567'] });
@@ -87,7 +87,7 @@ describe.skipIf(!enabled)('integration (local backend, test key)', () => {
     expect(page.data.every((m) => m.recipient === '2481234567')).toBe(true);
   });
 
-  // BACKEND-TODO n° 34 (corrigé) : POST /sms garde l'indicatif d'un numéro étranger court envoyé avec « + ».
+  // Corrigé côté API : POST /sms garde l'indicatif d'un numéro étranger court envoyé avec « + ».
   it('sends to a short foreign number (+248, 10 digits) without adding 243', async () => {
     const message = await client.sms.send({ to: '+2481234567', body: 'Integration test (short foreign number)', reference: reference() });
     expect(message.recipient).toBe('2481234567');

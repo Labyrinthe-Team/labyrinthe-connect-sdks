@@ -327,7 +327,7 @@ class IntegrationTest {
   @ParameterizedTest(name = "async={0}")
   @ValueSource(booleans = {false, true})
   void shortForeignNumberKeepsItsCountryCode(boolean async) {
-    // BACKEND-TODO n° 32 : « +248… » (Seychelles, 10 chiffres) ne doit pas recevoir l'indicatif
+    // « +248… » (Seychelles, 10 chiffres) ne doit pas recevoir l'indicatif
     // 243.
     LabyrintheClient client = client();
     String digits = String.format("2482%06d", RANDOM.nextInt(1_000_000));

@@ -40,9 +40,9 @@ Built on `labyrinthe/connect-php` 1.1.1.
 
 ### Fixed
 - Short foreign numbers (10 digits or fewer, e.g. `+2481234567`): the PHP SDK 1.1.1 now sends numbers to the API in
-  E.164 with `+`, so they are no longer read as local DRC numbers by the API (`BACKEND-TODO.md` n° 32). The plugin
+  E.164 with `+`, so they are no longer read as local DRC numbers by the API. The plugin
   still passes `+<international number>` to the SDK: the stored numbers are digits without `+`, and without it the SDK
-  would add the default country code to a short foreign one. With `BACKEND-TODO.md` n° 34 fixed on the API side,
+  would add the default country code to a short foreign one. With the fix on the API side,
   `POST /sms` keeps the country code too (`+2481234567` → `2481234567`); the integration test is no longer marked
   incomplete and the "known limit" is gone from the README.
 
@@ -85,7 +85,7 @@ Built on `labyrinthe/connect-php` 1.1.0 (API specification 1.2.0). No setting to
 - Order SMS `reference` is now `order-<order ID>` (was `order-<order number>`; identical unless a custom order number
   plugin is used), so that delivery reports find their order.
 - Phone numbers: still sent as `+<international number>`. SDK 1.1.0 keeps foreign numbers of 11 digits or more, but the
-  `+` is still needed for shorter ones (and the API still prefixes them with 243: see `BACKEND-TODO.md`).
+  `+` is still needed for shorter ones (and the API still prefixes them with 243).
 - Default resend delay before the API answers: 60 seconds (was 30), the API value is used as soon as it is known.
 
 ## [1.0.0] - 2026-11-06

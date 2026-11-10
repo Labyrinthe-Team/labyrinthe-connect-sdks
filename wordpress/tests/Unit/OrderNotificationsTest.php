@@ -371,7 +371,7 @@ final class OrderNotificationsTest extends TestCase {
 
 		$this->notifications->send_customer_sms( $order->get_id(), 'processing', 1 );
 
-		// BACKEND-TODO n° 32 : sans « + », l'API lirait 2481234567 comme un numéro local RDC.
+		// Sans « + », l'API lirait 2481234567 comme un numéro local RDC.
 		$this->assertSame( '+2481234567', $this->http->last()['body']['recipient'] );
 	}
 

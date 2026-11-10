@@ -237,7 +237,7 @@ class SmsTest {
 
   @Test
   void sendsEveryNumberInE164WithThePlus() {
-    // BACKEND-TODO n° 32 : sans « + », l'API lirait « 2481234567 » comme un numéro local RDC.
+    // Sans « + », l'API lirait « 2481234567 » comme un numéro local RDC.
     try (MockApi api = new MockApi()) {
       api.enqueue(MockApi.data(202, "[" + MockApi.message() + "]"));
       api.enqueue(MockApi.data(202, "[" + MockApi.message() + "]"));

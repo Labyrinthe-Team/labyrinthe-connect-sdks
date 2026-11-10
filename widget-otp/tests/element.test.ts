@@ -113,7 +113,7 @@ describe('phone step', () => {
     expect(element.shadowRoot!.activeElement).toBe($(element, '#pn'));
   });
 
-  it('sends a short foreign number with its "+" (BACKEND-TODO n° 32)', async () => {
+  it('sends a short foreign number with its "+"', async () => {
     const element = mount({ locale: 'en' });
     await sendPhone(element, '+248 123 4567');
     expect(net.exchanges[0]!.requestBody).toMatchObject({ phone: '+2481234567' });

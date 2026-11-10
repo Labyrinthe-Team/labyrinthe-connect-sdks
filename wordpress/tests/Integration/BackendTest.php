@@ -121,7 +121,7 @@ final class BackendTest extends \WP_UnitTestCase {
 
 		$this->assertSame( 2, $client->sms->estimate( 'Seychelles', array( '+2481234567', '0812345678' ) )->recipientsCount );
 
-		// BACKEND-TODO n° 34 (corrigé) : POST /sms ne normalise plus deux fois le destinataire.
+		// Corrigé côté API : POST /sms ne normalise plus deux fois le destinataire.
 		$message = $client->sms->send( '+2481234567', 'Seychelles test' );
 		$this->assertSame( '2481234567', $message->recipient );
 	}

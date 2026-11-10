@@ -98,11 +98,11 @@ final class IntegrationTest extends TestCase
 
     public function test_a_short_foreign_number_keeps_its_country_code(): void
     {
-        // BACKEND-TODO n° 32: without "+", the API would read "2481234567" as a local DRC number.
+        // Without "+", the API would read "2481234567" as a local DRC number.
         $estimate = $this->client->sms->estimate('Seychelles', ['+2481234567', '0812345678']);
         self::assertSame(2, $estimate->recipientsCount);
 
-        // BACKEND-TODO n° 34 (fixed): POST /sms no longer normalises the recipient twice.
+        // Fixed on the API side: POST /sms no longer normalises the recipient twice.
         $message = $this->client->sms->send(to: '+2481234567', body: 'Seychelles test', reference: self::reference());
         self::assertSame('2481234567', $message->recipient);
     }

@@ -33,7 +33,7 @@ pull request: tests green, static analysis clean, `composer validate --strict` (
    rebuilt and deployed to GitHub Pages by `docs.yml` on every push to `main` touching `openapi/**`.
 4. Update each SDK: types, enums, error mapping, docs. The SDK contract tests (e.g.
    `php/tests/Contract/OpenApiContractTest.php`) fail when enums, limits or operations drift from the spec.
-5. An API limit that makes integration harder is written down in `BACKEND-TODO.md` with a proposal — it is never
+5. An API limit that makes integration harder is reported to the backend team with a proposal — it is never
    worked around in an SDK.
 
 ## Releasing
@@ -94,7 +94,8 @@ Before tagging, set the same version in the plugin header and `LABYRINTHE_CONNEC
 
 1. Create `<name>/` with `README.md` + `README.fr.md`, `CHANGELOG.md`, `LICENSE` (MIT), `src/`, `tests/`
    (mocked HTTP + contract tests against `openapi/`), `examples/`.
-2. Follow the shared API and rules of [`PROMPT.md`](PROMPT.md) (idempotency, safe retries, typed errors, webhook
+2. Follow the shared API and rules listed under "Principles shared by every SDK" in the root
+   [`README.md`](README.md) (idempotency, safe retries, typed errors, webhook
    verification, secret masking, test mode).
 3. Add `.github/workflows/<name>.yml` with path filters and the supported version matrix; add a mirror to
    `split.yml` if the registry needs one.

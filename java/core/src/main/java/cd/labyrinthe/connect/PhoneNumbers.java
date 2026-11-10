@@ -125,7 +125,7 @@ public final class PhoneNumbers {
   }
 
   /**
-   * Format d'envoi à l'API : E.164 avec « + » (BACKEND-TODO n° 32). Sans « + », l'API lit un numéro
+   * Format d'envoi à l'API : E.164 avec « + ». Sans « + », l'API lit un numéro
    * de 10 chiffres ou moins comme local RDC et lui ajoute 243 ({@code "2481234567"} partirait en
    * {@code "2432481234567"}).
    *
