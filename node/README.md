@@ -18,7 +18,7 @@ codes (OTP).
   `JSON.stringify()`; webhooks are verified in constant time on the raw body.
 - Webhook helpers for **Express** and **Next.js** (App Router, and any Fetch `Request` / `Response` runtime).
 
-Version **1.2.1**, built against the API specification **1.3.0**
+Version **1.2.1**, built against the API specification **1.3.1**
 ([`openapi.yaml`](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/blob/main/openapi/openapi.yaml)).
 What changed: [CHANGELOG](CHANGELOG.md).
 
@@ -775,6 +775,8 @@ Reference: the OpenAPI 3.1 specification
 
 ## Upgrading
 
+- **1.2.0 → 1.2.1** (API 1.3.1): no code change. The default API URL is now `https://api.connect.labyrinthe-rdc.com/api/public/v1` (the 1.2.0 default
+  did not answer). Upgrade, or set this URL explicitly if you stay on 1.2.0.
 - **1.1.x → 1.2.0** (API 1.3.0): no code change. New `FeatureDisabledError` for 503 `FEATURE_DISABLED`; 503
   `OTP_SERVICE_DISABLED` is now thrown as `FeatureDisabledError` too. Both remain `instanceof ServiceUnavailableError`,
   so existing `catch` branches keep working. They are no longer retried with backoff, only after a short `Retry-After`.

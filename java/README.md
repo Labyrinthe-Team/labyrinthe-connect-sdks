@@ -683,7 +683,7 @@ SecretKeySpec(secret.getBytes(UTF_8), "HmacSHA256"));` then compare `"sha256=" +
 `X-Signature` with `MessageDigest.isEqual`, and check that the `timestamp` of the envelope (Unix seconds) is recent.
 You then handle retries, idempotency, error mapping and number formats yourself.
 
-Reference: the OpenAPI specification [`openapi/openapi.yaml`](../openapi/openapi.yaml) (1.3.0), also served by the
+Reference: the OpenAPI specification [`openapi/openapi.yaml`](../openapi/openapi.yaml) (1.3.1), also served by the
 API at `/api/public/openapi.yaml`.
 
 ### Known API limits
@@ -697,6 +697,8 @@ API at `/api/public/openapi.yaml`.
 
 The SDK follows SemVer. See the [CHANGELOG](CHANGELOG.md).
 
+- **1.2.0 → 1.2.1** (API 1.3.1): no code change. The default API URL is now `https://api.connect.labyrinthe-rdc.com/api/public/v1` (the 1.2.0 default
+  did not answer). Upgrade, or set this URL explicitly if you stay on 1.2.0.
 - **1.1.x → 1.2.0** (API 1.3.0): new `FeatureDisabledException` (503 `FEATURE_DISABLED`). `OTP_SERVICE_DISABLED` is
   now a `FeatureDisabledException` too (still a `ServiceUnavailableException`, so existing `catch` blocks keep
   working). **Behaviour change**: `OTP_SERVICE_DISABLED` is no longer retried with the 5xx backoff; both codes are

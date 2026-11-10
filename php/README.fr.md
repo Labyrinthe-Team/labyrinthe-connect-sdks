@@ -10,7 +10,7 @@ de l'Afrique centrale : envoyer des SMS, consulter le solde et les Sender IDs, v
 un code à usage unique (OTP) et recevoir des webhooks signés. Réponses et exceptions typées, nouvelles tentatives
 automatiques **uniquement** quand elles ne peuvent pas envoyer un SMS deux fois, Guzzle par défaut ou n'importe quel
 client PSR-18, et ni la clé API, ni les codes OTP, ni les numéros complets n'atteignent les journaux ou les dumps.
-SDK 1.2.1, construit sur la spécification de l'API 1.3.0.
+SDK 1.2.1, construit sur la spécification de l'API 1.3.1.
 
 *English version: [README.md](README.md). Laravel ? Utilisez [`labyrinthe/connect-laravel`](../laravel).
 WordPress ? Utilisez le [plugin](../wordpress).*
@@ -29,7 +29,7 @@ WordPress ? Utilisez le [plugin](../wordpress).*
 | PHP | 8.1 ou plus, avec les extensions `json` et `mbstring` |
 | HTTP | `guzzlehttp/guzzle` ^7.5 (installé et utilisé par défaut), ou tout client PSR-18 avec des fabriques PSR-17 |
 | Journaux | facultatif, tout logger PSR-3 (`psr/log` ^2 ou ^3) |
-| API | API publique Labyrinthe Connect v1 (spécification 1.3.0) |
+| API | API publique Labyrinthe Connect v1 (spécification 1.3.1) |
 
 ## Installation
 
@@ -506,7 +506,8 @@ OpenAPI [`openapi/openapi.yaml`](../openapi/openapi.yaml).
 
 Voir le [CHANGELOG.md](CHANGELOG.md) (en anglais). Les versions 1.x sont rétrocompatibles. De 1.1 à 1.2 : les erreurs
 de maintenance sont désormais des `FeatureDisabledException` (sous-classe de `ServiceUnavailableException` : les
-`catch` existants fonctionnent toujours) et ne sont plus relancées par backoff.
+`catch` existants fonctionnent toujours) et ne sont plus relancées par backoff. De 1.2.0 à 1.2.1 : aucun changement de code ; l'URL par défaut de l'API
+est désormais `https://api.connect.labyrinthe-rdc.com/api/public/v1` (celle de la 1.2.0 ne répondait pas).
 
 ## Contribuer
 

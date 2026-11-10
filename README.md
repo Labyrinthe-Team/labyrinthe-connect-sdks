@@ -9,16 +9,16 @@ the DR Congo and Central Africa. Send an SMS or verify a phone number in less th
 
 | Folder | Package | Registry | Status |
 |---|---|---|---|
-| [`php/`](php) | `labyrinthe/connect-php` | [Packagist](https://packagist.org/packages/labyrinthe/connect-php) | 1.2.0 — stable |
-| [`laravel/`](laravel) | `labyrinthe/connect-laravel` | [Packagist](https://packagist.org/packages/labyrinthe/connect-laravel) | 1.2.0 — stable |
-| [`openapi/`](openapi) | OpenAPI 3.1 specification | — | 1.3.0 — source of truth |
-| [`postman/`](postman) | Postman v2.1 collection + environments | — | 1.3.0 — generated from the spec |
-| [`node/`](node) | `@labyrinthe/connect` | [npm](https://www.npmjs.com/package/@labyrinthe/connect) | 1.2.0 — stable |
-| [`python/`](python) | `labyrinthe-connect` | [PyPI](https://pypi.org/project/labyrinthe-connect/) | 1.2.0 — stable |
-| [`widget-otp/`](widget-otp) | `@labyrinthe/otp-widget` (`<labyrinthe-otp>` + React + server handlers) | [npm](https://www.npmjs.com/package/@labyrinthe/otp-widget) | 1.2.0 — stable |
-| [`dotnet/`](dotnet) | `Labyrinthe.Connect` + `Labyrinthe.Connect.AspNetCore` | [NuGet](https://www.nuget.org/packages/Labyrinthe.Connect) | 1.2.0 — stable |
-| [`java/`](java) | `com.labyrinthe-rdc:labyrinthe-connect` + `labyrinthe-connect-spring-boot-starter` | [Maven Central](https://central.sonatype.com/artifact/com.labyrinthe-rdc/labyrinthe-connect) | 1.2.0 — stable |
-| [`wordpress/`](wordpress) | WordPress / WooCommerce plugin `labyrinthe-connect` (order SMS, OTP verification and login) | [wordpress.org](https://wordpress.org/plugins/labyrinthe-connect/) | 1.2.0 (SDK PHP 1.2.0, API 1.3.0) — ready, not yet on wordpress.org |
+| [`php/`](php) | `labyrinthe/connect-php` | [Packagist](https://packagist.org/packages/labyrinthe/connect-php) | 1.2.1 — stable |
+| [`laravel/`](laravel) | `labyrinthe/connect-laravel` | [Packagist](https://packagist.org/packages/labyrinthe/connect-laravel) | 1.2.1 — stable |
+| [`openapi/`](openapi) | OpenAPI 3.1 specification | — | 1.3.1 — source of truth |
+| [`postman/`](postman) | Postman v2.1 collection + environments | — | 1.3.1 — generated from the spec |
+| [`node/`](node) | `@labyrinthe/connect` | [npm](https://www.npmjs.com/package/@labyrinthe/connect) | 1.2.1 — stable |
+| [`python/`](python) | `labyrinthe-connect` | [PyPI](https://pypi.org/project/labyrinthe-connect/) | 1.2.1 — stable |
+| [`widget-otp/`](widget-otp) | `@labyrinthe/otp-widget` (`<labyrinthe-otp>` + React + server handlers) | [npm](https://www.npmjs.com/package/@labyrinthe/otp-widget) | 1.2.1 — stable |
+| [`dotnet/`](dotnet) | `Labyrinthe.Connect` + `Labyrinthe.Connect.AspNetCore` | [NuGet](https://www.nuget.org/packages/Labyrinthe.Connect) | 1.2.1 — stable |
+| [`java/`](java) | `com.labyrinthe-rdc:labyrinthe-connect` + `labyrinthe-connect-spring-boot-starter` | [Maven Central](https://central.sonatype.com/artifact/com.labyrinthe-rdc/labyrinthe-connect) | 1.2.1 — stable |
+| [`wordpress/`](wordpress) | WordPress / WooCommerce plugin `labyrinthe-connect` (order SMS, OTP verification and login) | [wordpress.org](https://wordpress.org/plugins/labyrinthe-connect/) | 1.2.1 (SDK PHP 1.2.1, API 1.3.1) — ready, not yet on wordpress.org |
 
 The npm, PyPI, NuGet and Maven Central packages are published directly from this repository (tags `node-vX.Y.Z`, `widget-otp-vX.Y.Z`, `python-vX.Y.Z`, `dotnet-vX.Y.Z`, `java-vX.Y.Z`). PHP packages are developed here and published through read-only mirrors
 (`labyrinthe-connect-php`, `labyrinthe-connect-laravel`) that Packagist reads. Open issues and pull requests in
@@ -71,8 +71,8 @@ System.out.println(message.status());                                           
 ## Principles shared by every SDK
 
 - **The API contract is [`openapi/openapi.yaml`](openapi/openapi.yaml).** SDK types, errors, headers and webhook
-  events follow it exactly; contract tests keep them aligned. Known API limits are listed in
-  [`BACKEND-TODO.md`](BACKEND-TODO.md) and are never worked around in an SDK.
+  events follow it exactly; contract tests keep them aligned. Known API limits are fixed in the API, never worked
+  around in an SDK.
 - **Same API in every language**: `sms.send / sendMany / estimate / get / list`, `balance.get`, `senderIds.list`,
   `otp.send / verify`, `Webhook.constructEvent`, with names adapted to each language.
 - **Never a double SMS**: every send carries an `Idempotency-Key`; automatic retries only happen when replaying is
@@ -99,7 +99,6 @@ dotnet/               Labyrinthe.Connect + Labyrinthe.Connect.AspNetCore (NuGet,
 java/                 com.labyrinthe-rdc:labyrinthe-connect + Spring Boot starter (Maven Central, published from this repository)
 wordpress/            labyrinthe-connect WordPress / WooCommerce plugin (bundles ../php prefixed, wordpress.org SVN)
 .github/workflows/    one CI workflow per package (path filters), openapi.yml, split.yml (mirrors)
-BACKEND-TODO.md       known API limits and proposals
 CONTRIBUTING.md       tags, adding a package, changing the spec
 ```
 

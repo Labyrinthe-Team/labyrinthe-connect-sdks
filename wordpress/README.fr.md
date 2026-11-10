@@ -11,7 +11,7 @@ Congo et de l'Afrique centrale (slug `labyrinthe-connect`). Sans écrire de code
 statut, SMS au gérant pour chaque nouvelle commande, vérification du téléphone par SMS à l'inscription et à la
 commande, et connexion avec un code reçu par SMS (formulaire de connexion, shortcode, bloc). Les SMS partent en
 arrière-plan et jamais deux fois, chaque SMS laisse une note de commande, et une clé `lsk_test_` permet de tout tester
-sans rien envoyer ni payer. Plugin 1.2.0, qui embarque le [SDK PHP](../php) 1.2.0 (spécification de l'API 1.3.0).
+sans rien envoyer ni payer. Plugin 1.2.1, qui embarque le [SDK PHP](../php) 1.2.1 (spécification de l'API 1.3.1).
 
 *English version: [README.md](README.md). La documentation utilisateur pour wordpress.org est
 [`readme.txt`](readme.txt).*

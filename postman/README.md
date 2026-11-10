@@ -4,7 +4,7 @@
 
 A ready-to-run [Postman](https://www.postman.com/) collection (v2.1) of the Labyrinthe Connect developer API (SMS
 and OTP), generated from [`../openapi/openapi.yaml`](../openapi/openapi.yaml), the source of truth of the API.
-Collection **1.3.0**, generated from the spec 1.3.0 (see the [CHANGELOG](CHANGELOG.md)).
+Collection **1.3.1**, generated from the spec 1.3.1 (see the [CHANGELOG](CHANGELOG.md)).
 
 | File | Content |
 |---|---|

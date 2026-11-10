@@ -9,7 +9,7 @@ Official PHP client for [Labyrinthe Connect](https://connect.labyrinthe-rdc.com)
 and Central Africa: send SMS, check your balance and Sender IDs, verify phone numbers with one-time codes (OTP) and
 receive signed webhooks. Typed responses and exceptions, automatic retries **only** when they cannot send an SMS
 twice, Guzzle out of the box or any PSR-18 client, and your API key, OTP codes and full phone numbers never reach
-logs or dumps. SDK 1.2.1, built against the API specification 1.3.0.
+logs or dumps. SDK 1.2.1, built against the API specification 1.3.1.
 
 *Version française : [README.fr.md](README.fr.md). Laravel? Use [`labyrinthe/connect-laravel`](../laravel).
 WordPress? Use the [plugin](../wordpress).*
@@ -27,7 +27,7 @@ WordPress? Use the [plugin](../wordpress).*
 | PHP | 8.1 or newer, with the `json` and `mbstring` extensions |
 | HTTP | `guzzlehttp/guzzle` ^7.5 (installed and used by default), or any PSR-18 client with PSR-17 factories |
 | Logging | optional, any PSR-3 logger (`psr/log` ^2 or ^3) |
-| API | Labyrinthe Connect public API v1 (specification 1.3.0) |
+| API | Labyrinthe Connect public API v1 (specification 1.3.1) |
 
 ## Installation
 
@@ -498,7 +498,8 @@ specification [`openapi/openapi.yaml`](../openapi/openapi.yaml).
 
 See [CHANGELOG.md](CHANGELOG.md). 1.x releases are backward compatible. From 1.1 to 1.2: maintenance errors are now
 `FeatureDisabledException` (a subclass of `ServiceUnavailableException`, so existing `catch` blocks still work) and
-are no longer retried with backoff.
+are no longer retried with backoff. From 1.2.0 to 1.2.1: no code change; the default API URL is now
+`https://api.connect.labyrinthe-rdc.com/api/public/v1` (the 1.2.0 default did not answer).
 
 ## Contributing
 

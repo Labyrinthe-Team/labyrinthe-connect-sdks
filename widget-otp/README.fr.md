@@ -21,7 +21,7 @@ et les deux points de terminaison serveur dont il a besoin (Express, Next.js et 
   personnalisable par propriétés CSS et `::part()`, français (par défaut) et anglais, chaque texte remplaçable.
 - Aucune dépendance, Shadow DOM, **8,1 ko min+gzip** (script autonome), compatible SSR.
 
-Version **1.2.1**, construite sur la spécification de l'API **1.3.0** et `@labyrinthe/connect` 1.2. Nouveautés :
+Version **1.2.1**, construite sur la spécification de l'API **1.3.1** et `@labyrinthe/connect` 1.2. Nouveautés :
 [CHANGELOG](CHANGELOG.md) (en anglais).
 
 ## Sommaire
@@ -549,6 +549,9 @@ Aucune dépendance à l'exécution. `sideEffects` est déclaré : les bundlers c
 
 ## Mise à jour
 
+- **1.2.0 → 1.2.1** (API 1.3.1) : aucun changement de code. L'URL par défaut de l'API est désormais
+  `https://api.connect.labyrinthe-rdc.com/api/public/v1` (celle de la 1.2.0 ne répondait pas). Mettez à jour, ou indiquez cette URL
+  explicitement si vous restez en 1.2.0.
 - **1.1.x → 1.2.0** (API 1.3.0) : passez la dépendance pair `@labyrinthe/connect` à `^1.2.0`. Aucun changement de
   code. La maintenance est répondue en `service_unavailable` avec `admin_message`, `until` et `Retry-After` ;
   l'événement d'erreur gagne `adminMessage` et `until` ; nouveau texte `retryIn` (à ajouter si vous passez un objet

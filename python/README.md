@@ -17,7 +17,7 @@ with one-time codes (OTP), in the DR Congo and Central Africa.
 - One dependency: [`httpx`](https://www.python-httpx.org/). Optional Django, FastAPI and Flask helpers.
 - Never logs or prints your API key, OTP codes or full phone numbers.
 
-SDK **1.2.1**, built against the API specification **1.3.0** ([`openapi/openapi.yaml`](../openapi/openapi.yaml)).
+SDK **1.2.1**, built against the API specification **1.3.1** ([`openapi/openapi.yaml`](../openapi/openapi.yaml)).
 
 ## Contents
 
@@ -641,6 +641,8 @@ def verify(raw_body: bytes, signature_header: str, secret: str) -> dict:
 
 The SDK follows [SemVer](https://semver.org/); see the [CHANGELOG](CHANGELOG.md).
 
+- **1.2.0 → 1.2.1** (API 1.3.1): no code change. The default API URL is now `https://api.connect.labyrinthe-rdc.com/api/public/v1` (the 1.2.0 default
+  did not answer). Upgrade, or set this URL explicitly if you stay on 1.2.0.
 - **1.1.x → 1.2.0** (spec 1.3.0, backwards compatible): new `FeatureDisabledError` (503 `FEATURE_DISABLED`), a
   subclass of `ServiceUnavailableError`, so existing `except ServiceUnavailableError` blocks still catch it.
   `OTP_SERVICE_DISABLED` is now raised as `FeatureDisabledError` too. Maintenance 503s are only retried after

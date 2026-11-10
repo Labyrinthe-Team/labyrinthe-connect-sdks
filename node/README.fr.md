@@ -19,7 +19,7 @@ code à usage unique (OTP).
   `console.log()` ou `JSON.stringify()` ; les webhooks sont vérifiés en temps constant sur le corps brut.
 - Helpers de webhook pour **Express** et **Next.js** (App Router, et tout runtime Fetch `Request` / `Response`).
 
-Version **1.2.1**, construite sur la spécification de l'API **1.3.0**
+Version **1.2.1**, construite sur la spécification de l'API **1.3.1**
 ([`openapi.yaml`](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/blob/main/openapi/openapi.yaml)).
 Nouveautés : [CHANGELOG](CHANGELOG.md) (en anglais).
 
@@ -784,6 +784,9 @@ Référence : la spécification OpenAPI 3.1
 
 ## Mise à jour
 
+- **1.2.0 → 1.2.1** (API 1.3.1) : aucun changement de code. L'URL par défaut de l'API est désormais
+  `https://api.connect.labyrinthe-rdc.com/api/public/v1` (celle de la 1.2.0 ne répondait pas). Mettez à jour, ou indiquez cette URL
+  explicitement si vous restez en 1.2.0.
 - **1.1.x → 1.2.0** (API 1.3.0) : aucun changement de code. Nouvelle `FeatureDisabledError` pour 503
   `FEATURE_DISABLED` ; 503 `OTP_SERVICE_DISABLED` est désormais levée elle aussi en `FeatureDisabledError`. Les deux
   restent `instanceof ServiceUnavailableError` : vos branches `catch` existantes fonctionnent toujours. Elles ne sont

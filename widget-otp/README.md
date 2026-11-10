@@ -21,7 +21,7 @@ needs (Express, Next.js and any Fetch API runtime).
   with CSS custom properties and `::part()`, French (default) and English, every text overridable.
 - Zero dependencies, Shadow DOM, **8.1 kB min+gzip** (standalone script), SSR-safe.
 
-Version **1.2.1**, built against the API specification **1.3.0** and `@labyrinthe/connect` 1.2. What changed:
+Version **1.2.1**, built against the API specification **1.3.1** and `@labyrinthe/connect` 1.2. What changed:
 [CHANGELOG](CHANGELOG.md).
 
 ## Contents
@@ -540,6 +540,8 @@ No runtime dependency. `sideEffects` is declared so bundlers keep the element de
 
 ## Upgrading
 
+- **1.2.0 → 1.2.1** (API 1.3.1): no code change. The default API URL is now `https://api.connect.labyrinthe-rdc.com/api/public/v1` (the 1.2.0 default
+  did not answer). Upgrade, or set this URL explicitly if you stay on 1.2.0.
 - **1.1.x → 1.2.0** (API 1.3.0): update the peer dependency `@labyrinthe/connect` to `^1.2.0`. No code change.
   Maintenance is answered as `service_unavailable` with `admin_message`, `until` and `Retry-After`; the error event
   gains `adminMessage` and `until`; new text `retryIn` (add it if you pass a complete `OtpWidgetTexts` object);

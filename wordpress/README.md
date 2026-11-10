@@ -10,8 +10,8 @@ Official WordPress plugin of [Labyrinthe Connect](https://connect.labyrinthe-rdc
 Congo and Central Africa (slug `labyrinthe-connect`). Without writing code: WooCommerce order SMS for every status,
 a shop manager SMS for each new order, phone verification by SMS at registration and checkout, and login with a code
 received by SMS (login form, shortcode, block). SMS are sent in the background and never twice, every SMS leaves an
-order note, and a `lsk_test_` key lets you test everything without sending or paying. Plugin 1.2.0, bundling the
-[PHP SDK](../php) 1.2.0 (API specification 1.3.0).
+order note, and a `lsk_test_` key lets you test everything without sending or paying. Plugin 1.2.1, bundling the
+[PHP SDK](../php) 1.2.1 (API specification 1.3.1).
 
 *Version française : [README.fr.md](README.fr.md). The end-user documentation for wordpress.org is
 [`readme.txt`](readme.txt).*

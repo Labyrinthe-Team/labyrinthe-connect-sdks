@@ -9,7 +9,7 @@ Envoyez des SMS et vérifiez des numéros de téléphone avec [Labyrinthe Connec
 plateforme SMS et OTP de la RD Congo et de l'Afrique centrale, à la manière de Laravel : une façade `Labyrinthe`, un
 canal de notification `labyrinthe`, un assistant OTP avec règles de validation, des webhooks signés transformés en
 événements Laravel, et `Labyrinthe::fake()` pour vos tests. Package 1.2.1, construit sur le [SDK PHP](../php) 1.2.1
-(spécification de l'API 1.3.0) : mêmes exceptions typées, mêmes relances sans risque, jamais de double SMS.
+(spécification de l'API 1.3.1) : mêmes exceptions typées, mêmes relances sans risque, jamais de double SMS.
 
 *English version: [README.md](README.md).*
 
@@ -480,7 +480,8 @@ Relances, idempotence, erreurs et signatures de webhook sont alors à votre char
 
 Voir le [CHANGELOG.md](CHANGELOG.md) (en anglais). Les versions 1.x sont rétrocompatibles. La 1.2.0 exige
 `labyrinthe/connect-php` ^1.2.0 et ajoute `FeatureDisabledException` et `failNextRequestWithFeatureDisabled()` ; aucun
-changement de configuration.
+changement de configuration. La 1.2.1 exige `labyrinthe/connect-php` ^1.2.1, dont l'URL par défaut de l'API est
+désormais `https://api.connect.labyrinthe-rdc.com/api/public/v1` ; aucun changement de configuration.
 
 ## Contribuer
 

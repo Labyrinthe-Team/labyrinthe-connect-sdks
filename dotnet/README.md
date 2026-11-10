@@ -669,7 +669,7 @@ check that the `timestamp` of the envelope (Unix seconds) is recent. You then ha
 mapping and number formats yourself.
 
 Reference: the OpenAPI specification [`openapi/openapi.yaml`](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/blob/main/openapi/openapi.yaml)
-(1.3.0), also served by the API at `/api/public/openapi.yaml`.
+(1.3.1), also served by the API at `/api/public/openapi.yaml`.
 
 ### Known API limits
 
@@ -683,6 +683,8 @@ Reference: the OpenAPI specification [`openapi/openapi.yaml`](https://github.com
 The SDK follows SemVer; 1.x versions are backward compatible. See the
 [CHANGELOG](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/blob/main/dotnet/CHANGELOG.md).
 
+- **1.2.0 → 1.2.1** (API 1.3.1): no code change. The default API URL is now `https://api.connect.labyrinthe-rdc.com/api/public/v1` (the 1.2.0 default
+  did not answer). Upgrade, or set this URL explicitly if you stay on 1.2.0.
 - **1.1.x → 1.2.0** (API 1.3.0): new `FeatureDisabledException` (503 `FEATURE_DISABLED`). `OTP_SERVICE_DISABLED` is
   now raised as `FeatureDisabledException` (still a `ServiceUnavailableException`, so existing `catch` blocks keep
   working). Both are retried only after `Retry-After`, no longer with the 5xx backoff.

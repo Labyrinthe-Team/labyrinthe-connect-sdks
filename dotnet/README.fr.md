@@ -681,7 +681,7 @@ vérifiez que le `timestamp` de l'enveloppe (secondes Unix) est récent. Les rel
 erreurs et le format des numéros sont alors à votre charge.
 
 Référence : la spécification OpenAPI [`openapi/openapi.yaml`](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/blob/main/openapi/openapi.yaml)
-(1.3.0), aussi servie par l'API sur `/api/public/openapi.yaml`.
+(1.3.1), aussi servie par l'API sur `/api/public/openapi.yaml`.
 
 ### Limites connues de l'API
 
@@ -695,6 +695,9 @@ Référence : la spécification OpenAPI [`openapi/openapi.yaml`](https://github.
 Le SDK suit SemVer ; les versions 1.x sont rétrocompatibles. Voir le
 [CHANGELOG](https://github.com/Labyrinthe-Team/labyrinthe-connect-sdks/blob/main/dotnet/CHANGELOG.md) (en anglais).
 
+- **1.2.0 → 1.2.1** (API 1.3.1) : aucun changement de code. L'URL par défaut de l'API est désormais
+  `https://api.connect.labyrinthe-rdc.com/api/public/v1` (celle de la 1.2.0 ne répondait pas). Mettez à jour, ou indiquez cette URL
+  explicitement si vous restez en 1.2.0.
 - **1.1.x → 1.2.0** (API 1.3.0) : nouvelle `FeatureDisabledException` (503 `FEATURE_DISABLED`).
   `OTP_SERVICE_DISABLED` est désormais levée en `FeatureDisabledException` (toujours une
   `ServiceUnavailableException` : vos blocs `catch` existants fonctionnent encore). Les deux ne sont relancées
