@@ -6,6 +6,13 @@ The wordpress.org changelog lives in `readme.txt`.
 
 ## [Unreleased]
 
+### Changed
+- wordpress.org review: translations now come from translate.wordpress.org. The zip no longer ships the compiled
+  `.po` / `.mo` / `.json` / `.l10n.php` files (only the `.pot` template) and the plugin no longer calls
+  `load_plugin_textdomain()` (WordPress loads the translations itself). The French translation stays in `languages/` and
+  is imported on translate.wordpress.org.
+- Admin notices only appear on the dashboard, the Plugins screen and the plugin's own pages.
+
 ## [1.2.1] - 2026-11-09
 
 ### Fixed

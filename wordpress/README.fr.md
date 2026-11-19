@@ -292,7 +292,7 @@ php bin/smoke-test.php           # vérifie le plugin construit
 ```
 
 La construction demande PHP 8.2+ (l'exécution, 8.1+). Elle utilise une liste blanche (`labyrinthe-connect.php`,
-`uninstall.php`, `readme.txt`, `LICENSE`, `includes/`, `assets/`, `blocks/`, `languages/`, `vendor-prefixed/`), des
+`uninstall.php`, `readme.txt`, `LICENSE`, `includes/`, `assets/`, `blocks/`, `languages/*.pot` (traductions : translate.wordpress.org), `vendor-prefixed/`), des
 horodatages fixes, et vérifie que la version de l'en-tête, `LABYRINTHE_CONNECT_VERSION`, le `Stable tag` du readme et
 `block.json` concordent.
 

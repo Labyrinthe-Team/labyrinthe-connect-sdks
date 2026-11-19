@@ -208,8 +208,13 @@ final class Admin {
 		if ( ! current_user_can( self::CAPABILITY ) ) {
 			return;
 		}
-		$screen     = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
-		$on_plugins = null !== $screen && ( 'plugins' === $screen->id || false !== strpos( (string) $screen->id, self::SLUG ) );
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		// Avis limités au tableau de bord, à la page des extensions et aux pages du plugin (règle 11 de wordpress.org).
+		$screen_id = null !== $screen ? (string) $screen->id : '';
+		if ( ! in_array( $screen_id, array( 'dashboard', 'plugins' ), true ) && false === strpos( $screen_id, self::SLUG ) ) {
+			return;
+		}
+		$on_plugins = 'plugins' === $screen_id || false !== strpos( $screen_id, self::SLUG );
 		$settings   = admin_url( 'admin.php?page=' . self::SLUG );
 
 		$suspended = Account_Status::suspended();

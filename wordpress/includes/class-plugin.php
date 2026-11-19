@@ -141,10 +141,6 @@ final class Plugin {
 	private function register_hooks(): void {
 		Schema::maybe_upgrade();
 
-		add_action( 'init', array( $this, 'load_textdomain' ), 0 );
-		add_filter( 'plugin_locale', array( $this, 'french_fallback' ), 10, 2 );
-		add_filter( 'load_script_translation_file', array( $this, 'french_script_fallback' ), 10, 3 );
-
 		add_action( Cron::HOOK, array( $this, 'daily' ) );
 		add_action(
 			'rest_api_init',
@@ -168,49 +164,6 @@ final class Plugin {
 			( new Admin( $this->settings, $this->clients, $this->sender, new Sender_Ids( $this->clients ) ) )->register();
 			add_action( 'admin_init', array( Cron::class, 'schedule' ) );
 		}
-	}
-
-	/**
-	 * Traductions livrées avec le plugin (languages/).
-	 */
-	public function load_textdomain(): void {
-		// Traductions livrées : elles servent avant les paquets de translate.wordpress.org, hors wordpress.org et pour les variantes du français.
-		load_plugin_textdomain( 'labyrinthe-connect', false, dirname( plugin_basename( LABYRINTHE_CONNECT_FILE ) ) . '/languages' ); // phpcs:ignore PluginCheck.CodeAnalysis.DiscouragedFunctions.load_plugin_textdomainFound
-	}
-
-	/**
-	 * Site en français d'une autre variante (fr_BE, fr_CA…, il n'existe pas de fr_CD) : on
-	 * charge la traduction fr_FR livrée plutôt que d'afficher l'anglais.
-	 *
-	 * @param string $locale Langue.
-	 * @param string $domain Domaine de traduction.
-	 */
-	public function french_fallback( $locale, $domain ): string {
-		$locale = (string) $locale;
-		if ( 'labyrinthe-connect' !== $domain || 'fr_FR' === $locale || 0 !== strpos( $locale, 'fr' ) ) {
-			return $locale;
-		}
-		$own  = LABYRINTHE_CONNECT_DIR . 'languages/labyrinthe-connect-' . $locale . '.mo';
-		$pack = WP_LANG_DIR . '/plugins/labyrinthe-connect-' . $locale . '.mo';
-
-		return is_file( $own ) || is_file( $pack ) ? $locale : 'fr_FR';
-	}
-
-	/**
-	 * Même repli pour les traductions JavaScript (bloc de connexion).
-	 *
-	 * @param string|false $file   Fichier de traduction.
-	 * @param string       $handle Script.
-	 * @param string       $domain Domaine.
-	 * @return string|false
-	 */
-	public function french_script_fallback( $file, $handle, $domain ) {
-		if ( 'labyrinthe-connect' !== $domain || ! is_string( $file ) || is_file( $file ) ) {
-			return $file;
-		}
-		$fallback = (string) preg_replace( '/-fr_[A-Z]{2}(_[a-z]+)?-/', '-fr_FR-', $file );
-
-		return is_file( $fallback ) ? $fallback : $file;
 	}
 
 	/**

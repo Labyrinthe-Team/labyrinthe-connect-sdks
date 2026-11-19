@@ -152,7 +152,7 @@ final class Login {
 				},
 			)
 		);
-		wp_set_script_translations( 'labyrinthe-connect-otp-login-editor-script', 'labyrinthe-connect', LABYRINTHE_CONNECT_DIR . 'languages' );
+		wp_set_script_translations( 'labyrinthe-connect-otp-login-editor-script', 'labyrinthe-connect' );
 	}
 
 	/**

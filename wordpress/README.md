@@ -283,7 +283,7 @@ php bin/smoke-test.php           # checks the built plugin
 ```
 
 Building needs PHP 8.2+ (running needs 8.1+). The build uses a whitelist (`labyrinthe-connect.php`, `uninstall.php`,
-`readme.txt`, `LICENSE`, `includes/`, `assets/`, `blocks/`, `languages/`, `vendor-prefixed/`), fixed timestamps and
+`readme.txt`, `LICENSE`, `includes/`, `assets/`, `blocks/`, `languages/*.pot` (translations come from translate.wordpress.org), `vendor-prefixed/`), fixed timestamps and
 checks that the header version, `LABYRINTHE_CONNECT_VERSION`, the readme `Stable tag` and `block.json` agree.
 
 **Technical choices.** The runtime dependencies (`labyrinthe/connect-php`, Guzzle, PSR interfaces) are copied by

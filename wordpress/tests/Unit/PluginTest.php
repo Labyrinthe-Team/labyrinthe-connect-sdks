@@ -125,9 +125,19 @@ final class PluginTest extends TestCase {
 			)
 		);
 
+		$admin = new \LabyrintheConnect\Admin\Admin( $settings, new Client_Factory( $settings ), $this->sender( $settings ), new Sender_Ids( new Client_Factory( $settings ) ) );
+
+		// Hors du tableau de bord, des extensions et des pages du plugin : aucun avis (règle 11 de wordpress.org).
+		set_current_screen( 'edit-post' );
 		ob_start();
-		( new \LabyrintheConnect\Admin\Admin( $settings, new Client_Factory( $settings ), $this->sender( $settings ), new Sender_Ids( new Client_Factory( $settings ) ) ) )->notices();
+		$admin->notices();
+		$this->assertSame( '', (string) ob_get_clean() );
+
+		set_current_screen( 'dashboard' );
+		ob_start();
+		$admin->notices();
 		$html = (string) ob_get_clean();
+		set_current_screen( 'front' );
 
 		$this->assertStringContainsString( 'your account is suspended', $html );
 		$this->assertStringContainsString( 'req-&lt;b&gt;9&lt;/b&gt;', $html, 'Escaped.' );
@@ -141,16 +151,6 @@ final class PluginTest extends TestCase {
 
 		$this->expectException( \WPDieException::class );
 		$page->render();
-	}
-
-	public function test_french_sites_get_the_french_translation(): void {
-		$plugin = Plugin::instance();
-
-		$this->assertSame( 'fr_FR', $plugin->french_fallback( 'fr_BE', 'labyrinthe-connect' ) );
-		$this->assertSame( 'fr_FR', $plugin->french_fallback( 'fr_FR', 'labyrinthe-connect' ) );
-		$this->assertSame( 'en_GB', $plugin->french_fallback( 'en_GB', 'labyrinthe-connect' ) );
-		$this->assertSame( 'fr_BE', $plugin->french_fallback( 'fr_BE', 'other-plugin' ) );
-		$this->assertFileExists( LABYRINTHE_CONNECT_DIR . 'languages/labyrinthe-connect-fr_FR.mo' );
 	}
 
 	public function test_french_translation_loads_and_sms_templates_stay_ascii(): void {

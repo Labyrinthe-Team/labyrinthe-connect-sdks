@@ -31,7 +31,7 @@ $include = array(
 	'includes',
 	'assets',
 	'blocks',
-	'languages',
+	'languages/labyrinthe-connect.pot', // Traductions : translate.wordpress.org (pas de .po / .mo livrés).
 	'vendor-prefixed',
 );
 
@@ -60,7 +60,7 @@ if ( ! in_array( '--skip-prefix', $argv, true ) ) {
 		exit( $code );
 	}
 }
-foreach ( array( 'vendor-prefixed/autoload.php', 'languages/labyrinthe-connect.pot', 'languages/labyrinthe-connect-fr_FR.mo' ) as $required ) {
+foreach ( array( 'vendor-prefixed/autoload.php', 'languages/labyrinthe-connect.pot' ) as $required ) {
 	if ( ! is_file( $root . '/' . $required ) ) {
 		fail( "$required is missing (composer install, composer i18n)." );
 	}
@@ -124,7 +124,7 @@ for ( $i = 0; $i < $check->numFiles; $i++ ) {
 	$names[] = (string) $check->getNameIndex( $i );
 }
 $check->close();
-foreach ( array( 'labyrinthe-connect.php', 'uninstall.php', 'readme.txt', 'LICENSE', 'vendor-prefixed/autoload.php', 'vendor-prefixed/labyrinthe/connect-php/src/Client.php', 'languages/labyrinthe-connect-fr_FR.mo', 'blocks/otp-login/block.json' ) as $expected ) {
+foreach ( array( 'labyrinthe-connect.php', 'uninstall.php', 'readme.txt', 'LICENSE', 'vendor-prefixed/autoload.php', 'vendor-prefixed/labyrinthe/connect-php/src/Client.php', 'blocks/otp-login/block.json' ) as $expected ) {
 	if ( ! in_array( LABYRINTHE_SLUG . '/' . $expected, $names, true ) ) {
 		fail( "The zip does not contain $expected." );
 	}
